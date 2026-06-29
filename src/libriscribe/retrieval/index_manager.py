@@ -115,18 +115,27 @@ class IndexManager:
         self.xref_index.load_from_file(self.xref_index_file)
 
     def _get_entity_definitions(self) -> Dict[str, str]:
-        """Assembles the dictionary of entity names and types from characters and worldbuilding."""
+        """Assembles the dictionary of entity names and types from characters, worldbuilding, locations, and lore entries."""
         defs = {}
         # Characters
         for char_name in self.kb.characters:
             defs[char_name] = "character"
 
-        # Worldbuilding locations
+        # Worldbuilding locations (legacy)
         if self.kb.worldbuilding and hasattr(self.kb.worldbuilding, "key_locations"):
             locs_text = self.kb.worldbuilding.key_locations or ""
             locations = [l.strip() for l in locs_text.replace("\n", ",").split(",") if l.strip()]
             for loc in locations:
                 defs[loc] = "location"
+
+        # Lorebook locations
+        for loc_name in getattr(self.kb, "locations", {}):
+            defs[loc_name] = "location"
+
+        # Lore entries
+        for entry_name, entry in getattr(self.kb, "lore_entries", {}).items():
+            entry_type = getattr(entry, "entry_type", "lore_entry") or "lore_entry"
+            defs[entry_name] = entry_type
 
         return defs
 

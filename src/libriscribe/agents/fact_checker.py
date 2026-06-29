@@ -2,20 +2,17 @@
 import logging
 from typing import Any, Dict, List
 
-from libriscribe.agents.agent_base import Agent
+from libriscribe.agents.agent_base import Agent, EventCallback
 from libriscribe.utils.llm_client import LLMClient
 from libriscribe.utils.file_utils import read_markdown_file, extract_json_from_markdown
-# For web scraping
-from rich.console import Console
-console = Console()
 
 logger = logging.getLogger(__name__)
 
 class FactCheckerAgent(Agent):
     """Checks factual claims in a chapter."""
 
-    def __init__(self, llm_client: LLMClient):
-        super().__init__("FactCheckerAgent", llm_client)
+    def __init__(self, llm_client: LLMClient, event_callback: EventCallback | None = None):
+        super().__init__("FactCheckerAgent", llm_client, event_callback=event_callback)
         self.llm_client = llm_client
 
     def execute(self, chapter_path: str) -> List[Dict[str, Any]]:
@@ -27,7 +24,7 @@ class FactCheckerAgent(Agent):
             return []
 
         # 1. Identify Claims
-        console.print(f"🔍 [cyan]Verifying facts in Chapter {chapter_path.split('_')[-1].split('.')[0]}...[/cyan]")
+        self.emit("log", {"level": "info", "message": f"Verifying facts in Chapter {chapter_path.split('_')[-1].split('.')[0]}..."})
 
         identify_claims_prompt = f"""
         You are an expert fact-checker.  Identify all statements in the following text that make factual claims

@@ -3,24 +3,18 @@ import logging
 from typing import Optional
 
 from libriscribe.utils.llm_client import LLMClient
-from libriscribe.agents.agent_base import Agent
-from libriscribe.utils.file_utils import (
-    extract_json_from_markdown,
-)
+from libriscribe.agents.agent_base import Agent, EventCallback
+from libriscribe.utils.file_utils import extract_json_from_markdown
 from libriscribe.knowledge_base import ProjectKnowledgeBase
 
-# No need to import track
-from rich.console import Console  # NEW IMPORT
-
-console = Console()  # Create a console instance.
 logger = logging.getLogger(__name__)
 
 
 class ConceptGeneratorAgent(Agent):
     """Generates book concepts."""
 
-    def __init__(self, llm_client: LLMClient):
-        super().__init__("ConceptGeneratorAgent", llm_client)
+    def __init__(self, llm_client: LLMClient, event_callback: Optional[EventCallback] = None):
+        super().__init__("ConceptGeneratorAgent", llm_client, event_callback)
 
     def execute(
         self,
@@ -67,7 +61,7 @@ class ConceptGeneratorAgent(Agent):
                 }}}}}}}}
                 ```"""
 
-            console.print("🧠 [cyan]Generating initial concept...[/cyan]")
+            self.emit("log", {"level": "info", "message": "Generating initial concept..."})
             initial_concept_md = self.llm_client.generate_content_with_json_repair(
                 initial_prompt
             )
@@ -88,13 +82,13 @@ class ConceptGeneratorAgent(Agent):
             {{{{json.dumps(initial_concept_json)}}}}
             ```
             The book should be written in {project_knowledge_base.language}.
-           
+
             Evaluate:
             - **Title:** Is it compelling and relevant?
             - **Logline:** Is it concise and does it capture the core conflict?
             - **Description:** Is it well-written, engaging, and does it provide a clear sense of the story?  Are there any obvious weaknesses or areas for improvement? Be specific and constructive.
             """
-            console.print("🔍 [cyan]Evaluating concept quality...[/cyan]")
+            self.emit("log", {"level": "info", "message": "Evaluating concept quality..."})
             critique = self.llm_client.generate_content(critique_prompt)
             if not critique:
                 logger.error("Critique generation failed.")
@@ -121,7 +115,7 @@ class ConceptGeneratorAgent(Agent):
             }}}}}}}}
             ```
             """
-            console.print("✨ [cyan]Refining concept...[/cyan]")
+            self.emit("log", {"level": "info", "message": "Refining concept..."})
             refined_concept_md = self.llm_client.generate_content_with_json_repair(
                 refine_prompt
             )
@@ -148,5 +142,5 @@ class ConceptGeneratorAgent(Agent):
 
         except Exception as e:
             self.logger.exception(f"Error generating concept: {e}")
-            print("ERROR: Failed to generate concept. See log for details.")
+            self.emit("log", {"level": "error", "message": f"Failed to generate concept: {e}"})
             return None

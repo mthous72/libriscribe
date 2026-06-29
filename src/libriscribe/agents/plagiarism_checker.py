@@ -3,18 +3,17 @@
 import logging
 from typing import Any, Dict, List
 
-from libriscribe.agents.agent_base import Agent
+from libriscribe.agents.agent_base import Agent, EventCallback
 from libriscribe.utils.llm_client import LLMClient
 from libriscribe.utils.file_utils import read_markdown_file, extract_json_from_markdown
-from rich.console import Console
-console = Console()
+
 logger = logging.getLogger(__name__)
 
 class PlagiarismCheckerAgent(Agent):
     """Checks a chapter for potential plagiarism."""
 
-    def __init__(self, llm_client: LLMClient):
-        super().__init__("PlagiarismCheckerAgent", llm_client)
+    def __init__(self, llm_client: LLMClient, event_callback: EventCallback | None = None):
+        super().__init__("PlagiarismCheckerAgent", llm_client, event_callback=event_callback)
         self.llm_client = llm_client
 
     def execute(self, chapter_path: str) -> List[Dict[str, Any]]:
@@ -55,7 +54,7 @@ class PlagiarismCheckerAgent(Agent):
 
     def check_plagiarism(self, text_chunk: str, chapter_path: str, language: str) -> List[Dict[str, Any]]:
         """Checks a text chunk, using extract_json_from_markdown."""
-        console.print(f"🔎 [cyan]Checking originality of Chapter {chapter_path.split('_')[-1].split('.')[0]}...[/cyan]")
+        self.emit("log", {"level": "info", "message": f"Checking originality of Chapter {chapter_path.split('_')[-1].split('.')[0]}..."})
 
         prompt = f"""
        You are a plagiarism detection expert. Analyze the following text for potential plagiarism.

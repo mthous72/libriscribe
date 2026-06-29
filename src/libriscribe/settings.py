@@ -36,5 +36,7 @@ class Settings(BaseSettings):
     weaviate_url: str = ""
     weaviate_api_key: str = ""
 
+    writing_system_prompt: str = ""
+
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")  # type: ignore
 

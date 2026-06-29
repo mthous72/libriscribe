@@ -3,23 +3,40 @@
 import logging
 from pathlib import Path
 from typing import Optional
-from libriscribe.agents.agent_base import Agent
+from libriscribe.agents.agent_base import Agent, EventCallback
 from libriscribe.utils import prompts_context as prompts
 from libriscribe.utils.file_utils import write_markdown_file
+from libriscribe.utils.system_prompts import CREATIVE_WRITING_SYSTEM_PROMPT
 from libriscribe.knowledge_base import ProjectKnowledgeBase, Chapter, Scene
 from libriscribe.utils.llm_client import LLMClient
 
-from rich.console import Console
-
-console = Console()
-
 logger = logging.getLogger(__name__)
+
+PACING_INSTRUCTIONS = {
+    "action": "Write this scene with rapid pacing. Use short, punchy sentences. Focus on physical movement, urgency, and tension. Minimize introspection. Keep dialogue brief and clipped.",
+    "dialogue": "This is a dialogue-driven scene. Let the conversation carry the story. Use distinct voices for each character. Include beats and body language between lines. Minimize narration.",
+    "introspective": "Write this scene with slow, reflective pacing. Go deep into the character's thoughts and feelings. Use longer sentences and internal monologue. Allow space for emotional processing.",
+    "exposition": "Weave necessary information naturally into the narrative. Avoid info-dumps -- reveal details through character interaction, observation, or discovery. Keep the reader engaged.",
+    "transition": "Write a brief, efficient scene that bridges two parts of the story. Focus on movement, time passage, or a shift in mood. Keep it concise but atmospheric.",
+}
+
 
 class ChapterWriterAgent(Agent):
     """Writes chapters."""
 
-    def __init__(self, llm_client: LLMClient):
-        super().__init__("ChapterWriterAgent", llm_client)
+    def __init__(self, llm_client: LLMClient, event_callback: Optional[EventCallback] = None):
+        super().__init__("ChapterWriterAgent", llm_client, event_callback)
+        self.context_builder = None
+
+    def _get_system_prompt(self, pkb: ProjectKnowledgeBase) -> str | None:
+        """Returns the writing system prompt, with per-project override > global override > default."""
+        if pkb.writing_system_prompt:
+            return pkb.writing_system_prompt
+        from libriscribe.settings import Settings
+        settings = Settings()
+        if settings.writing_system_prompt:
+            return settings.writing_system_prompt
+        return CREATIVE_WRITING_SYSTEM_PROMPT
 
 
     def execute(self, project_knowledge_base: ProjectKnowledgeBase, chapter_number: int, output_path: Optional[str] = None) -> None:
@@ -28,14 +45,12 @@ class ChapterWriterAgent(Agent):
             # Get chapter data
             chapter = project_knowledge_base.get_chapter(chapter_number)
             if not chapter:
-                console.print(f"[red]ERROR: Chapter {chapter_number} not found in knowledge base.[/red]")
-                # Create a default chapter if not found
+                self.emit("log", {"level": "warning", "message": f"Chapter {chapter_number} not found in knowledge base. Creating default."})
                 chapter = Chapter(
                     chapter_number=chapter_number,
                     title=f"Chapter {chapter_number}",
                     summary="A new chapter in the unfolding story."
                 )
-                # Add a default scene
                 default_scene = Scene(
                     scene_number=1,
                     summary="The story continues with new developments.",
@@ -46,14 +61,12 @@ class ChapterWriterAgent(Agent):
                 )
                 chapter.scenes.append(default_scene)
                 project_knowledge_base.add_chapter(chapter)
-                console.print(f"[yellow]Created default chapter {chapter_number} to proceed.[/yellow]")
 
-            console.print(f"\n[cyan]📝 Writing Chapter {chapter_number}: {chapter.title}[/cyan]")
+            self.emit("log", {"level": "info", "message": f"Writing Chapter {chapter_number}: {chapter.title}"})
 
-            
             # Make sure there's at least one scene
             if not chapter.scenes:
-                console.print(f"[yellow]No scenes found for Chapter {chapter_number}. Creating a default scene.[/yellow]")
+                self.emit("log", {"level": "warning", "message": f"No scenes found for Chapter {chapter_number}. Creating a default scene."})
                 default_scene = Scene(
                     scene_number=1,
                     summary="The story continues with new developments.",
@@ -63,26 +76,22 @@ class ChapterWriterAgent(Agent):
                     emotional_beat="Tension"
                 )
                 chapter.scenes.append(default_scene)
-            
-            # Make sure scenes are ordered by scene number
-            ordered_scenes = sorted(chapter.scenes, key=lambda s: s.scene_number)
-            # Process each scene individually
-            scene_contents = []
-            
-            for scene in ordered_scenes:
-                console.print(f"🎬 Creating Scene/Section {scene.scene_number} of {len(ordered_scenes)}...")
 
-                # Generate a scene title if none exists
+            ordered_scenes = sorted(chapter.scenes, key=lambda s: s.scene_number)
+            scene_contents = []
+
+            for scene in ordered_scenes:
+                self.emit("log", {"level": "info", "message": f"Creating Scene/Section {scene.scene_number} of {len(ordered_scenes)}..."})
+
                 scene_title = f"Scene {scene.scene_number}: {scene.summary[:30]}..." if len(scene.summary) > 30 else f"Scene {scene.scene_number}: {scene.summary}"
-                
-                # Create a prompt for this specific scene
-                scene_prompt = prompts.SCENE_PROMPT.format(
+
+                prompt_kwargs = dict(
                     chapter_number=chapter_number,
                     chapter_title=chapter.title,
                     book_title=project_knowledge_base.title,
                     genre=project_knowledge_base.genre,
                     category=project_knowledge_base.category,
-                    language=project_knowledge_base.language,  # Add language parameter
+                    language=project_knowledge_base.language,
                     chapter_summary=chapter.summary,
                     scene_number=scene.scene_number,
                     scene_summary=scene.summary,
@@ -90,36 +99,187 @@ class ChapterWriterAgent(Agent):
                     setting=scene.setting if scene.setting else "None specified",
                     goal=scene.goal if scene.goal else "None specified",
                     emotional_beat=scene.emotional_beat if scene.emotional_beat else "None specified",
-                    total_scenes=len(ordered_scenes)
+                    total_scenes=len(ordered_scenes),
                 )
-                
+
+                max_gen_tokens = 2000
+                if self.context_builder:
+                    context_block = self.context_builder.build_scene_context(chapter_number, scene, chapter)
+                    scene_prompt = prompts.ENRICHED_SCENE_PROMPT.format(context_block=context_block, **prompt_kwargs)
+                    max_gen_tokens = 3500
+                else:
+                    scene_prompt = prompts.SCENE_PROMPT.format(**prompt_kwargs)
+
+                # F4: Pacing instructions based on scene type
+                if scene.scene_type and scene.scene_type in PACING_INSTRUCTIONS:
+                    scene_prompt += f"\n\nPACING: {PACING_INSTRUCTIONS[scene.scene_type]}"
+                if scene.target_word_count:
+                    scene_prompt += f"\n\nTARGET LENGTH: Aim for approximately {scene.target_word_count} words for this scene."
+
                 scene_prompt += f"\n\nIMPORTANT: Begin the scene with the title: **{scene_title}**"
 
-                
-                # Generate the scene content
-                scene_content = self.llm_client.generate_content(scene_prompt, max_tokens=2000)
+                sys_prompt = self._get_system_prompt(project_knowledge_base)
+                scene_content = self.llm_client.generate_content(scene_prompt, max_tokens=max_gen_tokens, system_prompt=sys_prompt)
                 if not scene_content:
-                    console.print(f"[yellow]Warning: Failed to generate content for Scene {scene.scene_number}. Using placeholder.[/yellow]")
+                    self.emit("log", {"level": "warning", "message": f"Failed to generate content for Scene {scene.scene_number}. Using placeholder."})
                     scene_content = f"[Scene {scene.scene_number} content unavailable]"
-                
-                # Ensure the scene title is included
+
                 if not scene_content.startswith(f"**{scene_title}**") and not scene_content.startswith(f"# {scene_title}"):
                     scene_content = f"**{scene_title}**\n\n{scene_content}"
-                
+
                 scene_contents.append(scene_content)
-            
-            
-            # Combine scenes into a complete chapter
+                self.emit("stream_complete", {
+                    "stage": "chapters",
+                    "chapter": chapter_number,
+                    "scene": scene.scene_number,
+                    "word_count": len(scene_content.split()),
+                })
+
             chapter_content = f"## Chapter {chapter_number}: {chapter.title}\n\n"
             chapter_content += "\n\n".join(scene_contents)
-            
-            # Save the chapter
+
             if output_path is None:
                 output_path = str(Path(project_knowledge_base.project_dir) / f"chapter_{chapter_number}.md")
             write_markdown_file(output_path, chapter_content)
-            
-            console.print(f"[green]✅ Chapter {chapter_number} completed with {len(ordered_scenes)} scenes![/green]")
-            
+
+            self.emit("chapter_complete", {
+                "chapter": chapter_number,
+                "scenes_written": len(ordered_scenes),
+                "word_count": len(chapter_content.split()),
+            })
+
         except Exception as e:
             self.logger.exception(f"Error writing chapter {chapter_number}: {e}")
-            console.print(f"[red]ERROR: Failed to write chapter {chapter_number}. See log for details.[/red]")
+            self.emit("error", {
+                "stage": "chapters",
+                "chapter": chapter_number,
+                "message": str(e),
+                "recoverable": False,
+            })
+
+    def execute_streaming(self, project_knowledge_base: ProjectKnowledgeBase, chapter_number: int, output_path: Optional[str] = None) -> None:
+        """Writes a chapter scene by scene with streaming output."""
+        try:
+            chapter = project_knowledge_base.get_chapter(chapter_number)
+            if not chapter:
+                self.emit("log", {"level": "warning", "message": f"Chapter {chapter_number} not found. Creating default."})
+                chapter = Chapter(
+                    chapter_number=chapter_number,
+                    title=f"Chapter {chapter_number}",
+                    summary="A new chapter in the unfolding story."
+                )
+                default_scene = Scene(
+                    scene_number=1,
+                    summary="The story continues with new developments.",
+                    characters=["Shade"],
+                    setting="Neo-London",
+                    goal="Advance the plot",
+                    emotional_beat="Tension"
+                )
+                chapter.scenes.append(default_scene)
+                project_knowledge_base.add_chapter(chapter)
+
+            self.emit("log", {"level": "info", "message": f"Writing Chapter {chapter_number}: {chapter.title} (streaming)"})
+
+            if not chapter.scenes:
+                default_scene = Scene(
+                    scene_number=1,
+                    summary="The story continues with new developments.",
+                    characters=["Shade"],
+                    setting="Neo-London",
+                    goal="Advance the plot",
+                    emotional_beat="Tension"
+                )
+                chapter.scenes.append(default_scene)
+
+            ordered_scenes = sorted(chapter.scenes, key=lambda s: s.scene_number)
+            scene_contents = []
+
+            for scene in ordered_scenes:
+                self.emit("log", {"level": "info", "message": f"Streaming Scene {scene.scene_number} of {len(ordered_scenes)}..."})
+
+                scene_title = f"Scene {scene.scene_number}: {scene.summary[:30]}..." if len(scene.summary) > 30 else f"Scene {scene.scene_number}: {scene.summary}"
+
+                prompt_kwargs = dict(
+                    chapter_number=chapter_number,
+                    chapter_title=chapter.title,
+                    book_title=project_knowledge_base.title,
+                    genre=project_knowledge_base.genre,
+                    category=project_knowledge_base.category,
+                    language=project_knowledge_base.language,
+                    chapter_summary=chapter.summary,
+                    scene_number=scene.scene_number,
+                    scene_summary=scene.summary,
+                    characters=", ".join(scene.characters) if scene.characters else "None specified",
+                    setting=scene.setting if scene.setting else "None specified",
+                    goal=scene.goal if scene.goal else "None specified",
+                    emotional_beat=scene.emotional_beat if scene.emotional_beat else "None specified",
+                    total_scenes=len(ordered_scenes),
+                )
+
+                max_gen_tokens = 2000
+                if self.context_builder:
+                    context_block = self.context_builder.build_scene_context(chapter_number, scene, chapter)
+                    scene_prompt = prompts.ENRICHED_SCENE_PROMPT.format(context_block=context_block, **prompt_kwargs)
+                    max_gen_tokens = 3500
+                else:
+                    scene_prompt = prompts.SCENE_PROMPT.format(**prompt_kwargs)
+
+                # F4: Pacing instructions based on scene type
+                if scene.scene_type and scene.scene_type in PACING_INSTRUCTIONS:
+                    scene_prompt += f"\n\nPACING: {PACING_INSTRUCTIONS[scene.scene_type]}"
+                if scene.target_word_count:
+                    scene_prompt += f"\n\nTARGET LENGTH: Aim for approximately {scene.target_word_count} words for this scene."
+
+                scene_prompt += f"\n\nIMPORTANT: Begin the scene with the title: **{scene_title}**"
+
+                # Try streaming; fall back to non-streaming
+                sys_prompt = self._get_system_prompt(project_knowledge_base)
+                scene_content = ""
+                try:
+                    for chunk in self.llm_client.generate_content_streaming(scene_prompt, max_tokens=max_gen_tokens, system_prompt=sys_prompt):
+                        scene_content += chunk
+                        self.emit("stream_chunk", {
+                            "text": chunk,
+                            "stage": "chapters",
+                            "chapter": chapter_number,
+                            "scene": scene.scene_number,
+                        })
+                except (AttributeError, NotImplementedError):
+                    scene_content = self.llm_client.generate_content(scene_prompt, max_tokens=max_gen_tokens, system_prompt=sys_prompt)
+
+                if not scene_content:
+                    scene_content = f"[Scene {scene.scene_number} content unavailable]"
+
+                if not scene_content.startswith(f"**{scene_title}**") and not scene_content.startswith(f"# {scene_title}"):
+                    scene_content = f"**{scene_title}**\n\n{scene_content}"
+
+                scene_contents.append(scene_content)
+                self.emit("stream_complete", {
+                    "stage": "chapters",
+                    "chapter": chapter_number,
+                    "scene": scene.scene_number,
+                    "word_count": len(scene_content.split()),
+                })
+
+            chapter_content = f"## Chapter {chapter_number}: {chapter.title}\n\n"
+            chapter_content += "\n\n".join(scene_contents)
+
+            if output_path is None:
+                output_path = str(Path(project_knowledge_base.project_dir) / f"chapter_{chapter_number}.md")
+            write_markdown_file(output_path, chapter_content)
+
+            self.emit("chapter_complete", {
+                "chapter": chapter_number,
+                "scenes_written": len(ordered_scenes),
+                "word_count": len(chapter_content.split()),
+            })
+
+        except Exception as e:
+            self.logger.exception(f"Error writing chapter {chapter_number}: {e}")
+            self.emit("error", {
+                "stage": "chapters",
+                "chapter": chapter_number,
+                "message": str(e),
+                "recoverable": False,
+            })

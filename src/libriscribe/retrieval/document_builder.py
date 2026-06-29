@@ -63,6 +63,18 @@ class DocumentBuilder:
         # 6. Chapter markdown texts
         documents.extend(self._build_chapter_prose_files())
 
+        # 7. Locations
+        documents.extend(self._build_locations())
+
+        # 8. Lore Entries
+        documents.extend(self._build_lore_entries())
+
+        # 9. Character States
+        documents.extend(self._build_character_states())
+
+        # 10. Story Arcs
+        documents.extend(self._build_story_arcs())
+
         return documents
 
     def _create_doc(
@@ -228,6 +240,135 @@ class DocumentBuilder:
                             tags=["scene", "summary"],
                         )
                     )
+        return docs
+
+    def _build_locations(self) -> list[RetrievalDocument]:
+        docs = []
+        for name, loc in getattr(self.kb, "locations", {}).items():
+            lines = [
+                f"Location: {loc.name}",
+                f"Description: {loc.description}",
+                f"Significance: {loc.significance}",
+            ]
+            if loc.associated_characters:
+                lines.append(f"Associated Characters: {', '.join(loc.associated_characters)}")
+            if loc.first_appearance is not None:
+                lines.append(f"First Appearance: Chapter {loc.first_appearance}")
+            if loc.tags:
+                lines.append(f"Tags: {', '.join(loc.tags)}")
+            text = "\n".join(lines)
+            if text.strip():
+                docs.append(
+                    self._create_doc(
+                        f"loc_{name.replace(' ', '_').lower()}",
+                        "location",
+                        f"Location - {loc.name}",
+                        text,
+                        entity_name=loc.name,
+                        tags=["location"] + loc.tags,
+                    )
+                )
+        return docs
+
+    def _build_lore_entries(self) -> list[RetrievalDocument]:
+        docs = []
+        for name, entry in getattr(self.kb, "lore_entries", {}).items():
+            lines = [
+                f"Lore Entry: {entry.name}",
+                f"Type: {entry.entry_type}",
+                f"Description: {entry.description}",
+                f"Significance: {entry.significance}",
+            ]
+            if entry.related_entities:
+                lines.append(f"Related Entities: {', '.join(entry.related_entities)}")
+            if entry.first_appearance is not None:
+                lines.append(f"First Appearance: Chapter {entry.first_appearance}")
+            if entry.tags:
+                lines.append(f"Tags: {', '.join(entry.tags)}")
+            text = "\n".join(lines)
+            if text.strip():
+                docs.append(
+                    self._create_doc(
+                        f"lore_{name.replace(' ', '_').lower()}",
+                        "lore_entry",
+                        f"Lore Entry - {entry.name}",
+                        text,
+                        entity_name=entry.name,
+                        tags=["lore", entry.entry_type] + entry.tags,
+                    )
+                )
+        return docs
+
+    def _build_character_states(self) -> list[RetrievalDocument]:
+        docs = []
+        character_states = getattr(self.kb, "character_states", {})
+        for char_name, states in character_states.items():
+            for state in states:
+                lines = [
+                    f"Character: {state.character_name}",
+                    f"Chapter: {state.chapter_number}",
+                ]
+                if state.emotional_state:
+                    lines.append(f"Emotional State: {state.emotional_state}")
+                if state.knowledge:
+                    lines.append(f"Knowledge: {', '.join(state.knowledge)}")
+                if state.relationships:
+                    for k, v in state.relationships.items():
+                        lines.append(f"Relationship with {k}: {v}")
+                if state.physical_state:
+                    lines.append(f"Physical State: {state.physical_state}")
+                if state.notes:
+                    lines.append(f"Notes: {state.notes}")
+
+                text = "\n".join(lines)
+                if text.strip():
+                    safe_name = char_name.replace(" ", "_").lower()
+                    docs.append(
+                        self._create_doc(
+                            f"state_{safe_name}_ch{state.chapter_number}",
+                            "character_state",
+                            f"Character State - {char_name} (Ch. {state.chapter_number})",
+                            text,
+                            entity_name=char_name,
+                            chapter_number=state.chapter_number,
+                            tags=["character_state", "state"],
+                        )
+                    )
+        return docs
+
+    def _build_story_arcs(self) -> list[RetrievalDocument]:
+        docs = []
+        for name, arc in getattr(self.kb, "story_arcs", {}).items():
+            lines = [
+                f"Story Arc: {arc.name}",
+                f"Type: {arc.arc_type}",
+                f"Description: {arc.description}",
+                f"Status: {arc.status}",
+                f"Characters: {', '.join(arc.characters_involved)}",
+            ]
+            if arc.chapters_involved:
+                lines.append(f"Chapters: {', '.join(str(c) for c in arc.chapters_involved)}")
+            milestones = getattr(arc, "milestones", [])
+            for m in milestones:
+                lines.append(
+                    f"Milestone: {m.name} ({m.milestone_type}) -> Ch.{m.target_chapter} [{m.status}]: {m.description}"
+                )
+            if arc.resolution_notes:
+                lines.append(f"Resolution: {arc.resolution_notes}")
+
+            text = "\n".join(lines)
+            if text.strip():
+                safe_name = name.replace(" ", "_").lower()
+                docs.append(
+                    self._create_doc(
+                        f"arc_{safe_name}",
+                        "story_arc",
+                        f"Story Arc - {arc.name}",
+                        text,
+                        entity_name=arc.name,
+                        tags=["arc", arc.arc_type, arc.status],
+                    )
+                )
         return docs
 
     def _build_chapter_prose_files(self) -> list[RetrievalDocument]:
