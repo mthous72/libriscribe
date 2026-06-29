@@ -188,6 +188,7 @@ class LLMClient:
         temperature: float = 0.7,
         language: str = "English",
         require_valid_json: bool = False,
+        system_prompt: Optional[str] = None,
     ) -> str:
         prepared_prompt = self._prepare_prompt(prompt, language)
         routes = build_fallback_route_chain(
@@ -206,6 +207,7 @@ class LLMClient:
                         prepared_prompt,
                         max_tokens=max_tokens,
                         temperature=temperature,
+                        system_prompt=system_prompt,
                     )
                     if not response_text or not response_text.strip():
                         raise RecoverableLLMError(
@@ -288,6 +290,7 @@ class LLMClient:
         prompt: str,
         max_tokens: int,
         temperature: float,
+        system_prompt: Optional[str] = None,
     ) -> str:
         provider = route.provider
         model = route.model
@@ -300,9 +303,13 @@ class LLMClient:
                     prompt
                     + "\n\nPlease format any JSON output in markdown code blocks with ```json```"
                 )
+            messages = []
+            if system_prompt:
+                messages.append({"role": "system", "content": system_prompt})
+            messages.append({"role": "user", "content": request_prompt})
             response = client.chat.completions.create(
                 model=model,
-                messages=[{"role": "user", "content": request_prompt}],
+                messages=messages,
                 max_tokens=max_tokens,
                 temperature=temperature,
             )
@@ -316,28 +323,34 @@ class LLMClient:
 
         if provider == "claude":
             client = self._get_client_for_provider(provider)
-            response = client.messages.create(
+            claude_kwargs = dict(
                 model=model,
                 max_tokens=max_tokens,
                 temperature=temperature,
                 messages=[{"role": "user", "content": prompt}],
             )
+            if system_prompt:
+                claude_kwargs["system"] = system_prompt
+            response = client.messages.create(**claude_kwargs)
             text_content = response.content[0].text.strip()
             self._log_usage(provider, model, prompt, text_content)
             return text_content
 
         if provider == "google_ai_studio":
             client = self._get_client_for_provider(provider)
+            google_config_kwargs: dict = dict(
+                temperature=temperature,
+                max_output_tokens=max_tokens,
+                thinking_config=google_genai_types.ThinkingConfig(
+                    thinking_budget=0,
+                ),
+            )
+            if system_prompt:
+                google_config_kwargs["system_instruction"] = system_prompt
             response = client.models.generate_content(
                 model=model,
                 contents=prompt,
-                config=google_genai_types.GenerateContentConfig(
-                    temperature=temperature,
-                    max_output_tokens=max_tokens,
-                    thinking_config=google_genai_types.ThinkingConfig(
-                        thinking_budget=0,
-                    ),
-                ),
+                config=google_genai_types.GenerateContentConfig(**google_config_kwargs),
             )
             text_response = (response.text or "").strip()
             self._log_usage(provider, model, prompt, text_response)
@@ -348,9 +361,13 @@ class LLMClient:
                 "Content-Type": "application/json",
                 "Authorization": f"Bearer {self.settings.deepseek_api_key}",
             }
+            ds_messages = []
+            if system_prompt:
+                ds_messages.append({"role": "system", "content": system_prompt})
+            ds_messages.append({"role": "user", "content": prompt})
             data = {
                 "model": model,
-                "messages": [{"role": "user", "content": prompt}],
+                "messages": ds_messages,
                 "max_tokens": max_tokens,
                 "temperature": temperature,
             }
@@ -370,9 +387,13 @@ class LLMClient:
                 "Content-Type": "application/json",
                 "Authorization": f"Bearer {self.settings.mistral_api_key}",
             }
+            mi_messages = []
+            if system_prompt:
+                mi_messages.append({"role": "system", "content": system_prompt})
+            mi_messages.append({"role": "user", "content": prompt})
             data = {
                 "model": model,
-                "messages": [{"role": "user", "content": prompt}],
+                "messages": mi_messages,
                 "max_tokens": max_tokens,
                 "temperature": temperature,
             }
@@ -395,6 +416,7 @@ class LLMClient:
         max_tokens: int = 2000,
         temperature: float = 0.7,
         language: str = "English",
+        system_prompt: Optional[str] = None,
     ) -> str:
         return self._request_with_fallback(
             prompt=prompt,
@@ -402,6 +424,7 @@ class LLMClient:
             temperature=temperature,
             language=language,
             require_valid_json=False,
+            system_prompt=system_prompt,
         )
 
     def generate_content_with_json_repair(
@@ -413,3 +436,152 @@ class LLMClient:
             temperature=temperature,
             require_valid_json=True,
         )
+
+    def generate_content_streaming(
+        self,
+        prompt: str,
+        max_tokens: int = 2000,
+        temperature: float = 0.7,
+        language: str = "English",
+        system_prompt: Optional[str] = None,
+    ):
+        """Returns an Iterator[str] that yields text chunks as they are generated.
+
+        Uses the primary provider only (no fallback chain for streaming).
+        Falls back to non-streaming if a provider does not support it.
+        """
+        prepared_prompt = self._prepare_prompt(prompt, language)
+        provider = self.llm_provider
+        model = self.model or self.default_model
+
+        if provider in {"openai", "openrouter"}:
+            client = self._get_client_for_provider(provider)
+            messages = []
+            if system_prompt:
+                messages.append({"role": "system", "content": system_prompt})
+            messages.append({"role": "user", "content": prepared_prompt})
+            response = client.chat.completions.create(
+                model=model,
+                messages=messages,
+                max_tokens=max_tokens,
+                temperature=temperature,
+                stream=True,
+            )
+            for chunk in response:
+                if chunk.choices and chunk.choices[0].delta and chunk.choices[0].delta.content:
+                    yield chunk.choices[0].delta.content
+            return
+
+        if provider == "claude":
+            client = self._get_client_for_provider(provider)
+            stream_kwargs = dict(
+                model=model,
+                max_tokens=max_tokens,
+                temperature=temperature,
+                messages=[{"role": "user", "content": prepared_prompt}],
+            )
+            if system_prompt:
+                stream_kwargs["system"] = system_prompt
+            with client.messages.stream(**stream_kwargs) as stream:
+                for text in stream.text_stream:
+                    yield text
+            return
+
+        if provider == "google_ai_studio":
+            client = self._get_client_for_provider(provider)
+            stream_config_kwargs: dict = dict(
+                temperature=temperature,
+                max_output_tokens=max_tokens,
+                thinking_config=google_genai_types.ThinkingConfig(
+                    thinking_budget=0,
+                ),
+            )
+            if system_prompt:
+                stream_config_kwargs["system_instruction"] = system_prompt
+            response = client.models.generate_content_stream(
+                model=model,
+                contents=prepared_prompt,
+                config=google_genai_types.GenerateContentConfig(**stream_config_kwargs),
+            )
+            for chunk in response:
+                if chunk.text:
+                    yield chunk.text
+            return
+
+        if provider == "deepseek":
+            headers = {
+                "Content-Type": "application/json",
+                "Authorization": f"Bearer {self.settings.deepseek_api_key}",
+            }
+            ds_stream_msgs = []
+            if system_prompt:
+                ds_stream_msgs.append({"role": "system", "content": system_prompt})
+            ds_stream_msgs.append({"role": "user", "content": prepared_prompt})
+            data = {
+                "model": model,
+                "messages": ds_stream_msgs,
+                "max_tokens": max_tokens,
+                "temperature": temperature,
+                "stream": True,
+            }
+            with requests.post(
+                "https://api.deepseek.com/v1/chat/completions",
+                headers=headers,
+                json=data,
+                timeout=120,
+                stream=True,
+            ) as response:
+                response.raise_for_status()
+                for line in response.iter_lines():
+                    if line:
+                        line_str = line.decode("utf-8")
+                        if line_str.startswith("data: ") and line_str != "data: [DONE]":
+                            import json as _json
+                            try:
+                                chunk_data = _json.loads(line_str[6:])
+                                content = chunk_data.get("choices", [{}])[0].get("delta", {}).get("content", "")
+                                if content:
+                                    yield content
+                            except _json.JSONDecodeError:
+                                continue
+            return
+
+        if provider == "mistral":
+            headers = {
+                "Content-Type": "application/json",
+                "Authorization": f"Bearer {self.settings.mistral_api_key}",
+            }
+            mi_stream_msgs = []
+            if system_prompt:
+                mi_stream_msgs.append({"role": "system", "content": system_prompt})
+            mi_stream_msgs.append({"role": "user", "content": prepared_prompt})
+            data = {
+                "model": model,
+                "messages": mi_stream_msgs,
+                "max_tokens": max_tokens,
+                "temperature": temperature,
+                "stream": True,
+            }
+            with requests.post(
+                "https://api.mistral.ai/v1/chat/completions",
+                headers=headers,
+                json=data,
+                timeout=120,
+                stream=True,
+            ) as response:
+                response.raise_for_status()
+                for line in response.iter_lines():
+                    if line:
+                        line_str = line.decode("utf-8")
+                        if line_str.startswith("data: ") and line_str != "data: [DONE]":
+                            import json as _json
+                            try:
+                                chunk_data = _json.loads(line_str[6:])
+                                content = chunk_data.get("choices", [{}])[0].get("delta", {}).get("content", "")
+                                if content:
+                                    yield content
+                            except _json.JSONDecodeError:
+                                continue
+            return
+
+        raise ValueError(f"Unsupported LLM provider for streaming: {provider}")

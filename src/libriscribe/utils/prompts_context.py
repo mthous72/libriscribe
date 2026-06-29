@@ -408,6 +408,48 @@ IMPORTANT: The content should be written entirely in {language}.
 """
 
 
+ENRICHED_SCENE_PROMPT = """
+Write Scene {scene_number} of {total_scenes} for Chapter {chapter_number}: {chapter_title} of the {genre} {category} book "{book_title}".
+The book is written in {language}.
+
+=== STORY CONTEXT ===
+{context_block}
+
+=== CHAPTER CONTEXT ===
+Chapter Summary: {chapter_summary}
+
+=== SCENE DETAILS ===
+- Summary: {scene_summary}
+- Characters: {characters}
+- Setting: {setting}
+- Goal: {goal}
+- Emotional Beat: {emotional_beat}
+
+Instructions:
+- Write a vivid, engaging scene consistent with the character profiles and previous events above.
+- Include sensory details about the setting.
+- Show character emotions and development through actions and dialogue.
+- Advance the story according to the scene's goal and emotional beat.
+- Connect smoothly to the next scene.
+- Use language and style appropriate for the genre.
+- Write entirely in {language}.
+"""
+
+CHAPTER_SUMMARY_PROMPT = """
+Summarize the following chapter in 3-5 sentences. Focus on:
+- Key plot events
+- Character actions and decisions
+- New information revealed
+- Emotional turning points
+- State of affairs at chapter end
+
+Chapter {chapter_number}:
+{chapter_text}
+
+Summary:
+"""
+
+
 def clean_worldbuilding_for_category(project_knowledge_base: ProjectKnowledgeBase):
     """
     Clean the worldbuilding object to only keep fields relevant to the project category.

@@ -1,0 +1,238 @@
+"""Project CRUD endpoints."""
+from __future__ import annotations
+
+from fastapi import APIRouter, HTTPException
+
+from libriscribe.api.schemas.project import (
+    CreateProjectRequest,
+    ProjectSummary,
+    ProjectDetail,
+    ProjectProgress,
+    ChapterMeta,
+    ChapterContent,
+    ProjectFile,
+    CostSummary,
+    CostEntry,
+)
+from libriscribe.services import project_service
+from libriscribe.workflow_state import inspect_project_progress
+from libriscribe.utils.file_utils import (
+    read_markdown_file,
+    write_markdown_file,
+    is_nonempty_file,
+    get_existing_chapter_numbers,
+)
+
+import json
+from pathlib import Path
+from datetime import datetime, timezone
+
+router = APIRouter(prefix="/api/projects", tags=["projects"])
+
+
+@router.get("", response_model=list[ProjectSummary])
+def list_projects():
+    return project_service.list_projects()
+
+
+@router.post("", response_model=ProjectDetail)
+def create_project(req: CreateProjectRequest):
+    data = req.model_dump()
+    result = project_service.create_project(data)
+    if not result:
+        raise HTTPException(status_code=500, detail="Failed to create project")
+    return result
+
+
+@router.get("/{name}", response_model=ProjectDetail)
+def get_project(name: str):
+    detail = project_service.get_project_detail(name)
+    if not detail:
+        raise HTTPException(status_code=404, detail="Project not found")
+    return detail
+
+
+@router.delete("/{name}", status_code=204)
+def delete_project(name: str):
+    if not project_service.delete_project(name):
+        raise HTTPException(status_code=404, detail="Project not found")
+
+
+@router.get("/{name}/status")
+def get_project_status(name: str):
+    """Returns stage statuses from .libriscribe_status.json."""
+    from libriscribe.utils.project_status import load_project_status
+    project_dir = project_service.get_projects_dir() / name
+    if not project_dir.exists():
+        raise HTTPException(status_code=404, detail="Project not found")
+    return load_project_status(project_dir)
+
+
+@router.get("/{name}/progress", response_model=ProjectProgress)
+def get_project_progress(name: str):
+    project_dir = project_service.get_projects_dir() / name
+    kb = project_service.load_kb(name)
+    if not kb:
+        raise HTTPException(status_code=404, detail="Project not found")
+    progress = inspect_project_progress(project_dir, kb)
+    return {
+        "concept_complete": progress.concept_complete,
+        "outline_complete": progress.outline_complete,
+        "characters_required": progress.characters_required,
+        "characters_complete": progress.characters_complete,
+        "worldbuilding_required": progress.worldbuilding_required,
+        "worldbuilding_complete": progress.worldbuilding_complete,
+        "chapter_numbers_complete": progress.chapter_numbers_complete,
+        "missing_chapters": progress.missing_chapters,
+        "manuscript_exists": progress.manuscript_exists,
+        "next_step": progress.next_step,
+        "stage_statuses": progress.stage_statuses,
+    }
+
+
+@router.get("/{name}/chapters", response_model=list[ChapterMeta])
+def list_chapters(name: str):
+    project_dir = project_service.get_projects_dir() / name
+    kb = project_service.load_kb(name)
+    if not kb:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    total = kb.num_chapters
+    if isinstance(total, tuple):
+        total = total[1]
+    if not isinstance(total, int) or total < 1:
+        total = 0
+
+    chapters = []
+    for ch_num in range(1, total + 1):
+        ch_path = project_dir / f"chapter_{ch_num}.md"
+        revised_path = project_dir / f"chapter_{ch_num}_revised.md"
+        has_content = is_nonempty_file(ch_path)
+        has_revised = is_nonempty_file(revised_path)
+        word_count = 0
+        title = ""
+        if has_content:
+            content = read_markdown_file(str(ch_path))
+            word_count = len(content.split())
+            for line in content.split("\n"):
+                if line.startswith("#"):
+                    title = line.replace("#", "").strip()
+                    break
+
+        chapter_data = kb.get_chapter(ch_num)
+        if chapter_data and chapter_data.title:
+            title = chapter_data.title
+
+        chapters.append({
+            "chapter_number": ch_num,
+            "title": title,
+            "has_content": has_content,
+            "has_revised": has_revised,
+            "word_count": word_count,
+        })
+    return chapters
+
+
+@router.get("/{name}/chapters/{n}", response_model=ChapterContent)
+def get_chapter(name: str, n: int):
+    project_dir = project_service.get_projects_dir() / name
+    ch_path = project_dir / f"chapter_{n}.md"
+    if not ch_path.exists():
+        raise HTTPException(status_code=404, detail=f"Chapter {n} not found")
+    content = read_markdown_file(str(ch_path))
+    title = ""
+    for line in content.split("\n"):
+        if line.startswith("#"):
+            title = line.replace("#", "").strip()
+            break
+    return {
+        "chapter_number": n,
+        "title": title,
+        "content": content,
+        "word_count": len(content.split()),
+    }
+
+
+@router.put("/{name}/chapters/{n}", response_model=ChapterContent)
+def save_chapter(name: str, n: int, body: ChapterContent):
+    project_dir = project_service.get_projects_dir() / name
+    if not project_dir.exists():
+        raise HTTPException(status_code=404, detail="Project not found")
+    ch_path = str(project_dir / f"chapter_{n}.md")
+    write_markdown_file(ch_path, body.content)
+    return {
+        "chapter_number": n,
+        "title": body.title,
+        "content": body.content,
+        "word_count": len(body.content.split()),
+    }
+
+
+@router.get("/{name}/files", response_model=list[ProjectFile])
+def list_files(name: str):
+    project_dir = project_service.get_projects_dir() / name
+    if not project_dir.exists():
+        raise HTTPException(status_code=404, detail="Project not found")
+    files = []
+    for p in sorted(project_dir.iterdir()):
+        if p.is_file() and not p.name.startswith("."):
+            stat = p.stat()
+            files.append({
+                "name": p.name,
+                "size": stat.st_size,
+                "modified_at": datetime.fromtimestamp(stat.st_mtime, tz=timezone.utc).isoformat(),
+            })
+    return files
+
+
+@router.get("/{name}/download/{filename}")
+def download_file(name: str, filename: str):
+    from fastapi.responses import FileResponse
+    project_dir = project_service.get_projects_dir() / name
+    file_path = project_dir / filename
+    if not file_path.exists() or not file_path.is_file():
+        raise HTTPException(status_code=404, detail="File not found")
+    # Ensure the file is inside the project dir (path traversal prevention)
+    if not str(file_path.resolve()).startswith(str(project_dir.resolve())):
+        raise HTTPException(status_code=403, detail="Access denied")
+    return FileResponse(str(file_path), filename=filename)
+
+
+@router.post("/{name}/format")
+async def trigger_format(name: str):
+    """Triggers a formatting job."""
+    from libriscribe.api.dependencies import get_generation_service
+    svc = get_generation_service()
+    job = await svc.start_generation(name, start_from_stage="formatting", streaming=False)
+    return {"status": job.status, "message": "Formatting started"}
+
+
+@router.get("/{name}/cost", response_model=CostSummary)
+def get_cost(name: str):
+    """Parses llm_usage.jsonl for cost info."""
+    project_dir = project_service.get_projects_dir() / name
+    usage_file = project_dir / "llm_usage.jsonl"
+    # Also check cwd
+    cwd_usage = Path("llm_usage.jsonl")
+
+    entries = []
+    total_cost = 0.0
+    total_tokens = 0
+
+    for path in [usage_file, cwd_usage]:
+        if path.exists():
+            try:
+                for line in path.read_text(encoding="utf-8").splitlines():
+                    if line.strip():
+                        entry = json.loads(line)
+                        entries.append(entry)
+                        total_cost += entry.get("cost", 0.0)
+                        total_tokens += entry.get("total_tokens", 0)
+            except Exception:
+                pass
+
+    return {
+        "entries": entries,
+        "total_cost": total_cost,
+        "total_tokens": total_tokens,
+    }

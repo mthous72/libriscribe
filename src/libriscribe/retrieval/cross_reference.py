@@ -64,6 +64,10 @@ class CrossReferenceIndex:
             entry.referenced_in_chapters.sort()
             entry.related_entities.sort()
 
+    def get_all_entries(self) -> list[CrossReferenceEntry]:
+        """Returns all cross-reference entries."""
+        return list(self.entities.values())
+
     def lookup(self, entity_name: str) -> CrossReferenceEntry | None:
         """Looks up an entity by name."""
         # Simple case-insensitive match

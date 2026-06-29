@@ -28,6 +28,8 @@ variables:
     - scene_details
     - character_context
     - language
+  optional:
+    - context_block
 
 settings:
   max_tokens: 6000

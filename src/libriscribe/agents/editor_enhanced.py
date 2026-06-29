@@ -1,20 +1,18 @@
 """Enhanced editor agent with external prompt support."""
 import logging
 from typing import Dict, Any
-from libriscribe.agents.agent_base import Agent
+from libriscribe.agents.agent_base import Agent, EventCallback
 from libriscribe.utils.llm_client import LLMClient
 from libriscribe.utils.prompt_integration import ExternalPromptMixin
 from libriscribe.utils import prompts_context as prompts
-from rich.console import Console
 
-console = Console()
 logger = logging.getLogger(__name__)
 
 class EnhancedEditorAgent(Agent, ExternalPromptMixin):
     """Editor agent with external prompt template support."""
-    
-    def __init__(self, llm_client: LLMClient):
-        Agent.__init__(self, "EnhancedEditorAgent", llm_client)
+
+    def __init__(self, llm_client: LLMClient, event_callback: EventCallback | None = None):
+        Agent.__init__(self, "EnhancedEditorAgent", llm_client, event_callback=event_callback)
         ExternalPromptMixin.__init__(self)
     
     def execute(self, chapter_number: int, **kwargs) -> Dict[str, Any]:
@@ -31,7 +29,7 @@ class EnhancedEditorAgent(Agent, ExternalPromptMixin):
                 "review_feedback": kwargs.get("review_feedback", "No specific feedback.")
             }
             
-            console.print(f"✏️ [cyan]Editing Chapter {chapter_number} with external prompts...[/cyan]")
+            self.emit("log", {"level": "info", "message": f"Editing Chapter {chapter_number} with external prompts..."})
             
             # Use external prompt with fallback to hardcoded
             edited_content = self.generate_with_external_prompt(
@@ -41,7 +39,7 @@ class EnhancedEditorAgent(Agent, ExternalPromptMixin):
                 default_max_tokens=8000
             )
             
-            console.print(f"✅ [green]Chapter {chapter_number} edited successfully[/green]")
+            self.emit("log", {"level": "info", "message": f"Chapter {chapter_number} edited successfully"})
             return {"edited_content": edited_content}
             
         except Exception as e:

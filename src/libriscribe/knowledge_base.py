@@ -9,6 +9,14 @@ from libriscribe.retrieval.models import RetrievalConfig
 
 
 
+class VoiceProfile(BaseModel):
+    speech_patterns: str = ""
+    vocabulary_level: str = ""
+    verbal_tics: str = ""
+    avoids: str = ""
+    example_dialogue: list[str] = Field(default_factory=list)
+
+
 class Character(BaseModel):
     name: str
     age: str = ""
@@ -21,6 +29,7 @@ class Character(BaseModel):
     internal_conflicts: str = ""
     external_conflicts: str = ""
     character_arc: str = ""
+    voice_profile: VoiceProfile | None = None
 
 
 class Scene(BaseModel):
@@ -30,6 +39,8 @@ class Scene(BaseModel):
     setting: str = ""
     goal: str = ""
     emotional_beat: str = ""
+    scene_type: str = ""
+    target_word_count: int | None = None
 
 
 class Chapter(BaseModel):
@@ -82,6 +93,88 @@ class Worldbuilding(BaseModel):
     appendices: str = ""
 
 
+class Location(BaseModel):
+    name: str
+    description: str = ""
+    significance: str = ""
+    associated_characters: list[str] = Field(default_factory=list)
+    first_appearance: int | None = None
+    tags: list[str] = Field(default_factory=list)
+
+
+class LoreEntry(BaseModel):
+    name: str
+    entry_type: str = ""
+    description: str = ""
+    significance: str = ""
+    related_entities: list[str] = Field(default_factory=list)
+    first_appearance: int | None = None
+    tags: list[str] = Field(default_factory=list)
+
+
+class ArcMilestone(BaseModel):
+    name: str
+    milestone_type: str = "rising_action"
+    target_chapter: int | None = None
+    actual_chapter: int | None = None
+    description: str = ""
+    status: str = "pending"
+
+
+class StoryArc(BaseModel):
+    name: str
+    description: str = ""
+    arc_type: str = "main"
+    chapters_involved: list[int] = Field(default_factory=list)
+    characters_involved: list[str] = Field(default_factory=list)
+    status: str = "active"
+    resolution_notes: str = ""
+    milestones: list[ArcMilestone] = Field(default_factory=list)
+
+
+class NarrativeThread(BaseModel):
+    name: str
+    thread_type: str = "promise"
+    description: str = ""
+    opened_chapter: int | None = None
+    target_resolution_chapter: int | None = None
+    resolved_chapter: int | None = None
+    status: str = "open"
+    characters_involved: list[str] = Field(default_factory=list)
+
+
+class CharacterState(BaseModel):
+    """Per-chapter snapshot of a character's state."""
+    character_name: str
+    chapter_number: int
+    emotional_state: str = ""
+    knowledge: list[str] = Field(default_factory=list)
+    relationships: dict[str, str] = Field(default_factory=dict)
+    physical_state: str = ""
+    notes: str = ""
+
+
+class ContinuityNote(BaseModel):
+    """Flags continuity issues or story threads."""
+    chapter_number: int
+    note_type: str = ""
+    description: str = ""
+    entities_involved: list[str] = Field(default_factory=list)
+    resolved: bool = False
+
+
+class LoreSuggestion(BaseModel):
+    """A proposed change to a lorebook entity, pending user approval."""
+    entity_type: str
+    entity_name: str
+    field: str
+    current_value: str = ""
+    proposed_value: str = ""
+    reason: str = ""
+    source_chapter: int = 0
+    status: str = "pending"
+
+
 class ProjectKnowledgeBase(BaseModel):
     project_name: str
     title: str = "Untitled"
@@ -114,6 +207,14 @@ class ProjectKnowledgeBase(BaseModel):
     chapters: dict[int, Chapter] = Field(default_factory=dict)
     outline: str = ""
     project_dir: Path | None = None
+    locations: dict[str, Location] = Field(default_factory=dict)
+    lore_entries: dict[str, LoreEntry] = Field(default_factory=dict)
+    story_arcs: dict[str, StoryArc] = Field(default_factory=dict)
+    character_states: dict[str, list[CharacterState]] = Field(default_factory=dict)
+    continuity_notes: list[ContinuityNote] = Field(default_factory=list)
+    lore_suggestions: list[LoreSuggestion] = Field(default_factory=list)
+    narrative_threads: dict[str, NarrativeThread] = Field(default_factory=dict)
+    writing_system_prompt: str = ""
 
     @field_validator("num_characters", "num_chapters", mode="before")
     @classmethod
@@ -197,6 +298,30 @@ class ProjectKnowledgeBase(BaseModel):
 
     def get_chapter(self, chapter_number: int) -> Chapter | None:
         return self.chapters.get(chapter_number)
+
+    def add_location(self, location: Location) -> None:
+        self.locations[location.name] = location
+
+    def get_location(self, location_name: str) -> Location | None:
+        return self.locations.get(location_name)
+
+    def add_lore_entry(self, entry: LoreEntry) -> None:
+        self.lore_entries[entry.name] = entry
+
+    def get_lore_entry(self, entry_name: str) -> LoreEntry | None:
+        return self.lore_entries.get(entry_name)
+
+    def add_story_arc(self, arc: StoryArc) -> None:
+        self.story_arcs[arc.name] = arc
+
+    def get_story_arc(self, arc_name: str) -> StoryArc | None:
+        return self.story_arcs.get(arc_name)
+
+    def add_narrative_thread(self, thread: NarrativeThread) -> None:
+        self.narrative_threads[thread.name] = thread
+
+    def get_narrative_thread(self, thread_name: str) -> NarrativeThread | None:
+        return self.narrative_threads.get(thread_name)
 
     def add_scene_to_chapter(self, chapter_number: int, scene: Scene) -> None:
         if chapter_number not in self.chapters:

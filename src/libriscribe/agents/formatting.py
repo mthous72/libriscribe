@@ -10,15 +10,14 @@ from libriscribe.utils.file_utils import get_chapter_files, read_markdown_file, 
 from fpdf import FPDF
 
 from libriscribe.knowledge_base import ProjectKnowledgeBase
-from rich.console import Console
-console = Console()
+
 logger = logging.getLogger(__name__)
 
 class FormattingAgent(Agent):
     """Formats the book into a single Markdown or PDF file."""
 
-    def __init__(self, llm_client: LLMClient):
-        super().__init__("FormattingAgent", llm_client)
+    def __init__(self, llm_client: LLMClient, event_callback=None):
+        super().__init__("FormattingAgent", llm_client, event_callback=event_callback)
 
     def execute(self, project_dir: str, output_path: str) -> None:
         """Formats the book and saves to output path, handles both Markdown and PDF"""
@@ -43,7 +42,7 @@ class FormattingAgent(Agent):
 
 
             # Format with LLM
-            console.print("📚 [cyan]Assembling final manuscript...[/cyan]")
+            self.emit("log", {"level": "info", "message": "Assembling final manuscript..."})
             prompt = prompts.FORMATTING_PROMPT.format(chapters=all_chapters_content,  language=project_knowledge_base.language)
             formatted_markdown = self.llm_client.generate_content(prompt, max_tokens=120000) # May need large token limit
 
