@@ -110,8 +110,12 @@ def _system_prompt(kb, context: str) -> str:
         f"You are a creative worldbuilding and brainstorming partner for the book "
         f"'{kb.title}' ({kb.genre}). Help the author explore ideas, plan story arcs, and "
         f"research before anything is finalized. Stay consistent with the established lore "
-        f"below. When you propose something NEW (not already in the lore), say so clearly so "
-        f"the author can decide whether to add it.\n\n"
+        f"below; when you propose something NEW (not already in the lore), say so clearly.\n\n"
+        f"BE CONCISE. This is a back-and-forth chat, not an essay. Default to a few sentences "
+        f"or a short, scannable list (3-5 bullets max). Lead with the ideas themselves — no "
+        f"long preamble, no restating the question, no exhaustive coverage, no closing "
+        f"summaries or disclaimers. Offer a handful of focused options, not everything "
+        f"possible. If the author wants more depth on one of them, they will ask.\n\n"
         f"=== Established lore ===\n{context or '(none yet)'}\n=== end lore ==="
     )
 
@@ -136,6 +140,86 @@ def _client_for(kb) -> LLMClient:
 
 class ChatRequest(BaseModel):
     message: str
+    focus_type: str | None = None  # character | location | lore | arc
+    focus_name: str | None = None
+
+
+_FOCUS_STORE = {
+    "character": "characters",
+    "location": "locations",
+    "lore": "lore_entries",
+    "arc": "story_arcs",
+}
+
+
+def _get_focus_entity(kb, focus_type: str, focus_name: str):
+    attr = _FOCUS_STORE.get(focus_type)
+    if not attr:
+        return None, focus_name
+    store = getattr(kb, attr, {}) or {}
+    if focus_name in store:
+        return store[focus_name], focus_name
+    for key, val in store.items():  # case-insensitive fallback
+        if key.lower() == (focus_name or "").lower():
+            return val, key
+    return None, focus_name
+
+
+def _focus_context(kb, name: str, focus_type: str, focus_name: str, message: str):
+    """Return (resolved_name, entity_record, related_lore) for a focused entity, or None."""
+    from libriscribe.services.context_builder import TokenBudget
+
+    entity, resolved = _get_focus_entity(kb, focus_type, focus_name)
+    if entity is None:
+        return None
+
+    budget = TokenBudget(1800)
+    lines = [f"{focus_type.title()} '{resolved}':"]
+    for k, v in entity.model_dump().items():
+        if k == "name" or v in (None, "", [], {}):
+            continue
+        if isinstance(v, (list, dict)):
+            v = json.dumps(v, default=str)
+        text = str(v)
+        lines.append(f"  - {k}: {text[:400] + '...' if len(text) > 400 else text}")
+    record = budget.consume("\n".join(lines))
+
+    related: list[str] = []
+    try:
+        from libriscribe.retrieval.search_service import SearchServiceImpl
+        from libriscribe.retrieval.models import RetrievalConfig
+
+        project_dir = get_projects_dir() / name
+        config = kb.retrieval if kb.retrieval and kb.retrieval.enabled else RetrievalConfig(enabled=True, mode="keyword")
+        svc = SearchServiceImpl(project_dir, config)
+        for r in svc.search(f"{resolved} {message}", mode="keyword", top_k=4):
+            text = (getattr(r, "text", "") or "").strip()
+            if not text:
+                continue
+            clipped = budget.consume(text)
+            if clipped:
+                related.append(f"- {clipped}")
+            if budget.exhausted():
+                break
+    except Exception:
+        pass
+
+    return resolved, record, "\n".join(related)
+
+
+def _focus_system_prompt(kb, focus_type: str, focus_name: str, record: str, related: str) -> str:
+    return (
+        f"You are a worldbuilding partner for the book '{kb.title}' ({kb.genre}). The author is "
+        f"focusing specifically on the {focus_type} '{focus_name}'. Help them expand, deepen, and "
+        f"refine THIS one thing — propose concrete details, tensions, motivations, hooks, and "
+        f"connections for it. Stay tightly on '{focus_name}', keep everything consistent with the "
+        f"related lore, and don't drift into unrelated parts of the world or restate what's "
+        f"already known.\n\n"
+        f"BE CONCISE: a few focused suggestions or a short list (3-5 max) — no preamble, no "
+        f"exhaustive coverage. If the author wants depth on one, they'll ask.\n\n"
+        f"=== Current {focus_type} record ===\n{record or '(empty)'}\n\n"
+        f"=== Related lore ===\n{related or '(none)'}\n=== end ==="
+    )
 
 
 @router.get("/{name}/chat")
@@ -159,8 +243,17 @@ def chat(name: str, body: ChatRequest):
         raise HTTPException(status_code=404, detail="Project not found")
 
     history = _append(name, "user", body.message)
-    context = _build_lore_context(name, kb, body.message)
-    system_prompt = _system_prompt(kb, context)
+
+    focus = None
+    if body.focus_type and body.focus_name:
+        focus = _focus_context(kb, name, body.focus_type, body.focus_name, body.message)
+    if focus:
+        resolved, record, related = focus
+        system_prompt = _focus_system_prompt(kb, body.focus_type, resolved, record, related)
+    else:
+        context = _build_lore_context(name, kb, body.message)
+        system_prompt = _system_prompt(kb, context)
+
     conversation = _build_conversation(history)
     client = _client_for(kb)
 
@@ -168,7 +261,7 @@ def chat(name: str, body: ChatRequest):
         chunks: list[str] = []
         try:
             for chunk in client.generate_content_streaming(
-                conversation, max_tokens=1500, temperature=0.8, system_prompt=system_prompt
+                conversation, max_tokens=700, temperature=0.8, system_prompt=system_prompt
             ):
                 chunks.append(chunk)
                 yield chunk

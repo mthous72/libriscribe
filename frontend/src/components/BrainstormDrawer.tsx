@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { getChat, clearChat, applyChat, streamChat } from '../api/client'
+import { getChat, clearChat, applyChat, streamChat, listCharacters, listLocations, listLoreEntries, listArcs } from '../api/client'
 import { MessageSquarePlus, X, Send, Trash2, Loader2, Sparkles } from 'lucide-react'
 
 interface Msg { role: string; content: string }
@@ -19,10 +19,26 @@ export default function BrainstormDrawer({ projectName }: { projectName: string 
   const [input, setInput] = useState('')
   const [sending, setSending] = useState(false)
   const [applyFor, setApplyFor] = useState<number | null>(null)
+  const [ents, setEnts] = useState<{ character: string[], location: string[], lore: string[], arc: string[] }>({ character: [], location: [], lore: [], arc: [] })
+  const [focusKey, setFocusKey] = useState('')
   const endRef = useRef<HTMLDivElement>(null)
 
+  const focus = focusKey ? { type: focusKey.slice(0, focusKey.indexOf(':')), name: focusKey.slice(focusKey.indexOf(':') + 1) } : null
+
   useEffect(() => {
-    if (open && projectName) getChat(projectName).then(h => setMessages(h || [])).catch(() => {})
+    if (!open || !projectName) return
+    getChat(projectName).then(h => setMessages(h || [])).catch(() => {})
+    Promise.all([
+      listCharacters(projectName).catch(() => []),
+      listLocations(projectName).catch(() => []),
+      listLoreEntries(projectName).catch(() => []),
+      listArcs(projectName).catch(() => []),
+    ]).then(([c, l, lo, a]) => setEnts({
+      character: (c || []).map((x: any) => x.name).filter(Boolean),
+      location: (l || []).map((x: any) => x.name).filter(Boolean),
+      lore: (lo || []).map((x: any) => x.name).filter(Boolean),
+      arc: (a || []).map((x: any) => x.name).filter(Boolean),
+    })).catch(() => {})
   }, [open, projectName])
 
   useEffect(() => { endRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [messages])
@@ -40,7 +56,7 @@ export default function BrainstormDrawer({ projectName }: { projectName: string 
           copy[copy.length - 1] = { role: 'assistant', content: copy[copy.length - 1].content + tok }
           return copy
         })
-      })
+      }, focus)
     } catch (e: any) {
       setMessages(m => {
         const copy = m.slice()
@@ -81,6 +97,20 @@ export default function BrainstormDrawer({ projectName }: { projectName: string 
               <button onClick={clear} title="Clear conversation" className="text-gray-500 hover:text-red-400"><Trash2 size={15} /></button>
               <button onClick={() => setOpen(false)} className="text-gray-500 hover:text-gray-200"><X size={18} /></button>
             </div>
+          </div>
+
+          <div className="px-3 py-2 border-b border-gray-800">
+            <label className="text-xs text-gray-500 flex items-center gap-2">
+              Focus
+              <select value={focusKey} onChange={e => setFocusKey(e.target.value)} className="flex-1 px-2 py-1 bg-gray-800 border border-gray-700 rounded text-xs">
+                <option value="">Whole project</option>
+                {ents.character.length > 0 && <optgroup label="Characters">{ents.character.map(n => <option key={'character:' + n} value={'character:' + n}>{n}</option>)}</optgroup>}
+                {ents.location.length > 0 && <optgroup label="Locations">{ents.location.map(n => <option key={'location:' + n} value={'location:' + n}>{n}</option>)}</optgroup>}
+                {ents.lore.length > 0 && <optgroup label="Lore">{ents.lore.map(n => <option key={'lore:' + n} value={'lore:' + n}>{n}</option>)}</optgroup>}
+                {ents.arc.length > 0 && <optgroup label="Arcs">{ents.arc.map(n => <option key={'arc:' + n} value={'arc:' + n}>{n}</option>)}</optgroup>}
+              </select>
+            </label>
+            {focus && <p className="text-[11px] text-indigo-400/80 mt-1">Targeting {focus.type} "{focus.name}" — replies expand this specifically.</p>}
           </div>
 
           <div className="flex-1 overflow-y-auto p-3 space-y-3">

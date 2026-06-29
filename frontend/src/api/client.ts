@@ -98,11 +98,11 @@ export const getChat = (name: string) => api.get(`/projects/${name}/chat`).then(
 export const clearChat = (name: string) => api.delete(`/projects/${name}/chat`)
 export const applyChat = (name: string, body: { text: string, target_type: string, entity_name: string, smart?: boolean }) => api.post(`/projects/${name}/chat/apply`, body).then(r => r.data)
 // Streaming chat uses fetch (axios doesn't stream response bodies in the browser).
-export async function streamChat(name: string, message: string, onToken: (t: string) => void): Promise<void> {
+export async function streamChat(name: string, message: string, onToken: (t: string) => void, focus?: { type: string, name: string } | null): Promise<void> {
   const res = await fetch(`/api/projects/${name}/chat`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ message }),
+    body: JSON.stringify({ message, focus_type: focus?.type || null, focus_name: focus?.name || null }),
   })
   if (!res.ok || !res.body) throw new Error(`chat failed (${res.status})`)
   const reader = res.body.getReader()
