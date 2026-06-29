@@ -103,27 +103,87 @@ a = Analysis(
 
 pyz = PYZ(a.pure, a.zipped_data, cipher=block_cipher)
 
-exe = EXE(
-    pyz,
-    a.scripts,
-    [],
-    exclude_binaries=True,
-    name="LibriScribeGUI",
-    debug=False,
-    bootloader_ignore_signals=False,
-    strip=False,
-    upx=True,
-    console=False,  # No console window -- runs as GUI app
-    icon="installer/libriscribe.ico" if os.path.exists("installer/libriscribe.ico") else None,
-)
+# Startup splash: shown the instant the exe launches (before Python is fully up),
+# giving immediate feedback while the web server boots. server.py closes it via
+# pyi_splash once /api/health responds. Generated here with Pillow (a build dep)
+# so there is no binary asset to commit; degrades gracefully if generation fails.
+splash = None
+_splash_png = os.path.join("installer", "splash.png")
+try:
+    from PIL import Image, ImageDraw, ImageFont
 
-coll = COLLECT(
-    exe,
-    a.binaries,
-    a.zipfiles,
-    a.datas,
-    strip=False,
-    upx=True,
-    upx_exclude=[],
-    name="LibriScribeGUI",
-)
+    _img = Image.new("RGB", (460, 240), (24, 24, 27))
+    _draw = ImageDraw.Draw(_img)
+    try:
+        _title_font = ImageFont.truetype("arialbd.ttf", 34)
+    except Exception:
+        _title_font = ImageFont.load_default()
+    _draw.text((34, 78), "LibriScribe", fill=(129, 140, 248), font=_title_font)
+    _img.save(_splash_png)
+
+    splash = Splash(
+        _splash_png,
+        binaries=a.binaries,
+        datas=a.datas,
+        text_pos=(34, 150),
+        text_size=12,
+        text_color="white",
+        text_default="Starting LibriScribe…",
+        always_on_top=True,
+    )
+except Exception as _exc:  # noqa: BLE001
+    print("Splash generation skipped:", _exc)
+    splash = None
+
+_icon = "installer/libriscribe.ico" if os.path.exists("installer/libriscribe.ico") else None
+
+if splash is not None:
+    exe = EXE(
+        pyz,
+        a.scripts,
+        splash,
+        [],
+        exclude_binaries=True,
+        name="LibriScribeGUI",
+        debug=False,
+        bootloader_ignore_signals=False,
+        strip=False,
+        upx=True,
+        console=False,  # No console window -- runs as GUI app
+        icon=_icon,
+    )
+    coll = COLLECT(
+        exe,
+        splash.binaries,
+        a.binaries,
+        a.zipfiles,
+        a.datas,
+        strip=False,
+        upx=True,
+        upx_exclude=[],
+        name="LibriScribeGUI",
+    )
+else:
+    exe = EXE(
+        pyz,
+        a.scripts,
+        [],
+        exclude_binaries=True,
+        name="LibriScribeGUI",
+        debug=False,
+        bootloader_ignore_signals=False,
+        strip=False,
+        upx=True,
+        console=False,  # No console window -- runs as GUI app
+        icon=_icon,
+    )
+    coll = COLLECT(
+        exe,
+        a.binaries,
+        a.zipfiles,
+        a.datas,
+        strip=False,
+        upx=True,
+        upx_exclude=[],
+        name="LibriScribeGUI",
+    )

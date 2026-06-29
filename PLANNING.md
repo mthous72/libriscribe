@@ -46,6 +46,16 @@ B2 in the Backlog below.)
   (e.g. character voice-profile inputs) don't yet set dirty — best-effort, acceptable
   per the agreed design. Extend incrementally if needed.
 
+**Post-test fixes (round 2, from installed verification):**
+- **Startup feedback (#1/#2):** added a PyInstaller **splash screen** (generated in
+  the spec via Pillow; shown instantly on launch, closed by `server.py` via
+  `pyi_splash` once `/api/health` answers). Removes the "is it working?" gap and the
+  "page cannot be reached" race — the browser already auto-opens only when ready.
+- **Settings button broken (#4):** root cause was SPA routing — `<a href>` did a full
+  reload to `/settings`, which `StaticFiles` 404'd. Fixed with `SPAStaticFiles`
+  (index.html fallback for non-API 404s) + client-side `<Link>` nav.
+- **#3 (Quit web + tray):** confirmed working on the test build.
+
 ### Dependencies to add
 - `pystray` + `Pillow` → `setup.py` install_requires, PyInstaller `hiddenimports`,
   and bundle `installer/libriscribe.ico` via the spec `datas`. Verify the frozen

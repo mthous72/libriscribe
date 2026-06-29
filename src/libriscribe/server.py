@@ -139,11 +139,37 @@ def _open_browser(port: int) -> None:
     webbrowser.open(f"http://{HOST}:{port}")
 
 
+def _update_splash(text: str) -> None:
+    """Update the PyInstaller startup splash text (no-op when not frozen)."""
+    try:
+        import pyi_splash  # injected at runtime by the PyInstaller splash
+
+        pyi_splash.update_text(text)
+    except Exception:
+        pass
+
+
+def _close_splash() -> None:
+    try:
+        import pyi_splash
+
+        pyi_splash.close()
+    except Exception:
+        pass
+
+
 def _open_browser_when_ready(port: int) -> None:
-    for _ in range(60):  # up to ~30s
+    _update_splash("Loading the web server…")
+    ready = False
+    for _ in range(120):  # up to ~60s
         if _probe_health(port) == "libriscribe":
+            ready = True
             break
         time.sleep(0.5)
+    if ready:
+        _update_splash("Ready — opening your browser…")
+    # Always dismiss the splash before opening the browser (even on timeout).
+    _close_splash()
     _open_browser(port)
 
 

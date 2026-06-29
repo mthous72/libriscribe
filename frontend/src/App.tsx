@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Routes, Route } from 'react-router-dom'
+import { Routes, Route, Link } from 'react-router-dom'
 import { Power } from 'lucide-react'
 import HomePage from './pages/HomePage'
 import NewProjectPage from './pages/NewProjectPage'
@@ -58,9 +58,9 @@ export default function App() {
   return (
     <div className="min-h-screen">
       <nav className="border-b border-gray-800 px-6 py-3 flex items-center gap-6">
-        <a href="/" className="text-xl font-bold text-indigo-400">LibriScribe</a>
-        <a href="/" className="text-gray-400 hover:text-gray-200 text-sm">Projects</a>
-        <a href="/settings" className="text-gray-400 hover:text-gray-200 text-sm ml-auto">Settings</a>
+        <Link to="/" className="text-xl font-bold text-indigo-400">LibriScribe</Link>
+        <Link to="/" className="text-gray-400 hover:text-gray-200 text-sm">Projects</Link>
+        <Link to="/settings" className="text-gray-400 hover:text-gray-200 text-sm ml-auto">Settings</Link>
         {dirty && <span className="text-xs text-yellow-500">Unsaved changes</span>}
         <button
           onClick={handleQuit}
