@@ -110,7 +110,7 @@ export default function BrainstormDrawer({ projectName }: { projectName: string 
                 {ents.arc.length > 0 && <optgroup label="Arcs">{ents.arc.map(n => <option key={'arc:' + n} value={'arc:' + n}>{n}</option>)}</optgroup>}
               </select>
             </label>
-            {focus && <p className="text-[11px] text-indigo-400/80 mt-1">Targeting {focus.type} "{focus.name}" — replies expand this specifically.</p>}
+            {focus && <p className="text-[11px] text-indigo-400/80 mt-1">Developing {focus.type} "{focus.name}" — draws on the world, arcs &amp; connected lore as context, but only develops this.</p>}
           </div>
 
           <div className="flex-1 overflow-y-auto p-3 space-y-3">

@@ -165,15 +165,39 @@ def _get_focus_entity(kb, focus_type: str, focus_name: str):
     return None, focus_name
 
 
+_BRIEF_SOURCES = [
+    ("Character", "characters", ("role", "background")),
+    ("Location", "locations", ("description",)),
+    ("Lore", "lore_entries", ("description",)),
+    ("Arc", "story_arcs", ("description",)),
+]
+
+
+def _entity_brief(kb, ename: str):
+    """A one-line 'Type Name: desc' summary for any entity, by name (case-insensitive)."""
+    target = (ename or "").lower()
+    for label, attr, descfields in _BRIEF_SOURCES:
+        for key, ent in (getattr(kb, attr, {}) or {}).items():
+            if key.lower() == target:
+                desc = " ".join(str(getattr(ent, f, "") or "") for f in descfields).strip()
+                return f"{label} {key}: {desc}".strip()
+    return None
+
+
 def _focus_context(kb, name: str, focus_type: str, focus_name: str, message: str):
-    """Return (resolved_name, entity_record, related_lore) for a focused entity, or None."""
+    """Return (resolved_name, entity_record, surrounding_lore) for a focused entity.
+
+    Surrounding lore = the entity's cross-referenced companions/connections, the arcs it
+    is involved in, and the world lore — gathered as READ-ONLY background for developing
+    the focused entity (the prompt forbids modifying those other records).
+    """
     from libriscribe.services.context_builder import TokenBudget
 
     entity, resolved = _get_focus_entity(kb, focus_type, focus_name)
     if entity is None:
         return None
 
-    budget = TokenBudget(1800)
+    budget = TokenBudget(2600)
     lines = [f"{focus_type.title()} '{resolved}':"]
     for k, v in entity.model_dump().items():
         if k == "name" or v in (None, "", [], {}):
@@ -184,7 +208,17 @@ def _focus_context(kb, name: str, focus_type: str, focus_name: str, message: str
         lines.append(f"  - {k}: {text[:400] + '...' if len(text) > 400 else text}")
     record = budget.consume("\n".join(lines))
 
-    related: list[str] = []
+    surrounding: list[str] = []
+    seen = {resolved.lower()}
+
+    def add(line: str):
+        if not line or budget.exhausted():
+            return
+        clipped = budget.consume(line)
+        if clipped:
+            surrounding.append(f"- {clipped}")
+
+    svc = None
     try:
         from libriscribe.retrieval.search_service import SearchServiceImpl
         from libriscribe.retrieval.models import RetrievalConfig
@@ -192,33 +226,70 @@ def _focus_context(kb, name: str, focus_type: str, focus_name: str, message: str
         project_dir = get_projects_dir() / name
         config = kb.retrieval if kb.retrieval and kb.retrieval.enabled else RetrievalConfig(enabled=True, mode="keyword")
         svc = SearchServiceImpl(project_dir, config)
-        for r in svc.search(f"{resolved} {message}", mode="keyword", top_k=4):
-            text = (getattr(r, "text", "") or "").strip()
-            if not text:
-                continue
-            clipped = budget.consume(text)
-            if clipped:
-                related.append(f"- {clipped}")
+    except Exception:
+        svc = None
+
+    # 1) Cross-referenced companions / connected entities (e.g. Manen, Cee).
+    if svc is not None:
+        try:
+            xref = svc.search_cross_references(resolved)
+            for rn in (getattr(xref, "related_entities", None) or []):
+                if rn.lower() in seen:
+                    continue
+                brief = _entity_brief(kb, rn)
+                if brief:
+                    add(brief)
+                    seen.add(rn.lower())
+                if budget.exhausted():
+                    break
+        except Exception:
+            pass
+
+    # 2) Arcs the focused entity is involved in.
+    if focus_type != "arc":
+        for an, arc in (kb.story_arcs or {}).items():
             if budget.exhausted():
                 break
-    except Exception:
-        pass
+            involved = [str(x).lower() for x in (getattr(arc, "characters_involved", None) or [])]
+            if resolved.lower() in involved and an.lower() not in seen:
+                add(f"Arc {an}: {getattr(arc, 'description', '')}")
+                seen.add(an.lower())
 
-    return resolved, record, "\n".join(related)
+    # 3) World lore (compact).
+    if kb.worldbuilding and not budget.exhausted():
+        wb = [f"{k}: {v}" for k, v in kb.worldbuilding.model_dump().items() if isinstance(v, str) and v.strip()]
+        if wb:
+            add("World — " + " | ".join(wb))
+
+    # 4) Keyword-search supplement seeded by the entity + the question.
+    if svc is not None and not budget.exhausted():
+        try:
+            for r in svc.search(f"{resolved} {message}", mode="keyword", top_k=4):
+                if budget.exhausted():
+                    break
+                text = (getattr(r, "text", "") or "").strip()
+                if text:
+                    add(text)
+        except Exception:
+            pass
+
+    return resolved, record, "\n".join(surrounding)
 
 
-def _focus_system_prompt(kb, focus_type: str, focus_name: str, record: str, related: str) -> str:
+def _focus_system_prompt(kb, focus_type: str, focus_name: str, record: str, surrounding: str) -> str:
     return (
         f"You are a worldbuilding partner for the book '{kb.title}' ({kb.genre}). The author is "
-        f"focusing specifically on the {focus_type} '{focus_name}'. Help them expand, deepen, and "
-        f"refine THIS one thing — propose concrete details, tensions, motivations, hooks, and "
-        f"connections for it. Stay tightly on '{focus_name}', keep everything consistent with the "
-        f"related lore, and don't drift into unrelated parts of the world or restate what's "
-        f"already known.\n\n"
+        f"developing the {focus_type} '{focus_name}' and wants to deepen it using the surrounding "
+        f"world as context.\n\n"
+        f"Use the SURROUNDING LORE below as background to inform and enrich '{focus_name}' — draw "
+        f"on the world, arcs, and connected characters to ground your ideas and keep them "
+        f"consistent. But keep EVERY suggestion about '{focus_name}' itself: do NOT develop, "
+        f"rewrite, or brainstorm the other entities, and do NOT discuss how changes to "
+        f"'{focus_name}' would affect them. They are fixed reference, not the subject.\n\n"
         f"BE CONCISE: a few focused suggestions or a short list (3-5 max) — no preamble, no "
         f"exhaustive coverage. If the author wants depth on one, they'll ask.\n\n"
-        f"=== Current {focus_type} record ===\n{record or '(empty)'}\n\n"
-        f"=== Related lore ===\n{related or '(none)'}\n=== end ==="
+        f"=== {focus_type.title()} being developed: {focus_name} ===\n{record or '(empty)'}\n\n"
+        f"=== Surrounding lore (read-only context) ===\n{surrounding or '(none)'}\n=== end ==="
     )
 
 
