@@ -100,6 +100,7 @@ def update_settings(body: dict):
             existing[env_key] = str(value)
 
     # Write back
+    env_path.parent.mkdir(parents=True, exist_ok=True)
     lines = [f"{k}={v}" for k, v in existing.items()]
     env_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 

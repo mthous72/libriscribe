@@ -43,8 +43,35 @@ def _redirect_std_streams_if_needed() -> None:
             sys.stderr = stream
 
 
+def _seed_env_if_needed() -> None:
+    """On first run of a frozen build, seed the user's .env from the bundled
+    .env.example so the in-app Settings page has a file to update. The installer
+    can't do this: a per-machine (admin) install resolves %LOCALAPPDATA% to the
+    admin's profile, not the user who later runs the app.
+    """
+    if not getattr(sys, "frozen", False):
+        return
+    try:
+        from libriscribe.utils.paths import (
+            get_default_env_path,
+            get_bundled_env_example,
+        )
+
+        env_path = get_default_env_path()
+        if env_path.exists():
+            return
+        example = get_bundled_env_example()
+        contents = example.read_text(encoding="utf-8") if example.exists() else ""
+        env_path.write_text(contents, encoding="utf-8")
+    except Exception:
+        # Seeding is best-effort; the app falls back to built-in defaults and the
+        # Settings page recreates the file when the user saves a key.
+        pass
+
+
 def main():
     _redirect_std_streams_if_needed()
+    _seed_env_if_needed()
 
     host = "127.0.0.1"
     port = 8000

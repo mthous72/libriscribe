@@ -2,7 +2,7 @@
 ; Requires Inno Setup 6.x -- https://jrsoftware.org/isinfo.php
 
 #define MyAppName "LibriScribe GUI"
-#define MyAppVersion "0.5.1"
+#define MyAppVersion "0.5.2"
 #define MyAppPublisher "mthous72"
 #define MyAppURL "https://github.com/mthous72/libriscribe"
 #define MyAppExeName "LibriScribeGUI.exe"
@@ -33,43 +33,17 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 
 [Tasks]
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked
-Name: "createenv"; Description: "Create starter .env file for API key configuration"; Flags: checkedonce
 
 [Files]
-; Main application (PyInstaller output)
+; Main application (PyInstaller output). The bundle includes .env.example, which
+; the app copies to %LOCALAPPDATA%\LibriScribe\.env on first run. API keys and
+; generated projects live there (user-writable); Program Files stays read-only.
 Source: "..\dist\LibriScribeGUI\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
-
-; .env example
-Source: "..\.env.example"; DestDir: "{app}"; DestName: ".env.example"; Flags: ignoreversion
-
-[Dirs]
-; Writable projects directory
-Name: "{app}\projects"; Permissions: users-modify
 
 [Icons]
 Name: "{group}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"
-Name: "{group}\Configure API Keys"; Filename: "{app}\.env"
 Name: "{group}\{cm:UninstallProgram,{#MyAppName}}"; Filename: "{uninstallexe}"
 Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: desktopicon
 
 [Run]
 Filename: "{app}\{#MyAppExeName}"; Description: "{cm:LaunchProgram,{#MyAppName}}"; Flags: nowait postinstall skipifsilent
-
-[Code]
-procedure CurStepChanged(CurStep: TSetupStep);
-var
-  EnvSrc, EnvDst: string;
-begin
-  if CurStep = ssPostInstall then
-  begin
-    if IsTaskSelected('createenv') then
-    begin
-      EnvDst := ExpandConstant('{app}\.env');
-      EnvSrc := ExpandConstant('{app}\.env.example');
-      if not FileExists(EnvDst) then
-      begin
-        FileCopy(EnvSrc, EnvDst, False);
-      end;
-    end;
-  end;
-end;

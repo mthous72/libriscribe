@@ -1,7 +1,9 @@
 """Path resolution for both development and PyInstaller frozen bundles."""
 from __future__ import annotations
 
+import os
 import sys
+import tempfile
 from pathlib import Path
 
 
@@ -17,6 +19,23 @@ def get_base_dir() -> Path:
     return Path(__file__).resolve().parent.parent.parent.parent
 
 
+def get_app_data_dir() -> Path:
+    """User-writable directory for runtime data (.env, projects).
+
+    Frozen builds install under Program Files, which is read-only for standard
+    users, so writable data must live elsewhere: %LOCALAPPDATA%\\LibriScribe
+    (falling back to a temp dir). In development this is the repo root, matching
+    the historical layout. The directory is created if missing.
+    """
+    if getattr(sys, "frozen", False):
+        base = os.environ.get("LOCALAPPDATA") or tempfile.gettempdir()
+        path = Path(base) / "LibriScribe"
+    else:
+        path = get_base_dir()
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+
+
 def get_frontend_dist() -> Path:
     return get_base_dir() / "frontend" / "dist"
 
@@ -25,15 +44,16 @@ def get_prompts_dir() -> Path:
     return get_base_dir() / "prompts"
 
 
+def get_bundled_env_example() -> Path:
+    """The .env.example shipped inside the bundle (seed source on first run)."""
+    return get_base_dir() / ".env.example"
+
+
 def get_default_projects_dir() -> Path:
-    """Projects dir lives next to the executable when frozen, else in repo root."""
-    if getattr(sys, "frozen", False):
-        return Path(sys.executable).parent / "projects"
-    return get_base_dir() / "projects"
+    """Projects live in the user-writable app-data dir (see get_app_data_dir)."""
+    return get_app_data_dir() / "projects"
 
 
 def get_default_env_path() -> Path:
-    """The .env file lives next to the executable when frozen."""
-    if getattr(sys, "frozen", False):
-        return Path(sys.executable).parent / ".env"
-    return get_base_dir() / ".env"
+    """The .env file lives in the user-writable app-data dir."""
+    return get_app_data_dir() / ".env"
