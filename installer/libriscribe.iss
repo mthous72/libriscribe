@@ -23,7 +23,8 @@ OutputBaseFilename=LibriScribeGUI-{#MyAppVersion}-Setup
 Compression=lzma2/ultra64
 SolidCompression=yes
 WizardStyle=modern
-ArchitecturesInstallIn64BitModeOnly=x64compatible
+ArchitecturesAllowed=x64compatible
+ArchitecturesInstallIn64BitMode=x64compatible
 SetupIconFile=libriscribe.ico
 UninstallDisplayIcon={app}\LibriScribeGUI.exe
 
