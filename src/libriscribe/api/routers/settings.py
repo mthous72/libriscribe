@@ -32,9 +32,20 @@ class ProviderStatus(BaseModel):
     model: str = ""
 
 
+# Placeholder values that should be treated as "no key set" (e.g. seeded from an
+# older .env.example). Compared case-insensitively after stripping.
+_PLACEHOLDER_KEYS = {"", "your_api_key_here", "your-api-key-here", "changeme"}
+
+
+def _is_real_key(key: str) -> bool:
+    return bool(key) and key.strip().lower() not in _PLACEHOLDER_KEYS
+
+
 def _mask_key(key: str) -> str:
-    if not key or len(key) < 8:
-        return "***" if key else ""
+    if not _is_real_key(key):
+        return ""
+    if len(key) < 8:
+        return "***"
     return key[:4] + "..." + key[-4:]
 
 
@@ -137,10 +148,10 @@ def get_providers():
     from libriscribe.settings import Settings
     s = Settings()
     return [
-        ProviderStatus(name="openai", configured=bool(s.openai_api_key), model=s.openai_model),
-        ProviderStatus(name="claude", configured=bool(s.claude_api_key), model=s.claude_model),
-        ProviderStatus(name="google_ai_studio", configured=bool(s.google_ai_studio_api_key), model=s.google_ai_studio_model),
-        ProviderStatus(name="deepseek", configured=bool(s.deepseek_api_key), model=s.deepseek_model),
-        ProviderStatus(name="mistral", configured=bool(s.mistral_api_key), model=s.mistral_model),
-        ProviderStatus(name="openrouter", configured=bool(s.openrouter_api_key), model=s.openrouter_model),
+        ProviderStatus(name="openai", configured=_is_real_key(s.openai_api_key), model=s.openai_model),
+        ProviderStatus(name="claude", configured=_is_real_key(s.claude_api_key), model=s.claude_model),
+        ProviderStatus(name="google_ai_studio", configured=_is_real_key(s.google_ai_studio_api_key), model=s.google_ai_studio_model),
+        ProviderStatus(name="deepseek", configured=_is_real_key(s.deepseek_api_key), model=s.deepseek_model),
+        ProviderStatus(name="mistral", configured=_is_real_key(s.mistral_api_key), model=s.mistral_model),
+        ProviderStatus(name="openrouter", configured=_is_real_key(s.openrouter_api_key), model=s.openrouter_model),
     ]

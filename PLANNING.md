@@ -21,7 +21,8 @@ Each item is built only after its spec is approved.
 
 ## Spec #1 — B1 + B2: server overhaul (single-instance + tray/quit + dirty flag)
 
-**Status: BUILT (v0.6.0) — pending installed verification.** Combines B1 and B2
+**Status: VERIFIED on test builds (splash, Settings, tray/quit) — releasing as v0.6.0.**
+Combines B1 and B2
 because both rewrite `server.py`'s startup/run model — done in one pass. Also
 establishes the dirty-flag foundation that B3 reuses. (Decision records: see B1 and
 B2 in the Backlog below.)
@@ -380,3 +381,55 @@ natural snapshot trigger).
 
 **Status:** backlog — versioning & rollback model decided; remaining open questions
 are trigger/retention/export-interaction, then promote to a full spec.
+
+### B5. Settings / API-key overhaul (no junk defaults, per-provider enable)
+
+**Bug found:** `.env.example` seeds every `*_API_KEY` with the literal
+`your_api_key_here`. First-run seeding copies that into `.env`, so the Settings page
+shows masked placeholder values (`your...here`) and **every provider falsely reports
+"configured"** (`bool("your_api_key_here")` is truthy) — generation would then fail
+on fake keys.
+
+**Phase 0 — DONE (shipping in v0.6.0):** blanked the keys in `.env.example`
+(`OPENAI_API_KEY=` etc.; kept model defaults + base_url) so fresh installs show
+providers **off**. Also added backend defense in `api/routers/settings.py`
+(`_is_real_key` / `_PLACEHOLDER_KEYS`) so placeholder-seeded keys read as "not set"
+for both masking and `configured` — fixes existing installs too, without deleting `.env`.
+
+**Phase 1 — UI overhaul:**
+- Each provider **off by default**, with an enable toggle; key + model fields only
+  active when enabled.
+- `configured` = enabled **and** a real (non-empty, non-placeholder) key present.
+- Don't render masked placeholders for empty/placeholder keys.
+- Optional: treat known placeholder strings as "not set" defensively in the backend.
+
+### B6. Model dropdown populated from provider model-list API
+
+**Goal:** replace the free-text model field with a dropdown of available models per
+provider, ideally flagging/filtering **free** models.
+
+**Approach:** OpenAI-compatible providers expose `GET {base_url}/v1/models`
+(OpenAI, OpenRouter, Ollama, LM Studio). OpenRouter's models endpoint includes
+pricing → can mark/filter free models. New backend endpoint
+`GET /api/settings/models/{provider}` proxies the provider's list (needs the key);
+frontend populates the dropdown, with manual entry as fallback.
+
+**Pairs with:** B5 (only query enabled providers) and B7 (local servers list installed
+models; all "free").
+
+### B7. Local / OpenAI-compatible LLM provider (Ollama, LM Studio, llama.cpp)
+
+**Question raised:** support connecting to a local LLM via an OpenAI-compatible endpoint?
+**Recommendation: yes — low effort, high value.** The `LLMClient` already drives
+OpenAI-compatible servers via a configurable `base_url` (that's how `openrouter`
+works; `openai`/`openrouter` share code paths). A new provider (e.g. `local` /
+`openai_compatible`) needs only: a config branch using the OpenAI SDK with a
+user-set `base_url` (e.g. `http://localhost:11434/v1` Ollama, `http://localhost:1234/v1`
+LM Studio) and an optional/dummy key, plus adding its name to the existing
+`provider in {"openai", "openrouter"}` branches.
+
+**Value:** free, private, offline generation. **Composes with B6:** local servers expose
+`/v1/models`, so the dropdown auto-populates installed models.
+
+**Status (B5/B6/B7):** backlog — B5 Phase 0 is a candidate v0.6.0 fix; the rest are a
+cohesive "Settings & providers" epic to spec together.
