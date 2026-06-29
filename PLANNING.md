@@ -1,0 +1,341 @@
+# LibriScribe — Feature Planning & Backlog
+
+Living planning doc. Features are specced here **before** implementation. Nothing
+in "Backlog" is built until it has been promoted to a full spec and approved.
+
+Last updated: 2026-06-29
+
+---
+
+## Build priority (pain-first — chosen 2026-06-29)
+
+1. **B1 + B2** — server overhaul: single-instance launch + tray/quit + dirty-flag
+   foundation. **← specced below (Spec #1), awaiting approval to build.**
+2. **B3** — manual-save reminder (reuses B2's dirty flag).
+3. **Import/Export** — project bundle + story `.txt` (foundation for B4).
+4. **B4** — version tracking (reuses the bundle; wholesale → granular).
+
+Each item is built only after its spec is approved.
+
+---
+
+## Spec #1 — B1 + B2: server overhaul (single-instance + tray/quit + dirty flag)
+
+**Status: AWAITING APPROVAL.** Combines B1 and B2 because both rewrite `server.py`'s
+startup/run model — done in one pass. Also establishes the dirty-flag foundation that
+B3 reuses. (Decision records: see B1 and B2 in the Backlog below.)
+
+### Dependencies to add
+- `pystray` + `Pillow` → `setup.py` install_requires, PyInstaller `hiddenimports`,
+  and bundle `installer/libriscribe.ico` via the spec `datas`. Verify the frozen
+  build is self-contained (zero end-user prerequisites).
+
+### Backend — `server.py` startup overhaul
+1. **Health endpoint (B1):** `GET /api/health` → `{"app":"libriscribe","version":…}`,
+   used to recognize an existing instance.
+2. **Port-walk + single-instance (B1):** candidate ports `8000..8010`. For each,
+   probe `http://127.0.0.1:<port>/api/health` (short timeout):
+   - LibriScribe signature → existing instance: open the browser there and **exit**
+     (no duplicate).
+   - Responds but not LibriScribe → try next port.
+   - Refused/free → bind here.
+   Pass the chosen port to both `uvicorn` and `webbrowser.open`.
+3. **Programmatic server + tray (B2):** replace blocking `uvicorn.run(...)` with
+   `uvicorn.Server(uvicorn.Config(...))` on a **background daemon thread**; run the
+   `pystray` icon on the **main thread**. Poll `/api/health` until up, then open the
+   browser (removes today's fixed-delay race).
+4. **Tray menu:** *Open LibriScribe* (open browser at the active port; also the
+   double-click default) and *Quit LibriScribe*. Optional one-time "running in the
+   system tray" notification.
+5. **Clean shutdown:** Quit (tray or web) → dirty check → `server.should_exit=True`,
+   `icon.stop()`, exit. This is the clean shutdown hook the app lacks today.
+
+### Backend — quit & state endpoints
+- `POST /api/shutdown` → triggers the same clean shutdown (web-UI Quit path).
+- `POST /api/ui-state` → frontend reports `{dirty, active_generation}`; server keeps
+  it in memory for the tray's dirty check.
+
+### Dirty-flag foundation (shared with B3)
+- Server holds in-memory `ui_state = {dirty, active_generation, updated_at}`.
+- **Web Quit:** frontend knows its own dirty state → confirm modal → `POST /api/shutdown`.
+- **Tray Quit:** reads server-side `dirty`; if dirty, native **Windows MessageBox**
+  (ctypes `user32.MessageBoxW`, Yes/No) before shutting down; else quit immediately.
+
+### Frontend
+- **Dirty flag** in the Zustand store: set on book/lore edits, cleared on manual save;
+  report to backend via debounced `POST /api/ui-state`.
+- **`beforeunload`** warning when dirty (best-effort hard-close guard).
+- **Quit button** in the app header: if dirty → confirm modal → `POST /api/shutdown`
+  → show "LibriScribe has shut down — you can close this tab."
+
+### Verification
+- Unit: port-walk selection (mock probes), health endpoint, shutdown sets exit flag,
+  ui-state read/write.
+- Installed/manual: launch twice → 2nd opens browser, no 2nd process; tray Quit clean
+  vs dirty; web Quit; port fallback when 8000 is held by another app.
+- Build: confirm `pystray`/`Pillow` are bundled — the frozen exe shows the tray on a
+  clean Windows VM with nothing else installed.
+
+### Minor sub-decisions (defaulted — flag if you disagree)
+- Candidate port range upper bound = **8010**.
+- Tray double-click → **Open**.
+- One-time "running in system tray" notification = **yes**.
+
+---
+
+## Spec #3 — Project & Story Import / Export
+
+**Goal:** Let users back up, move between machines, and share their work — both
+the *entire* project (lossless) and the *readable story* (plain text).
+
+#### 1a. Project Export — full, lossless, single JSON bundle
+
+- **Output file:** `<ProjectName>.libriscribe.json` (single, portable, human-readable)
+- **Contents:**
+  - `schema_version` (start at `1`) and `exported_at` timestamp
+  - The complete `ProjectKnowledgeBase` (everything in `project_data.json`):
+    characters, locations, lore entries, story arcs, worldbuilding, outline,
+    chapter structure/summaries, continuity notes, narrative threads, character
+    states, lore suggestions, and project settings (genre, tone, audience, etc.)
+  - **Inlined prose** — the full text of every prose `.md` file in the project
+    (`chapter_N.md`, `chapter_N_revised.md`, `outline.md`, `manuscript.md`),
+    embedded as strings keyed by filename. This is essential: the `Chapter`
+    model holds only summaries, **not** the written words.
+  - Per-project `writing_system_prompt` and LLM/model settings.
+- **Excluded:**
+  - **API keys** — never in a bundle (they live in `.env`, outside any project).
+    Sharing a bundle must never leak keys.
+  - **Retrieval indexes** — derived data; rebuilt from content on import.
+- **Open question (default = include):** should LLM/model picks be stripped so a
+  *shared* bundle doesn't carry the sender's model choices? Default for now:
+  include everything except API keys. Revisit if sharing becomes common.
+
+#### 1b. Project Import
+
+- **Input:** a `.libriscribe.json` bundle (file upload).
+- **Behavior:** validate `schema_version` and the KB against the model; recreate
+  the project folder under `projects_dir`; write `project_data.json`; re-emit each
+  inlined `.md` file; rebuild the retrieval index from content.
+- **Name collisions:** if a project of that name already exists → **prompt the
+  user, default to auto-rename** (`MyBook-2`, `-3`, …). Never silently overwrite.
+- **Failure handling:** clear, user-facing error on malformed/incompatible bundle;
+  no partial project left behind on failure.
+
+#### 1c. Story Export — readable prose, `.txt`
+
+- **Output file:** `<ProjectName>.txt`
+- **Behavior:** assembled on the fly from the chapters **as they currently stand**
+  (works mid-draft; does not require a finished `manuscript.md`):
+  - Book title at top.
+  - Each chapter in order as `Chapter N: Title` followed by its prose.
+  - Prefer `chapter_N_revised.md` when present, else `chapter_N.md`.
+  - Light Markdown stripping so it reads as clean prose.
+  - Pure prose — no synopsis/outline/front matter.
+
+#### 1d. UI & API surface
+
+- **Project Dashboard:** "Export Project" (`.json`) + "Export Story (`.txt`)" buttons.
+- **Home page:** "Import Project" (file picker → upload, with collision prompt).
+- **Endpoints (in `api/routers/projects.py`):**
+  - `GET /api/projects/{name}/export` → JSON bundle (download)
+  - `GET /api/projects/{name}/export/story` → `.txt` (download)
+  - `POST /api/projects/import` → accepts uploaded bundle (+ optional target name /
+    collision strategy)
+- **Backend:** new helpers in `services/project_service.py`
+  (`build_export_bundle`, `import_bundle`, `assemble_story_text`) + a small
+  Markdown-stripping utility.
+- **Frontend:** `api/client.ts` methods, buttons, and an import modal.
+- **Tests:** export→import round-trip fidelity; story assembly ordering and
+  revised-vs-original selection.
+
+**Status:** spec approved — ready to build once the rest of the backlog is captured.
+
+---
+
+## Backlog (to be specced before building)
+
+> Add items here as we think of them. Each gets promoted to "Active spec" and
+> approved before any code is written.
+
+### B1. Single-instance launch (open existing instead of duplicating)
+
+**Problem:** Launching LibriScribe while it's already running starts a second
+resident process instead of surfacing the instance that's already up.
+
+**Insight:** LibriScribe is a local web server (uvicorn on `127.0.0.1:8000`) that
+auto-opens the browser. "Open the existing instance" therefore just means pointing
+the browser at the already-running server — not starting a second one.
+
+**Proposed approach:**
+- Add a tiny identity endpoint (e.g. `GET /api/health` → `{"app":"libriscribe","version":…}`).
+  No such endpoint exists today.
+- In `server.py main()`, **before** binding, walk an ordered list of candidate
+  ports — `8000`, then `8001`, then a few more (e.g. up to `8010`) for safety —
+  and for each one:
+  - **Probe** `http://127.0.0.1:<port>/api/health` with a short timeout.
+    - If it answers with the LibriScribe signature → an instance is already up on
+      that port; **open the browser there and exit** (no duplicate). This also
+      finds an existing instance that itself fell back to 8001+.
+    - If the port answers but is **not** LibriScribe → skip to the next candidate.
+    - If the port is **free** → start the server there and open the browser to it.
+- The chosen port must flow through to both `uvicorn.run(port=…)` and
+  `webbrowser.open(...)` (today both are hardcoded to 8000). The frontend uses
+  relative `/api` and `/ws`, so it needs no change regardless of port.
+- Optional secondary guard: a Windows named mutex / PID lock file, but the port
+  walk alone both prevents the duplicate **and** delivers "open the existing one,"
+  so it is likely sufficient.
+
+**Decisions (resolved):**
+- **Port conflict:** if 8000 is held by a non-LibriScribe app, **fall back to 8001**
+  (and onward through the candidate list), rather than erroring.
+- **Browser focus:** **best-effort is acceptable** — re-opening the URL focuses the
+  existing tab in most browsers; no attempt to force-focus an OS window.
+
+**Status:** ✅ promoted → see **Spec #1** (server overhaul). Build order #1.
+
+### B2. System tray icon (stop / open the running service)
+
+**Problem:** The app runs as a windowed (no-console) process, so there is no
+visible handle on it — the only way to stop the service today is Task Manager.
+
+**Proposed approach (recommended): a system tray icon.**
+- Use `pystray` (+ `Pillow` for the icon image); reuse `installer/libriscribe.ico`
+  (bundle it via the PyInstaller spec `datas`, load from `sys._MEIPASS`).
+- Tray menu:
+  - **Open LibriScribe** → `webbrowser.open(...)` at the active host/port.
+  - **Quit LibriScribe** → clean shutdown of the uvicorn server, then exit.
+- **Architecture change:** switch from the blocking `uvicorn.run(...)` to a
+  programmatic `uvicorn.Server(Config(...))` run on a background thread, with the
+  tray loop on the main thread. "Quit" sets `server.should_exit = True`, stops the
+  tray, and exits the process. (This also gives us the clean shutdown hook the app
+  currently lacks.)
+- Optional first-run notification: "LibriScribe is running in the system tray."
+
+**Two quit paths (both included):**
+- **Tray → Quit LibriScribe** (native, always available).
+- **Web-UI Quit button** → `POST /api/shutdown`, for users who live in the browser.
+Both run the same dirty-state check below before shutting down.
+
+**Confirm-before-quit on unsaved changes (best-effort):**
+- Frontend tracks a **dirty flag** = unsaved edits to book/lore.
+- **Web-UI Quit:** frontend already knows dirty state → show a confirm modal
+  ("You have unsaved changes — quit anyway?") before calling `POST /api/shutdown`.
+- **Tray Quit:** the Python process can't see the browser's edit state directly, so
+  the frontend **reports dirty/clean to the backend** (WebSocket heartbeat or a
+  small `POST /api/ui-state`). Tray Quit reads that server-side flag and, if dirty,
+  pops a **native OS confirm dialog** (Windows `MessageBox` via `ctypes`) before
+  shutting down; if clean, quits immediately.
+- **Hard browser close:** caught best-effort via the browser `beforeunload` warning
+  when dirty. Cannot be guaranteed (user accepts this) — and the service keeps
+  running in the tray regardless, so closing the tab no longer loses the instance.
+- **Implementation note:** check how the app currently saves (autosave vs explicit
+  save) when speccing — it determines how wide the "unsaved" window actually is and
+  where the dirty flag must be set/cleared.
+
+**Decisions (resolved):**
+- **Scope:** ship **both** the tray icon and the web-UI Quit button.
+- **Dependencies:** OK to add `pystray` + `Pillow`, **provided they are baked into
+  the release** — must be in PyInstaller `hiddenimports`/`datas` and the build
+  verified self-contained (zero end-user prerequisites, per the project's installer
+  goal).
+- **Confirm-before-quit:** yes, when there are **unsaved changes** to book/lore;
+  best-effort across the hard-browser-close case.
+
+**Pairs with:** B1 — the tray handle belongs to the single running instance; a
+second launch still just opens the browser and exits.
+
+**Save model (decided, see B3):** manual save only — **no autosave**. The dirty
+flag here means "edits since the last manual save."
+
+**Status:** ✅ promoted → see **Spec #1** (server overhaul). Build order #1.
+
+### B3. Manual-save reminder (no autosave)
+
+**Decision:** the product deliberately has **no autosave**. Instead, remind the
+user to save manually when they have unsaved work.
+
+**Proposed approach:**
+- Reuse the **dirty flag** from B2 (unsaved edits to book/lore). Reminders only
+  fire while dirty; saving clears the flag and resets the timer.
+- **Time-based nudge:** while there are unsaved changes, show a periodic,
+  **non-blocking** reminder — a dismissible toast/banner with a **"Save now"**
+  action button — rather than a modal that interrupts writing.
+- Reset the interval on every manual save; stop reminding once clean.
+- Shares infrastructure with B2 (dirty tracking) and reinforces B2's quit/close
+  confirmations.
+
+**Open questions:**
+- **Interval:** default reminder cadence (e.g. every 5 or 10 minutes), and should
+  it be user-configurable in Settings?
+- **Style:** non-blocking toast/banner (recommended) vs. a more assertive prompt?
+- **Escalation:** should the reminder get more prominent the longer work stays
+  unsaved, or as more changes pile up? (Lean: gentle, non-escalating — possibly a
+  small persistent "unsaved changes" indicator plus the periodic toast.)
+
+**Status:** backlog — needs interval/style decisions, then promote to a full spec.
+
+### B4. Save version tracking (snapshots / rollback)
+
+**Goal:** keep a history of saved versions so the user can track progress and roll
+back to an earlier state of the story/lore.
+
+**Key synergy:** a "version" is a point-in-time snapshot of the project — which is
+exactly what the **Import/Export bundle** (Active spec) produces. Reuse it: each
+saved version is a `.libriscribe.json` written to a `versions/` folder inside the
+project; **restore = import that bundle** over the project. One snapshot mechanism,
+not two.
+
+**File naming (decided): `storyshort_vNNN_yymmdd`**
+- e.g. `mybook_v003_250629`. `storyshort` = sanitized project name.
+- The **incrementing version number `vNNN` is the unique key** — it disambiguates
+  multiple saves on the same day, so the day-granular date is fine (it's there for
+  human readability, not uniqueness).
+- Zero-padded N sorts sensibly; revisit padding width if a project could plausibly
+  exceed 999 versions.
+
+**Storage:** `<project>/versions/` subfolder, so history lives with the project.
+
+**Versioning scheme (decided):**
+- **Backbone = dumb auto-incrementing integer** (`v001, v002, …`). No user
+  classification, no semver — every save just bumps the number. (`major.minor.patch`
+  was rejected: it adds per-save friction and the boundaries are subjective for prose.)
+- **Optional milestone labels** the user applies when *they* decide something matters
+  ("Draft 1 complete", "Act 2 rewrite", "Beta to editor") — the writer-native analog
+  of a "major version."
+- **Auto-computed change summaries** shown per version (e.g. `+1,240 words ·
+  2 chapters changed · 3 lore entries edited`), derived by diffing snapshots. This
+  conveys *magnitude* at a glance **without** encoding it in the version number —
+  the identifier stays a dumb integer; "how big was the change" is computed and
+  displayed separately.
+
+**Rollback (decided): phased.**
+- **Phase 1 — wholesale rollback:** restore the entire project to a prior snapshot
+  (re-import its bundle). Simple, safe, predictable, essentially free given the
+  bundle model. Build this first.
+- **Phase 2 — granular restore:** restore individual units (a chapter, character,
+  location, lore entry, arc, the outline) from an older version while keeping
+  everything else current — mechanically feasible since each snapshot is addressable
+  by key. Must warn: "this grafts older content into your current project — review
+  for continuity," since partial restore can create contradictions / stale index.
+- **Universal safety rule:** any restore (full or partial) **first auto-snapshots the
+  current state**, so a rollback is itself never destructive (undo the undo).
+
+**Restore/rollback UI:** list versions (number, date, optional label, change
+summary), preview, and restore — "Restore all" in Phase 1; per-element selection in
+Phase 2.
+
+**Open questions:**
+- **When is a version created?** Every manual save auto-snapshots, OR versions are
+  explicit "checkpoints" the user creates on demand (separate from plain save)?
+  (Leaning: explicit checkpoints + optionally snapshot-on-save, to avoid clutter.)
+- **Retention:** keep all versions, keep last N, or prune by age? (Text is small, so
+  "keep all" is viable, but offer pruning.)
+- **Export interaction:** should the project export bundle **include** the
+  `versions/` history, or export only the current state (leaner file)? (Lean:
+  exclude history by default; optional "include history" toggle.)
+
+**Pairs with:** Active spec (reuses the bundle format) and B3 (save action is the
+natural snapshot trigger).
+
+**Status:** backlog — versioning & rollback model decided; remaining open questions
+are trigger/retention/export-interaction, then promote to a full spec.
