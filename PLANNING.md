@@ -405,17 +405,60 @@ for both masking and `configured` — fixes existing installs too, without delet
 
 ### B6. Model dropdown populated from provider model-list API
 
-**Goal:** replace the free-text model field with a dropdown of available models per
-provider, ideally flagging/filtering **free** models.
+**Goal:** when a provider is selected and an API key is provided, reach out to that
+provider's API, pull the list of available models, and populate that provider's model
+dropdown — flagging/filtering **free** models where the provider exposes pricing.
 
-**Approach:** OpenAI-compatible providers expose `GET {base_url}/v1/models`
-(OpenAI, OpenRouter, Ollama, LM Studio). OpenRouter's models endpoint includes
-pricing → can mark/filter free models. New backend endpoint
-`GET /api/settings/models/{provider}` proxies the provider's list (needs the key);
-frontend populates the dropdown, with manual entry as fallback.
+**Per-provider list-models calls (researched & confirmed):**
 
-**Pairs with:** B5 (only query enabled providers) and B7 (local servers list installed
-models; all "free").
+| Provider | Method + URL | Auth | Response → model id | Free flag |
+|---|---|---|---|---|
+| **OpenAI** | `GET https://api.openai.com/v1/models` | `Authorization: Bearer <key>` | `data[].id` | — |
+| **OpenRouter** | `GET https://openrouter.ai/api/v1/models` | `Authorization: Bearer <key>` (optional) | `data[].id` (+ `name`) | `pricing.prompt=="0" && pricing.completion=="0"`, or name contains `(free)` |
+| **Anthropic (Claude)** | `GET https://api.anthropic.com/v1/models` | `x-api-key: <key>` + `anthropic-version: 2023-06-01` | `data[].id` (+ `display_name`) | — |
+| **Google AI Studio (Gemini)** | `GET https://generativelanguage.googleapis.com/v1beta/models?key=<key>` | key in query string | `models[].name` → strip `models/` prefix; keep only entries whose `supportedGenerationMethods` includes `generateContent` | — |
+| **DeepSeek** | `GET https://api.deepseek.com/models` | `Authorization: Bearer <key>` | `data[].id` (OpenAI-compatible) | — |
+| **Mistral** | `GET https://api.mistral.ai/v1/models` | `Authorization: Bearer <key>` | `data[].id` (OpenAI-compatible) | — |
+| **Local / OpenAI-compatible (B7)** | `GET {base_url}/models` | optional `Bearer` | `data[].id` | all local models are free |
+
+Four of seven are OpenAI-shaped (`/v1/models`, Bearer, `{data:[{id}]}`) → one helper.
+Anthropic and Google need their own auth header / response parsing. (Sources:
+OpenRouter `/api/v1/models`, Google `generativelanguage …/v1beta/models`, Anthropic
+`GET /v1/models`.)
+
+**Backend (`api/routers/settings.py`):**
+- `POST /api/settings/models` with body `{ provider, api_key?, base_url? }`. Uses the
+  provided key if present (so the dropdown works *before* the user saves), else the
+  saved key. Calls the provider's endpoint (server-side — avoids browser CORS),
+  normalizes to `[{ id, label, free }]`, sorts (free first), returns it.
+- Clear, typed errors: `missing_key`, `invalid_key` (401/403), `network_error`,
+  `unsupported_provider` — surfaced to the UI as a friendly message.
+- Short in-process cache per (provider, key-hash) — model lists change rarely.
+- Use the already-bundled `requests`/`httpx`; short timeout (~10s).
+
+**Frontend (Settings page, ties into B5 redesign):**
+- Per provider: when enabled + a key is entered, a "Fetch models" affordance (button,
+  or auto-fetch on key blur) calls the endpoint and fills a **dropdown**.
+- Free models flagged/grouped; manual text entry remains as fallback (custom/unknown
+  model ids).
+- Only query enabled providers (B5).
+
+**Open questions:**
+- Auto-fetch on key entry vs an explicit "Fetch models" button? (Lean: explicit
+  button first — avoids firing on every keystroke and surprise API calls.)
+- Filter to free-only, or show all with a "free" badge + a free-only toggle?
+  (Lean: show all, badge free, optional toggle.)
+
+**Pairs with:** B5 (only query enabled providers; sends the just-entered key) and B7
+(local servers list installed models via the same OpenAI-compatible helper).
+
+**Status:** BUILT — folded into v0.6.0. Backend `POST /api/settings/models` with the
+six per-provider fetchers (OpenAI-compatible helper for openai/deepseek/mistral;
+dedicated openrouter/anthropic/gemini) + typed errors. Settings page rebuilt: per-
+provider key + model field with a `<datalist>` dropdown and a "Load" button (sends the
+just-typed key, else falls back to the saved key; masked values ignored). UX defaults
+applied: explicit Load button; all models shown with a "free" badge (free sorted first).
+B7 (local LLM) not yet built. Pending live verification against real provider keys.
 
 ### B7. Local / OpenAI-compatible LLM provider (Ollama, LM Studio, llama.cpp)
 

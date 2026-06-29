@@ -1,12 +1,23 @@
 import { useEffect, useState } from 'react'
-import { getSettings, updateSettings, getProviders } from '../api/client'
-import { Save, Check, X } from 'lucide-react'
+import { getSettings, updateSettings, getProviders, fetchProviderModels } from '../api/client'
+import { Save, Check, X, Loader2, RefreshCw } from 'lucide-react'
+
+const PROVIDERS = [
+  { key: 'openai', label: 'OpenAI' },
+  { key: 'claude', label: 'Claude' },
+  { key: 'google_ai_studio', label: 'Google AI Studio' },
+  { key: 'deepseek', label: 'DeepSeek' },
+  { key: 'mistral', label: 'Mistral' },
+  { key: 'openrouter', label: 'OpenRouter' },
+]
 
 export default function SettingsPage() {
   const [settings, setSettings] = useState<any>({})
   const [providers, setProviders] = useState<any[]>([])
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
+  const [models, setModels] = useState<Record<string, any[]>>({})
+  const [loadingModels, setLoadingModels] = useState<string | null>(null)
 
   useEffect(() => {
     getSettings().then(setSettings).catch(() => {})
@@ -20,7 +31,6 @@ export default function SettingsPage() {
       setSettings(updated)
       setSaved(true)
       setTimeout(() => setSaved(false), 2000)
-      // Refresh providers
       getProviders().then(setProviders).catch(() => {})
     } catch (e) {
       alert('Failed to save settings')
@@ -29,21 +39,21 @@ export default function SettingsPage() {
     }
   }
 
-  const fields = [
-    { key: 'openai_api_key', label: 'OpenAI API Key', type: 'password' },
-    { key: 'openai_model', label: 'OpenAI Model' },
-    { key: 'claude_api_key', label: 'Claude API Key', type: 'password' },
-    { key: 'claude_model', label: 'Claude Model' },
-    { key: 'google_ai_studio_api_key', label: 'Google AI Studio API Key', type: 'password' },
-    { key: 'google_ai_studio_model', label: 'Google AI Studio Model' },
-    { key: 'deepseek_api_key', label: 'DeepSeek API Key', type: 'password' },
-    { key: 'deepseek_model', label: 'DeepSeek Model' },
-    { key: 'mistral_api_key', label: 'Mistral API Key', type: 'password' },
-    { key: 'mistral_model', label: 'Mistral Model' },
-    { key: 'openrouter_api_key', label: 'OpenRouter API Key', type: 'password' },
-    { key: 'openrouter_model', label: 'OpenRouter Model' },
-    { key: 'default_llm', label: 'Default LLM Provider' },
-  ]
+  async function loadModels(provider: string) {
+    // Only send a freshly-typed key; masked values ("abcd...wxyz") fall back to
+    // the saved key on the server.
+    const entered = settings[`${provider}_api_key`]
+    const api_key = entered && !entered.includes('...') ? entered : undefined
+    setLoadingModels(provider)
+    try {
+      const list = await fetchProviderModels({ provider, api_key })
+      setModels(m => ({ ...m, [provider]: list }))
+    } catch (e: any) {
+      alert(e?.response?.data?.detail || 'Failed to load models')
+    } finally {
+      setLoadingModels(null)
+    }
+  }
 
   return (
     <div className="max-w-2xl mx-auto space-y-6">
@@ -62,20 +72,77 @@ export default function SettingsPage() {
         </div>
       </div>
 
-      {/* API Keys */}
-      <div className="bg-gray-900 border border-gray-800 rounded-xl p-4 space-y-3">
-        <h2 className="text-sm font-medium text-gray-400 mb-2">API Configuration</h2>
-        {fields.map(f => (
-          <label key={f.key} className="block">
-            <span className="text-xs text-gray-400">{f.label}</span>
-            <input
-              type={f.type || 'text'}
-              className="w-full mt-1 px-3 py-1.5 bg-gray-800 border border-gray-700 rounded-lg text-sm"
-              value={settings[f.key] || ''}
-              onChange={e => setSettings({ ...settings, [f.key]: e.target.value })}
-            />
-          </label>
-        ))}
+      {/* API Keys + Models */}
+      <div className="bg-gray-900 border border-gray-800 rounded-xl p-4 space-y-4">
+        <h2 className="text-sm font-medium text-gray-400">API Configuration</h2>
+        <p className="text-xs text-gray-500">
+          Add a key to enable a provider. Click <span className="text-gray-300">Load</span> to
+          fetch that provider's available models into the dropdown (works with a just-typed key
+          before saving).
+        </p>
+
+        {PROVIDERS.map(p => {
+          const loaded = models[p.key]
+          const freeCount = loaded ? loaded.filter((m: any) => m.free).length : 0
+          return (
+            <div key={p.key} className="space-y-2 border-b border-gray-800 pb-3 last:border-b-0">
+              <span className="text-sm font-medium text-gray-300">{p.label}</span>
+
+              <label className="block">
+                <span className="text-xs text-gray-400">API Key</span>
+                <input
+                  type="password"
+                  className="w-full mt-1 px-3 py-1.5 bg-gray-800 border border-gray-700 rounded-lg text-sm"
+                  value={settings[`${p.key}_api_key`] || ''}
+                  onChange={e => setSettings({ ...settings, [`${p.key}_api_key`]: e.target.value })}
+                />
+              </label>
+
+              <label className="block">
+                <span className="text-xs text-gray-400">Model</span>
+                <div className="flex gap-2 mt-1">
+                  <input
+                    list={`${p.key}-models`}
+                    className="flex-1 px-3 py-1.5 bg-gray-800 border border-gray-700 rounded-lg text-sm"
+                    value={settings[`${p.key}_model`] || ''}
+                    onChange={e => setSettings({ ...settings, [`${p.key}_model`]: e.target.value })}
+                    placeholder="Type a model id, or Load to choose from a list"
+                  />
+                  <button
+                    onClick={() => loadModels(p.key)}
+                    disabled={loadingModels === p.key}
+                    title="Fetch available models from the provider"
+                    className="flex items-center gap-1 px-3 py-1.5 bg-gray-700 hover:bg-gray-600 rounded-lg text-sm disabled:opacity-50"
+                  >
+                    {loadingModels === p.key ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
+                    Load
+                  </button>
+                </div>
+                <datalist id={`${p.key}-models`}>
+                  {(loaded || []).map((m: any) => (
+                    <option key={m.id} value={m.id}>{m.label}{m.free ? ' — free' : ''}</option>
+                  ))}
+                </datalist>
+                {loaded && (
+                  <span className="text-xs text-gray-500">
+                    {loaded.length} models loaded{freeCount > 0 ? ` · ${freeCount} free` : ''}
+                  </span>
+                )}
+              </label>
+            </div>
+          )
+        })}
+
+        <label className="block">
+          <span className="text-xs text-gray-400">Default LLM Provider</span>
+          <select
+            className="w-full mt-1 px-3 py-1.5 bg-gray-800 border border-gray-700 rounded-lg text-sm"
+            value={settings.default_llm || 'openai'}
+            onChange={e => setSettings({ ...settings, default_llm: e.target.value })}
+          >
+            {PROVIDERS.map(p => <option key={p.key} value={p.key}>{p.label}</option>)}
+          </select>
+        </label>
 
         <button
           onClick={handleSave}

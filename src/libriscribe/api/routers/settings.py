@@ -1,7 +1,8 @@
-"""Settings endpoints - read/write API keys via .env."""
+"""Settings endpoints - read/write API keys via .env, list provider models."""
 from __future__ import annotations
 
-from fastapi import APIRouter
+import requests
+from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
 from libriscribe.utils.paths import get_default_env_path
@@ -141,6 +142,139 @@ def get_settings_response():
         default_llm=s.default_llm,
         retrieval_enabled=s.retrieval_enabled,
     )
+
+
+# ─── Model listing (B6) ──────────────────────────────────────────────────────
+
+class ModelListRequest(BaseModel):
+    provider: str
+    api_key: str | None = None
+    base_url: str | None = None
+
+
+class ModelInfo(BaseModel):
+    id: str
+    label: str
+    free: bool = False
+
+
+_PROVIDER_SAVED_KEY = {
+    "openai": "openai_api_key",
+    "claude": "claude_api_key",
+    "google_ai_studio": "google_ai_studio_api_key",
+    "deepseek": "deepseek_api_key",
+    "mistral": "mistral_api_key",
+    "openrouter": "openrouter_api_key",
+}
+
+
+def _openai_compatible_models(base_url: str, key: str) -> list[ModelInfo]:
+    resp = requests.get(
+        f"{base_url.rstrip('/')}/models",
+        headers={"Authorization": f"Bearer {key}"},
+        timeout=10,
+    )
+    resp.raise_for_status()
+    out = []
+    for m in resp.json().get("data", []):
+        mid = m.get("id")
+        if mid:
+            out.append(ModelInfo(id=mid, label=mid))
+    return out
+
+
+def _openrouter_models(base_url: str, key: str | None) -> list[ModelInfo]:
+    headers = {"Authorization": f"Bearer {key}"} if key else {}
+    resp = requests.get(f"{base_url.rstrip('/')}/models", headers=headers, timeout=10)
+    resp.raise_for_status()
+    out = []
+    for m in resp.json().get("data", []):
+        mid = m.get("id")
+        if not mid:
+            continue
+        pricing = m.get("pricing") or {}
+        free = str(pricing.get("prompt")) == "0" and str(pricing.get("completion")) == "0"
+        out.append(ModelInfo(id=mid, label=m.get("name") or mid, free=free))
+    return out
+
+
+def _anthropic_models(key: str) -> list[ModelInfo]:
+    resp = requests.get(
+        "https://api.anthropic.com/v1/models",
+        headers={"x-api-key": key, "anthropic-version": "2023-06-01"},
+        timeout=10,
+    )
+    resp.raise_for_status()
+    out = []
+    for m in resp.json().get("data", []):
+        mid = m.get("id")
+        if mid:
+            out.append(ModelInfo(id=mid, label=m.get("display_name") or mid))
+    return out
+
+
+def _gemini_models(key: str) -> list[ModelInfo]:
+    resp = requests.get(
+        "https://generativelanguage.googleapis.com/v1beta/models",
+        params={"key": key},
+        timeout=10,
+    )
+    resp.raise_for_status()
+    out = []
+    for m in resp.json().get("models", []):
+        if "generateContent" not in (m.get("supportedGenerationMethods") or []):
+            continue
+        name = m.get("name", "")
+        mid = name.split("/", 1)[1] if name.startswith("models/") else name
+        if mid:
+            out.append(ModelInfo(id=mid, label=m.get("displayName") or mid))
+    return out
+
+
+@router.post("/models", response_model=list[ModelInfo])
+def list_provider_models(body: ModelListRequest):
+    """Fetch the available models for a provider using the supplied or saved key."""
+    provider = body.provider
+    if provider not in _PROVIDER_SAVED_KEY:
+        raise HTTPException(status_code=400, detail="unsupported_provider")
+
+    # Prefer a freshly-entered key; fall back to the saved one. Masked values
+    # (containing "...") are not real keys and fall through to the saved key.
+    key = body.api_key if _is_real_key(body.api_key or "") else None
+    if not key:
+        from libriscribe.settings import Settings
+
+        saved = getattr(Settings(), _PROVIDER_SAVED_KEY[provider], "")
+        key = saved if _is_real_key(saved) else None
+
+    # OpenRouter can list without a key; every other provider needs one.
+    if not key and provider != "openrouter":
+        raise HTTPException(status_code=400, detail="missing_key — enter or save an API key first")
+
+    try:
+        if provider == "openai":
+            models = _openai_compatible_models("https://api.openai.com/v1", key)
+        elif provider == "deepseek":
+            models = _openai_compatible_models("https://api.deepseek.com", key)
+        elif provider == "mistral":
+            models = _openai_compatible_models("https://api.mistral.ai/v1", key)
+        elif provider == "openrouter":
+            models = _openrouter_models(body.base_url or "https://openrouter.ai/api/v1", key)
+        elif provider == "claude":
+            models = _anthropic_models(key)
+        else:  # google_ai_studio
+            models = _gemini_models(key)
+    except requests.HTTPError as exc:
+        code = exc.response.status_code if exc.response is not None else 502
+        if code in (401, 403):
+            raise HTTPException(status_code=400, detail="invalid_key — the API key was rejected")
+        raise HTTPException(status_code=502, detail=f"provider_error ({code})")
+    except requests.RequestException:
+        raise HTTPException(status_code=502, detail="network_error — could not reach the provider")
+
+    # Free models first, then alphabetical.
+    models.sort(key=lambda m: (not m.free, m.id.lower()))
+    return models
 
 
 @router.get("/providers", response_model=list[ProviderStatus])

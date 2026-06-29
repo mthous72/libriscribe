@@ -32,6 +32,7 @@ export const getCost = (name: string) => api.get(`/projects/${name}/cost`).then(
 export const getSettings = () => api.get('/settings').then(r => r.data)
 export const updateSettings = (body: any) => api.put('/settings', body).then(r => r.data)
 export const getProviders = () => api.get('/settings/providers').then(r => r.data)
+export const fetchProviderModels = (body: { provider: string, api_key?: string, base_url?: string }) => api.post('/settings/models', body).then(r => r.data)
 
 // ─── Lorebook ────────────────────────────────────────────────
 export const listCharacters = (name: string) => api.get(`/projects/${name}/characters`).then(r => r.data)
