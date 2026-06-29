@@ -1,6 +1,11 @@
 # src/libriscribe/settings.py
-from libriscribe.utils.paths import get_default_projects_dir, get_default_env_path
+from libriscribe.utils.paths import (
+    get_default_projects_dir,
+    get_default_env_path,
+    get_writing_prompt_path,
+)
 
+from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -47,4 +52,20 @@ class Settings(BaseSettings):
         env_file=str(get_default_env_path()),
         extra="ignore",
     )  # type: ignore
+
+    @model_validator(mode="after")
+    def _load_writing_prompt_from_file(self):
+        """The writing system prompt lives in its own (multi-line) file. Load it
+        when not provided via env, so consumers reading settings.writing_system_prompt
+        get the saved value."""
+        if not self.writing_system_prompt:
+            try:
+                path = get_writing_prompt_path()
+                if path.exists():
+                    text = path.read_text(encoding="utf-8")
+                    if text.strip():
+                        self.writing_system_prompt = text
+            except Exception:
+                pass
+        return self
 

@@ -28,6 +28,7 @@ class SettingsResponse(BaseModel):
     local_model: str = ""
     default_llm: str = "openai"
     retrieval_enabled: bool = False
+    writing_system_prompt: str = ""
 
 
 class ProviderStatus(BaseModel):
@@ -75,6 +76,7 @@ def get_settings():
         local_model=s.local_model,
         default_llm=s.default_llm,
         retrieval_enabled=s.retrieval_enabled,
+        writing_system_prompt=s.writing_system_prompt,
     )
 
 
@@ -82,6 +84,16 @@ def get_settings():
 def update_settings(body: dict):
     """Updates .env file with new settings values."""
     env_path = get_default_env_path()
+
+    # The writing system prompt is multi-line; store it in its own file, not .env
+    # (whose line-based KEY=VALUE format cannot hold newlines).
+    if "writing_system_prompt" in body:
+        from libriscribe.utils.paths import get_writing_prompt_path
+
+        wp = get_writing_prompt_path()
+        wp.parent.mkdir(parents=True, exist_ok=True)
+        wp.write_text(str(body.get("writing_system_prompt") or ""), encoding="utf-8")
+
     existing = {}
 
     if env_path.exists():
@@ -153,6 +165,7 @@ def get_settings_response():
         local_model=s.local_model,
         default_llm=s.default_llm,
         retrieval_enabled=s.retrieval_enabled,
+        writing_system_prompt=s.writing_system_prompt,
     )
 
 

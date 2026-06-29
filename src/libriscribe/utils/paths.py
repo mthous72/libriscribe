@@ -57,3 +57,9 @@ def get_default_projects_dir() -> Path:
 def get_default_env_path() -> Path:
     """The .env file lives in the user-writable app-data dir."""
     return get_app_data_dir() / ".env"
+
+
+def get_writing_prompt_path() -> Path:
+    """The global writing system prompt is stored in its own file (it is multi-line,
+    which `.env`'s line-based KEY=VALUE format cannot hold)."""
+    return get_app_data_dir() / "writing_system_prompt.txt"
