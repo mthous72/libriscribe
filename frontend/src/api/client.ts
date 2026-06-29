@@ -92,6 +92,27 @@ export const deleteThread = (name: string, threadName: string) => api.delete(`/p
 // ─── Outline Regeneration ───────────────────────────────
 export const regenerateOutline = (name: string, body: { locked_chapters: number[], regenerate_chapters: number[] }) => api.post(`/projects/${name}/regenerate-outline`, body).then(r => r.data)
 
+// ─── Brainstorm chat (B9) ───────────────────────────────
+export const getChat = (name: string) => api.get(`/projects/${name}/chat`).then(r => r.data)
+export const clearChat = (name: string) => api.delete(`/projects/${name}/chat`)
+export const applyChat = (name: string, body: { text: string, target_type: string, entity_name: string, smart?: boolean }) => api.post(`/projects/${name}/chat/apply`, body).then(r => r.data)
+// Streaming chat uses fetch (axios doesn't stream response bodies in the browser).
+export async function streamChat(name: string, message: string, onToken: (t: string) => void): Promise<void> {
+  const res = await fetch(`/api/projects/${name}/chat`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ message }),
+  })
+  if (!res.ok || !res.body) throw new Error(`chat failed (${res.status})`)
+  const reader = res.body.getReader()
+  const decoder = new TextDecoder()
+  for (;;) {
+    const { done, value } = await reader.read()
+    if (done) break
+    onToken(decoder.decode(value, { stream: true }))
+  }
+}
+
 // ─── System (health / ui-state / shutdown) ──────────────
 export const getHealth = () => api.get('/health').then(r => r.data)
 export const reportUiState = (body: { dirty?: boolean, active_generation?: boolean }) => api.post('/ui-state', body).then(r => r.data)

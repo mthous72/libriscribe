@@ -7,7 +7,7 @@ from fastapi.staticfiles import StaticFiles
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from libriscribe import __version__
-from libriscribe.api.routers import projects, generation, settings, lorebook, ws, system
+from libriscribe.api.routers import projects, generation, settings, lorebook, ws, system, chat
 from libriscribe.utils.paths import get_frontend_dist
 
 
@@ -46,6 +46,7 @@ def create_app() -> FastAPI:
 
     # API routers
     app.include_router(system.router)
+    app.include_router(chat.router)
     app.include_router(projects.router)
     app.include_router(generation.router)
     app.include_router(settings.router)

@@ -28,6 +28,7 @@ a = Analysis(
         "libriscribe.api.routers.settings",
         "libriscribe.api.routers.lorebook",
         "libriscribe.api.routers.ws",
+        "libriscribe.api.routers.chat",
         "libriscribe.agents.project_manager",
         "libriscribe.agents.concept_generator",
         "libriscribe.agents.outliner",

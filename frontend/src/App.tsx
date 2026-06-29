@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
-import { Routes, Route, Link } from 'react-router-dom'
+import { Routes, Route, Link, useLocation } from 'react-router-dom'
+import BrainstormDrawer from './components/BrainstormDrawer'
 import { Power } from 'lucide-react'
 import HomePage from './pages/HomePage'
 import NewProjectPage from './pages/NewProjectPage'
@@ -14,6 +15,9 @@ import { shutdownApp } from './api/client'
 export default function App() {
   const dirty = useUiStore(s => s.dirty)
   const [shutdownDone, setShutdownDone] = useState(false)
+  const location = useLocation()
+  const projectMatch = location.pathname.match(/^\/projects\/([^/]+)/)
+  const projectName = projectMatch && projectMatch[1] !== 'new' ? decodeURIComponent(projectMatch[1]) : null
 
   // Best-effort guard against a hard browser/tab close with unsaved changes.
   useEffect(() => {
@@ -82,6 +86,7 @@ export default function App() {
           <Route path="/settings" element={<SettingsPage />} />
         </Routes>
       </main>
+      {projectName && <BrainstormDrawer key={projectName} projectName={projectName} />}
     </div>
   )
 }

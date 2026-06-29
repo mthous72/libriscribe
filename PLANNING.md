@@ -485,3 +485,100 @@ fallback chain would). Pending live verification against a running LM Studio/Oll
 
 **Status (B5 Phase 1):** still backlog — per-provider enable toggles and "configured =
 enabled + real key" UI overhaul not yet built (B5 Phase 0 shipped; B6 + B7 shipped).
+
+---
+
+## Epic: lore-aware LLM "co-writer" (B8–B11) — brainstorm, planning, series
+
+Theme: an LLM layer that plans/brainstorms *with* the project's lore as context, before
+ideas get tied down. Most plumbing already exists (retrieval, cross-reference,
+`context_builder`, per-entity `analyze` endpoints + suggestion accept/reject, streaming,
+`LLMClient`). Effort tiers below are relative (S/M/L), not time estimates.
+
+### Spec — B9. Lore-aware brainstorm chat + Apply-to-lore — **AWAITING APPROVAL** (effort: M)
+
+A side-panel chat to brainstorm/plan/research with the LLM using the project's lore as
+RAG context, persisted per project, with one-click "Apply" to turn ideas into lore.
+Covers the user's "side panel to bounce ideas," "planning/research before tying down,"
+and "general chatbot" asks together. Reuses retrieval (`SearchServiceImpl.search`),
+`context_builder` + `TokenBudget`, `generate_content_streaming`, and lore CRUD.
+
+**Backend**
+- **Conversation store:** `chat_history.json` in the project dir (travels with the
+  project; included in a future export). Shape: `[{role, content, ts}]`.
+  - `GET /api/projects/{name}/chat` → history. `DELETE` → clear.
+- **Chat (streaming):** `POST /api/projects/{name}/chat` `{message}`:
+  1. Append the user message to history.
+  2. **RAG context:** `SearchServiceImpl.search(message, top_k)` over the project's
+     retrieval index (characters/locations/lore/chapters); assemble a `TokenBudget`-bounded
+     lore block. Fallback when retrieval is disabled/empty: a compact KB dump (entity
+     names + short descriptions).
+  3. **System prompt:** "You are a worldbuilding/brainstorming partner for this book. Use
+     the established lore below; stay consistent; clearly flag anything *new* you propose.
+     Lore: <context>."
+  4. Stream via `generate_content_streaming(system_prompt=…)` using the project's
+     `kb.llm_provider` / `kb.model` (now switchable — works with the local LLM too).
+  5. SSE `StreamingResponse`; append the assistant message to history server-side when the
+     stream completes.
+- **Apply-to-lore (MVP):** `POST /api/projects/{name}/chat/apply`
+  `{text, target_type: character|location|lore|arc, name}` → create a draft entry via the
+  existing lore CRUD (description = text). Returns the created entity.
+  (Phase 2: structured extraction — the LLM returns a typed object to pre-fill.)
+
+**Frontend**
+- A **Brainstorm** toggle within a project opens a right-side **drawer** (available across
+  dashboard / lorebook / editor).
+- Chat panel: load history on open, message list, **streaming** assistant responses (reuse
+  the existing streaming pattern via `fetch` + ReadableStream — POST has a body, so not
+  `EventSource`), input box, **Clear chat**.
+- Each assistant message has **Apply → Character / Location / Lore / Arc** → prompt for a
+  name → call the apply endpoint → toast + link to the new entry in the Lorebook.
+- No unsaved-changes concern: chat auto-persists server-side.
+
+**Transport:** SSE via FastAPI `StreamingResponse` (`text/event-stream`) — self-contained,
+doesn't entangle with the generation WebSocket.
+
+**Decisions (resolved):**
+- **Apply = BOTH:** "Apply (draft)" creates an entry with the selected text as its
+  description; "Smart fill" runs LLM structured extraction to populate typed fields.
+  One endpoint with a `smart` flag.
+- **Drawer scope = all project pages** (dashboard, lorebook, outline, chapter editor).
+- **Chat scope = per-project** (series-wide deferred to B8). Rest of spec as drafted.
+
+**Status:** BUILT (v0.7.0) — pending verification. Backend `api/routers/chat.py`:
+GET/DELETE/POST `/chat` (SSE stream) + `/chat/apply` (draft or `smart` extraction);
+RAG via `SearchServiceImpl` + `TokenBudget` fallback to KB dump; history in
+`chat_history.json` per project; uses the project's provider/model. Frontend:
+`components/BrainstormDrawer.tsx` mounted in `App` for any `/projects/:name` route —
+floating "Brainstorm" button → right drawer, streaming chat (fetch ReadableStream),
+persisted history, per-message "Apply to lore" (type + name + editable text + Smart-fill
+toggle) with a link to the Lorebook. Ships with the v0.6.1 fixes as **v0.7.0**.
+
+### B10. Per-lore-section LLM assist that references related lore — **effort: S–M**
+- Each character/location/lore/arc gets an interactive "ask/refine/expand" affordance
+  (extends the existing `analyze` + suggestion flow from one-shot to conversational).
+- Inject **related** lore into the prompt via the cross-reference graph + search
+  (`context_builder`) so edits stay consistent ("does this fit what's established?").
+- Largely composes existing endpoints; the new work is the per-entity chat UI + pulling
+  related-entity context into the call.
+
+### B8. Series / multi-book arc planning — **effort: L** (phase it)
+- Today: one project = one book (`ProjectKnowledgeBase`). A series needs a **Series**
+  container above Project, a shared **series bible** (characters/locations/lore/world/
+  arcs) that books inherit/reference, and **cross-book arcs** + continuity.
+- **Phase 1:** a Series grouping + shared series-bible lore that books read for context
+  (retrieval indexes series-level docs alongside the book). Lowest-risk first slice.
+- **Phase 2:** series-level story arcs spanning books; cross-book continuity checks
+  (extend `checkContinuity`). 
+- Biggest lift (data-model + UI), but the retrieval/cross-reference layer already
+  generalizes to series-level documents once the Series entity exists.
+
+### B11. New-project wizard draft persistence — **effort: S**
+- The new-project wizard keeps everything in browser state; nothing saves until "Create
+  Project," so closing mid-setup loses it. Persist the in-progress draft (localStorage,
+  or a server draft) so a partial setup survives.
+
+**Recommended sequence:** B9 (chat/RAG co-writer) → B10 (per-lore assist) → B8 (series,
+phased). Each is independently valuable; B9/B10 also de-risk B8 by proving the lore-aware
+context pipeline before the bigger data-model change. **Status: brainstorm — none specced
+or built yet.**
