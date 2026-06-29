@@ -1,4 +1,4 @@
-# LibriScribe
+# LibriScribe GUI
 
 <div align="center">
 
