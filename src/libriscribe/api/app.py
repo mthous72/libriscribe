@@ -1,13 +1,12 @@
 """FastAPI app factory."""
 from __future__ import annotations
 
-from pathlib import Path
-
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from libriscribe.api.routers import projects, generation, settings, lorebook, ws
+from libriscribe.utils.paths import get_frontend_dist
 
 
 def create_app() -> FastAPI:
@@ -34,7 +33,7 @@ def create_app() -> FastAPI:
     app.include_router(ws.router)
 
     # Serve React build if it exists
-    frontend_dist = Path(__file__).parent.parent.parent.parent / "frontend" / "dist"
+    frontend_dist = get_frontend_dist()
     if frontend_dist.exists():
         app.mount("/", StaticFiles(directory=str(frontend_dist), html=True), name="frontend")
 

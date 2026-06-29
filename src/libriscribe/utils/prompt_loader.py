@@ -3,11 +3,14 @@ import yaml
 from pathlib import Path
 from typing import Dict, Any
 
+from libriscribe.utils.paths import get_prompts_dir
+
+
 class PromptLoader:
     """Loads and manages external prompt templates."""
-    
-    def __init__(self, prompts_dir: str = "prompts"):
-        self.prompts_dir = Path(prompts_dir)
+
+    def __init__(self, prompts_dir: str | None = None):
+        self.prompts_dir = Path(prompts_dir) if prompts_dir else get_prompts_dir()
         self.templates_dir = self.prompts_dir / "templates"
         self.configs_dir = self.prompts_dir / "configs"
         self._cache = {}

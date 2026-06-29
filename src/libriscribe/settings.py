@@ -1,5 +1,5 @@
 # src/libriscribe/settings.py
-from pathlib import Path
+from libriscribe.utils.paths import get_default_projects_dir, get_default_env_path
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -19,7 +19,7 @@ class Settings(BaseSettings):
     openrouter_base_url: str = "https://openrouter.ai/api/v1"
     openrouter_model: str = "anthropic/claude-3-haiku"
     fallback_chain: str = ""
-    projects_dir: str = str(Path(__file__).parent.parent.parent / "projects")
+    projects_dir: str = str(get_default_projects_dir())
     default_llm: str = "openai"  # Set a default
 
     # Retrieval Defaults
@@ -38,5 +38,8 @@ class Settings(BaseSettings):
 
     writing_system_prompt: str = ""
 
-    model_config = SettingsConfigDict(env_file=".env", extra="ignore")  # type: ignore
+    model_config = SettingsConfigDict(
+        env_file=str(get_default_env_path()),
+        extra="ignore",
+    )  # type: ignore
 

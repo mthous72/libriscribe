@@ -9,6 +9,9 @@ src/libriscribe/__pycache__/
 src/libriscribe/utils/__pycache__/
 src/libriscribe/agents/__pycache__/
 build/
+dist/
 projects/
+frontend/dist/
 libriscribe.log
 llm_usage.jsonl
+*.spec.bak

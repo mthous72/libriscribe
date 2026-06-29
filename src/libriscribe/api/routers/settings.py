@@ -1,9 +1,10 @@
 """Settings endpoints - read/write API keys via .env."""
 from __future__ import annotations
 
-from pathlib import Path
 from fastapi import APIRouter
 from pydantic import BaseModel, Field
+
+from libriscribe.utils.paths import get_default_env_path
 
 router = APIRouter(prefix="/api/settings", tags=["settings"])
 
@@ -62,7 +63,7 @@ def get_settings():
 @router.put("", response_model=SettingsResponse)
 def update_settings(body: dict):
     """Updates .env file with new settings values."""
-    env_path = Path(".env")
+    env_path = get_default_env_path()
     existing = {}
 
     if env_path.exists():
