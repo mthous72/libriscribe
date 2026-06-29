@@ -275,8 +275,10 @@ def list_provider_models(body: ModelListRequest):
             models = _openrouter_models(body.base_url or "https://openrouter.ai/api/v1", key)
         elif provider == "local":
             from libriscribe.settings import Settings as _LocalSettings
+            from libriscribe.utils.model_routing import normalize_openai_base_url
 
             base = body.base_url or _LocalSettings().local_base_url or "http://localhost:1234/v1"
+            base = normalize_openai_base_url(base)
             models = _openai_compatible_models(base, key or "not-needed")
         elif provider == "claude":
             models = _anthropic_models(key)
@@ -286,9 +288,11 @@ def list_provider_models(body: ModelListRequest):
         code = exc.response.status_code if exc.response is not None else 502
         if code in (401, 403):
             raise HTTPException(status_code=400, detail="invalid_key — the API key was rejected")
-        raise HTTPException(status_code=502, detail=f"provider_error ({code})")
+        raise HTTPException(status_code=502, detail=f"provider_error ({code}) — check the Base URL")
     except requests.RequestException:
-        raise HTTPException(status_code=502, detail="network_error — could not reach the provider")
+        raise HTTPException(status_code=502, detail="network_error — could not reach the server (is it running?)")
+    except Exception as exc:  # noqa: BLE001 — never fail silently
+        raise HTTPException(status_code=502, detail=f"could not load models: {exc}")
 
     # Free models first, then alphabetical.
     models.sort(key=lambda m: (not m.free, m.id.lower()))

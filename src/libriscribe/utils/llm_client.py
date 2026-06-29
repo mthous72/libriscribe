@@ -78,7 +78,9 @@ class LLMClient:
         elif provider == "local":
             # Local / OpenAI-compatible server (LM Studio, Ollama, llama.cpp, ...).
             # base_url points at localhost, so requests never leave the machine.
-            base_url = self.settings.local_base_url
+            from libriscribe.utils.model_routing import normalize_openai_base_url
+
+            base_url = normalize_openai_base_url(self.settings.local_base_url)
             if not base_url:
                 raise ValueError("Local LLM base URL is not set.")
             client = OpenAI(

@@ -1,7 +1,26 @@
 from dataclasses import dataclass
 from typing import Iterable, List, Optional
+from urllib.parse import urlparse
 
 from libriscribe.settings import Settings
+
+
+def normalize_openai_base_url(url: str) -> str:
+    """Append `/v1` when given a bare `scheme://host:port`.
+
+    OpenAI-compatible servers (LM Studio, Ollama, vLLM, ...) serve the API under
+    `/v1`. Users often paste just `http://localhost:1234`; add the `/v1` so the
+    models/chat endpoints resolve. URLs that already carry a path are left alone.
+    """
+    url = (url or "").strip().rstrip("/")
+    if not url:
+        return url
+    try:
+        if urlparse(url).path in ("", "/"):
+            return url + "/v1"
+    except Exception:
+        pass
+    return url
 
 SUPPORTED_PROVIDERS = (
     "openai",

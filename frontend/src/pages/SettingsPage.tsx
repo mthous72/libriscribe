@@ -12,6 +12,20 @@ const PROVIDERS = [
   { key: 'local', label: 'Local (OpenAI-compatible)' },
 ]
 
+// OpenAI-compatible servers serve the API under /v1. If the user pastes a bare
+// host:port, append /v1 so the endpoints resolve.
+function normalizeBaseUrl(url: string): string {
+  const u = (url || '').trim().replace(/\/+$/, '')
+  if (!u) return u
+  try {
+    const p = new URL(u)
+    if (p.pathname === '' || p.pathname === '/') return `${u}/v1`
+  } catch {
+    return u
+  }
+  return u
+}
+
 export default function SettingsPage() {
   const [settings, setSettings] = useState<any>({})
   const [providers, setProviders] = useState<any[]>([])
@@ -45,7 +59,8 @@ export default function SettingsPage() {
     // the saved key on the server.
     const entered = settings[`${provider}_api_key`]
     const api_key = entered && !entered.includes('...') ? entered : undefined
-    const base_url = settings[`${provider}_base_url`] || undefined
+    let base_url = settings[`${provider}_base_url`] || undefined
+    if (provider === 'local' && base_url) base_url = normalizeBaseUrl(base_url)
     setLoadingModels(provider)
     try {
       const list = await fetchProviderModels({ provider, api_key, base_url })
@@ -99,6 +114,10 @@ export default function SettingsPage() {
                         className="flex-1 px-3 py-1.5 bg-gray-800 border border-gray-700 rounded-lg text-sm"
                         value={settings.local_base_url || ''}
                         onChange={e => setSettings({ ...settings, local_base_url: e.target.value })}
+                        onBlur={e => {
+                          const n = normalizeBaseUrl(e.target.value)
+                          if (n !== (settings.local_base_url || '')) setSettings({ ...settings, local_base_url: n })
+                        }}
                         placeholder="http://localhost:1234/v1"
                       />
                       <button
