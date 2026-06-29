@@ -57,6 +57,7 @@ export const createArc = (name: string, body: any) => api.post(`/projects/${name
 export const updateArc = (name: string, arcName: string, body: any) => api.put(`/projects/${name}/arcs/${arcName}`, body).then(r => r.data)
 export const deleteArc = (name: string, arcName: string) => api.delete(`/projects/${name}/arcs/${arcName}`)
 
+export const importLore = (name: string, body: { data: any, smart?: boolean }) => api.post(`/projects/${name}/lore/import`, body).then(r => r.data)
 export const getWorldbuilding = (name: string) => api.get(`/projects/${name}/worldbuilding`).then(r => r.data)
 export const updateWorldbuilding = (name: string, body: any) => api.put(`/projects/${name}/worldbuilding`, body).then(r => r.data)
 

@@ -117,6 +117,12 @@ B2 in the Backlog below.)
 
 ## Spec #3 — Project & Story Import / Export
 
+> **Partial delivery (v0.7.0):** a **lore JSON import** shipped — Lorebook → "Import JSON"
+> parses `characters`/`locations`/`lore`/`arcs`/`worldbuilding` (lists or name-keyed
+> objects, field aliases) into KB records, with an optional **AI-map** mode
+> (`POST /api/projects/{name}/lore/import`, `smart` flag) for non-standard JSON. The full
+> project bundle (`.libriscribe.json`) + story `.txt` export below are still pending.
+
 **Goal:** Let users back up, move between machines, and share their work — both
 the *entire* project (lossless) and the *readable story* (plain text).
 

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import {
   listCharacters, createCharacter, updateCharacter, deleteCharacter,
@@ -11,8 +11,9 @@ import {
   listSuggestions, acceptSuggestion, rejectSuggestion, editSuggestion,
   listContinuityNotes,
   listThreads, createThread, updateThread, deleteThread,
+  importLore,
 } from '../api/client'
-import { Plus, Trash2, Search, Sparkles, Check, X, Edit3, AlertTriangle, Loader2, ChevronDown, ChevronRight } from 'lucide-react'
+import { Plus, Trash2, Search, Sparkles, Check, X, Edit3, AlertTriangle, Loader2, ChevronDown, ChevronRight, Upload } from 'lucide-react'
 import { useUiStore } from '../store/uiSlice'
 
 const TABS = ['Characters', 'Locations', 'Lore', 'Arcs', 'Threads', 'World', 'Graph']
@@ -75,6 +76,27 @@ export default function LorebookPage() {
   const [showSuggestions, setShowSuggestions] = useState(false)
   const [editingIdx, setEditingIdx] = useState<number | null>(null)
   const [editValue, setEditValue] = useState('')
+  const [smartImport, setSmartImport] = useState(false)
+  const [importing, setImporting] = useState(false)
+  const fileRef = useRef<HTMLInputElement>(null)
+
+  const onImportFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file || !name) return
+    setImporting(true)
+    try {
+      const data = JSON.parse(await file.text())
+      const s = await importLore(name, { data, smart: smartImport })
+      alert(`Imported — characters: ${s.characters}, locations: ${s.locations}, lore: ${s.lore}, arcs: ${s.arcs}, worldbuilding: ${s.worldbuilding}`)
+      reload()
+    } catch (err: any) {
+      if (err instanceof SyntaxError) alert('That file is not valid JSON.')
+      else alert(err?.response?.data?.detail || 'Import failed')
+    } finally {
+      setImporting(false)
+      if (fileRef.current) fileRef.current.value = ''
+    }
+  }
 
   const reload = async () => {
     if (!name) return
@@ -203,10 +225,26 @@ export default function LorebookPage() {
   return (
     <div>
       <h1 className="text-2xl font-bold mb-4">Lorebook</h1>
-      <div className="flex gap-1 mb-4">
-        {TABS.map(t => (
-          <button key={t} onClick={() => { setTab(t); setSelected(null) }} className={`px-3 py-1.5 rounded-lg text-sm ${tab === t ? 'bg-indigo-600' : 'bg-gray-800 hover:bg-gray-700'}`}>{t}</button>
-        ))}
+      <div className="flex items-center justify-between mb-4 gap-2 flex-wrap">
+        <div className="flex gap-1">
+          {TABS.map(t => (
+            <button key={t} onClick={() => { setTab(t); setSelected(null) }} className={`px-3 py-1.5 rounded-lg text-sm ${tab === t ? 'bg-indigo-600' : 'bg-gray-800 hover:bg-gray-700'}`}>{t}</button>
+          ))}
+        </div>
+        <div className="flex items-center gap-2">
+          <label className="text-xs text-gray-400 flex items-center gap-1" title="Use the LLM to map non-standard JSON into lore categories">
+            <input type="checkbox" checked={smartImport} onChange={e => setSmartImport(e.target.checked)} /> AI-map
+          </label>
+          <button
+            onClick={() => fileRef.current?.click()}
+            disabled={importing}
+            title="Import lore from a JSON file (characters, locations, lore, arcs, worldbuilding)"
+            className="flex items-center gap-1 px-3 py-1.5 bg-gray-800 hover:bg-gray-700 rounded-lg text-sm disabled:opacity-50"
+          >
+            {importing ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />} Import JSON
+          </button>
+          <input ref={fileRef} type="file" accept="application/json,.json" className="hidden" onChange={onImportFile} />
+        </div>
       </div>
 
       <div className="grid grid-cols-3 gap-4">

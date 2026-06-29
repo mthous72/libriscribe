@@ -1,7 +1,10 @@
 """Lorebook CRUD endpoints - characters, locations, lore, arcs, worldbuilding, xref, search, scenes."""
 from __future__ import annotations
 
+import json
+
 from fastapi import APIRouter, HTTPException
+from pydantic import BaseModel
 
 from libriscribe.api.schemas.lorebook import (
     AnalyzeRequest,
@@ -370,6 +373,140 @@ def search_project(name: str, req: SearchRequest):
         return [r.model_dump() for r in results]
     except Exception:
         return []
+
+
+# ─── Lore import (JSON) ───────────────────────────────────────────
+
+class LoreImportRequest(BaseModel):
+    data: dict | list
+    smart: bool = False
+
+
+# Accepted top-level keys per category (case-insensitive).
+_CATEGORY_KEYS = {
+    "characters": ["characters", "character", "cast"],
+    "locations": ["locations", "location", "places"],
+    "lore": ["lore", "lore_entries", "loreentries", "entries"],
+    "arcs": ["arcs", "story_arcs", "storyarcs", "arc"],
+    "worldbuilding": ["worldbuilding", "world", "setting"],
+}
+_FIELD_ALIASES = {"desc": "description", "summary": "description"}
+
+
+def _pick(data: dict, keys: list[str]):
+    low = {k.lower(): v for k, v in data.items()}
+    for k in keys:
+        if k in low:
+            return low[k]
+    return None
+
+
+def _iter_entities(value):
+    """Yield (name, obj) from a list of objects or a dict keyed by name."""
+    if isinstance(value, list):
+        for obj in value:
+            if isinstance(obj, dict) and obj.get("name"):
+                yield str(obj["name"]), obj
+    elif isinstance(value, dict):
+        for key, obj in value.items():
+            if isinstance(obj, dict):
+                yield str(obj.get("name") or key), obj
+
+
+def _coerce(obj: dict, model_cls, name: str):
+    fields = {}
+    for k, v in obj.items():
+        key = _FIELD_ALIASES.get(k, k)
+        if key != "name" and key in model_cls.model_fields:
+            fields[key] = v
+    try:
+        return model_cls(name=name, **fields)
+    except Exception:
+        try:
+            return model_cls(name=name)
+        except Exception:
+            return None
+
+
+def _smart_normalize(kb, data) -> dict:
+    """Use the project's LLM to map arbitrary JSON into our lore categories."""
+    from libriscribe.utils.llm_client import LLMClient
+
+    raw = json.dumps(data)[:12000]
+    prompt = (
+        "Convert the JSON below into a JSON object with keys: characters, locations, "
+        "lore, arcs (each a list of objects that include a 'name' plus relevant fields), "
+        "and worldbuilding (an object). Keep field names simple (name, description, role, "
+        "background, significance, entry_type, arc_type). Return ONLY the JSON.\n\n" + raw
+    )
+    try:
+        client = LLMClient(kb.llm_provider)
+        if kb.model:
+            client.set_model(kb.model)
+        result = client.generate_content_with_json_repair(prompt, max_tokens=4000, temperature=0.2)
+        parsed = json.loads(result)
+        return parsed if isinstance(parsed, dict) else {}
+    except Exception:
+        return {}
+
+
+@router.post("/{name}/lore/import")
+def import_lore(name: str, body: LoreImportRequest):
+    """Import lore from JSON, parsing it into characters / locations / lore / arcs /
+    worldbuilding. Lenient about shape; `smart` uses the LLM to map non-standard JSON."""
+    kb = load_kb(name)
+    if not kb:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    data = body.data
+    if body.smart or not isinstance(data, dict):
+        normalized = _smart_normalize(kb, data)
+        if normalized:
+            data = normalized
+    if not isinstance(data, dict):
+        raise HTTPException(status_code=400, detail="Expected a JSON object with lore categories (characters, locations, lore, arcs, worldbuilding).")
+
+    summary = {"characters": 0, "locations": 0, "lore": 0, "arcs": 0, "worldbuilding": 0}
+
+    for nm, obj in _iter_entities(_pick(data, _CATEGORY_KEYS["characters"]) or []):
+        e = _coerce(obj, Character, nm)
+        if e:
+            kb.characters[nm] = e
+            summary["characters"] += 1
+    for nm, obj in _iter_entities(_pick(data, _CATEGORY_KEYS["locations"]) or []):
+        e = _coerce(obj, Location, nm)
+        if e:
+            kb.locations[nm] = e
+            summary["locations"] += 1
+    for nm, obj in _iter_entities(_pick(data, _CATEGORY_KEYS["lore"]) or []):
+        e = _coerce(obj, LoreEntry, nm)
+        if e:
+            kb.lore_entries[nm] = e
+            summary["lore"] += 1
+    for nm, obj in _iter_entities(_pick(data, _CATEGORY_KEYS["arcs"]) or []):
+        e = _coerce(obj, StoryArc, nm)
+        if e:
+            kb.story_arcs[nm] = e
+            summary["arcs"] += 1
+
+    wb = _pick(data, _CATEGORY_KEYS["worldbuilding"])
+    if isinstance(wb, dict):
+        allowed = {k: v for k, v in wb.items() if k in Worldbuilding.model_fields}
+        try:
+            kb.worldbuilding = Worldbuilding(**allowed)
+            kb.worldbuilding_needed = True
+            summary["worldbuilding"] = 1
+        except Exception:
+            pass
+
+    if sum(summary.values()) == 0:
+        raise HTTPException(
+            status_code=400,
+            detail="No recognizable lore found. Expected categories: characters, locations, lore, arcs, worldbuilding. Try the AI-map option for non-standard JSON.",
+        )
+
+    save_kb(name, kb)
+    return summary
 
 
 # ─── Outline ──────────────────────────────────────────────────────
