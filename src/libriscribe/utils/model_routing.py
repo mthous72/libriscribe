@@ -10,6 +10,7 @@ SUPPORTED_PROVIDERS = (
     "deepseek",
     "mistral",
     "openrouter",
+    "local",
 )
 
 
@@ -40,6 +41,7 @@ def get_default_model_for_provider(
         "deepseek": settings.deepseek_model,
         "mistral": settings.mistral_model,
         "openrouter": settings.openrouter_model,
+        "local": settings.local_model,
     }.get(provider, "")
 
 

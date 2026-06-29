@@ -75,6 +75,16 @@ class LLMClient:
             if not self.settings.mistral_api_key:
                 raise ValueError("Mistral API key is not set.")
             client = None
+        elif provider == "local":
+            # Local / OpenAI-compatible server (LM Studio, Ollama, llama.cpp, ...).
+            # base_url points at localhost, so requests never leave the machine.
+            base_url = self.settings.local_base_url
+            if not base_url:
+                raise ValueError("Local LLM base URL is not set.")
+            client = OpenAI(
+                api_key=self.settings.local_api_key or "not-needed",
+                base_url=base_url,
+            )
         else:
             raise ValueError(f"Unsupported LLM provider: {provider}")
 
@@ -295,7 +305,7 @@ class LLMClient:
         provider = route.provider
         model = route.model
 
-        if provider in {"openai", "openrouter"}:
+        if provider in {"openai", "openrouter", "local"}:
             client = self._get_client_for_provider(provider)
             request_prompt = prompt
             if provider == "openrouter":
@@ -454,7 +464,7 @@ class LLMClient:
         provider = self.llm_provider
         model = self.model or self.default_model
 
-        if provider in {"openai", "openrouter"}:
+        if provider in {"openai", "openrouter", "local"}:
             client = self._get_client_for_provider(provider)
             messages = []
             if system_prompt:

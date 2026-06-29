@@ -23,6 +23,9 @@ class SettingsResponse(BaseModel):
     mistral_model: str = ""
     openrouter_api_key: str = ""
     openrouter_model: str = ""
+    local_api_key: str = ""
+    local_base_url: str = ""
+    local_model: str = ""
     default_llm: str = "openai"
     retrieval_enabled: bool = False
 
@@ -67,6 +70,9 @@ def get_settings():
         mistral_model=s.mistral_model,
         openrouter_api_key=_mask_key(s.openrouter_api_key),
         openrouter_model=s.openrouter_model,
+        local_api_key=_mask_key(s.local_api_key),
+        local_base_url=s.local_base_url,
+        local_model=s.local_model,
         default_llm=s.default_llm,
         retrieval_enabled=s.retrieval_enabled,
     )
@@ -99,6 +105,9 @@ def update_settings(body: dict):
         "mistral_model": "MISTRAL_MODEL",
         "openrouter_api_key": "OPENROUTER_API_KEY",
         "openrouter_model": "OPENROUTER_MODEL",
+        "local_api_key": "LOCAL_API_KEY",
+        "local_base_url": "LOCAL_BASE_URL",
+        "local_model": "LOCAL_MODEL",
         "default_llm": "DEFAULT_LLM",
         "retrieval_enabled": "RETRIEVAL_ENABLED",
     }
@@ -139,6 +148,9 @@ def get_settings_response():
         mistral_model=s.mistral_model,
         openrouter_api_key=_mask_key(s.openrouter_api_key),
         openrouter_model=s.openrouter_model,
+        local_api_key=_mask_key(s.local_api_key),
+        local_base_url=s.local_base_url,
+        local_model=s.local_model,
         default_llm=s.default_llm,
         retrieval_enabled=s.retrieval_enabled,
     )
@@ -165,6 +177,7 @@ _PROVIDER_SAVED_KEY = {
     "deepseek": "deepseek_api_key",
     "mistral": "mistral_api_key",
     "openrouter": "openrouter_api_key",
+    "local": "local_api_key",
 }
 
 
@@ -247,8 +260,8 @@ def list_provider_models(body: ModelListRequest):
         saved = getattr(Settings(), _PROVIDER_SAVED_KEY[provider], "")
         key = saved if _is_real_key(saved) else None
 
-    # OpenRouter can list without a key; every other provider needs one.
-    if not key and provider != "openrouter":
+    # OpenRouter and local servers can list without a key; others need one.
+    if not key and provider not in ("openrouter", "local"):
         raise HTTPException(status_code=400, detail="missing_key — enter or save an API key first")
 
     try:
@@ -260,6 +273,11 @@ def list_provider_models(body: ModelListRequest):
             models = _openai_compatible_models("https://api.mistral.ai/v1", key)
         elif provider == "openrouter":
             models = _openrouter_models(body.base_url or "https://openrouter.ai/api/v1", key)
+        elif provider == "local":
+            from libriscribe.settings import Settings as _LocalSettings
+
+            base = body.base_url or _LocalSettings().local_base_url or "http://localhost:1234/v1"
+            models = _openai_compatible_models(base, key or "not-needed")
         elif provider == "claude":
             models = _anthropic_models(key)
         else:  # google_ai_studio
@@ -288,4 +306,5 @@ def get_providers():
         ProviderStatus(name="deepseek", configured=_is_real_key(s.deepseek_api_key), model=s.deepseek_model),
         ProviderStatus(name="mistral", configured=_is_real_key(s.mistral_api_key), model=s.mistral_model),
         ProviderStatus(name="openrouter", configured=_is_real_key(s.openrouter_api_key), model=s.openrouter_model),
+        ProviderStatus(name="local", configured=bool(s.local_base_url), model=s.local_model),
     ]

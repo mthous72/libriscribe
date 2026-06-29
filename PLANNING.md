@@ -474,5 +474,14 @@ LM Studio) and an optional/dummy key, plus adding its name to the existing
 **Value:** free, private, offline generation. **Composes with B6:** local servers expose
 `/v1/models`, so the dropdown auto-populates installed models.
 
-**Status (B5/B6/B7):** backlog — B5 Phase 0 is a candidate v0.6.0 fix; the rest are a
-cohesive "Settings & providers" epic to spec together.
+**B7 status:** BUILT — folded into v0.6.0. New `local` provider: `settings.local_*`
+(default base_url `http://localhost:1234/v1`); `llm_client` branch mirroring openrouter
+(OpenAI SDK + base_url, dummy key when blank) and added to the OpenAI-compatible routing
+sets; `model_routing` SUPPORTED_PROVIDERS + default model; B6 model dropdown handles
+`local` via the OpenAI-compatible fetcher (no key needed). Settings UI: Local card with a
+base_url field, LM Studio / Ollama preset buttons, and a privacy note. Requests go only to
+the configured localhost — nothing leaves the machine (caveat: cloud entries in the
+fallback chain would). Pending live verification against a running LM Studio/Ollama.
+
+**Status (B5 Phase 1):** still backlog — per-provider enable toggles and "configured =
+enabled + real key" UI overhaul not yet built (B5 Phase 0 shipped; B6 + B7 shipped).

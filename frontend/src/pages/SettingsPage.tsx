@@ -9,6 +9,7 @@ const PROVIDERS = [
   { key: 'deepseek', label: 'DeepSeek' },
   { key: 'mistral', label: 'Mistral' },
   { key: 'openrouter', label: 'OpenRouter' },
+  { key: 'local', label: 'Local (OpenAI-compatible)' },
 ]
 
 export default function SettingsPage() {
@@ -44,9 +45,10 @@ export default function SettingsPage() {
     // the saved key on the server.
     const entered = settings[`${provider}_api_key`]
     const api_key = entered && !entered.includes('...') ? entered : undefined
+    const base_url = settings[`${provider}_base_url`] || undefined
     setLoadingModels(provider)
     try {
-      const list = await fetchProviderModels({ provider, api_key })
+      const list = await fetchProviderModels({ provider, api_key, base_url })
       setModels(m => ({ ...m, [provider]: list }))
     } catch (e: any) {
       alert(e?.response?.data?.detail || 'Failed to load models')
@@ -88,8 +90,38 @@ export default function SettingsPage() {
             <div key={p.key} className="space-y-2 border-b border-gray-800 pb-3 last:border-b-0">
               <span className="text-sm font-medium text-gray-300">{p.label}</span>
 
+              {p.key === 'local' && (
+                <>
+                  <label className="block">
+                    <span className="text-xs text-gray-400">Server Base URL</span>
+                    <div className="flex gap-2 mt-1">
+                      <input
+                        className="flex-1 px-3 py-1.5 bg-gray-800 border border-gray-700 rounded-lg text-sm"
+                        value={settings.local_base_url || ''}
+                        onChange={e => setSettings({ ...settings, local_base_url: e.target.value })}
+                        placeholder="http://localhost:1234/v1"
+                      />
+                      <button
+                        onClick={() => setSettings({ ...settings, local_base_url: 'http://localhost:1234/v1' })}
+                        className="px-2 py-1.5 bg-gray-700 hover:bg-gray-600 rounded-lg text-xs whitespace-nowrap"
+                      >LM Studio</button>
+                      <button
+                        onClick={() => setSettings({ ...settings, local_base_url: 'http://localhost:11434/v1' })}
+                        className="px-2 py-1.5 bg-gray-700 hover:bg-gray-600 rounded-lg text-xs whitespace-nowrap"
+                      >Ollama</button>
+                    </div>
+                  </label>
+                  <p className="text-xs text-emerald-400/80">
+                    Requests go only to this address — nothing leaves your machine. For fully
+                    offline use, don't add cloud providers to this provider's fallback chain.
+                  </p>
+                </>
+              )}
+
               <label className="block">
-                <span className="text-xs text-gray-400">API Key</span>
+                <span className="text-xs text-gray-400">
+                  API Key{p.key === 'local' ? ' (optional)' : ''}
+                </span>
                 <input
                   type="password"
                   className="w-full mt-1 px-3 py-1.5 bg-gray-800 border border-gray-700 rounded-lg text-sm"

@@ -18,6 +18,11 @@ class Settings(BaseSettings):
     openrouter_api_key: str = ""
     openrouter_base_url: str = "https://openrouter.ai/api/v1"
     openrouter_model: str = "anthropic/claude-3-haiku"
+    # Local / OpenAI-compatible (LM Studio, Ollama, llama.cpp, vLLM). Requests go
+    # only to this base URL, so nothing leaves the machine.
+    local_api_key: str = ""
+    local_base_url: str = "http://localhost:1234/v1"
+    local_model: str = ""
     fallback_chain: str = ""
     projects_dir: str = str(get_default_projects_dir())
     default_llm: str = "openai"  # Set a default
