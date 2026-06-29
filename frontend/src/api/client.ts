@@ -10,6 +10,7 @@ export const createProject = (data: any) => api.post('/projects', data).then(r =
 export const getProject = (name: string) => api.get(`/projects/${name}`).then(r => r.data)
 export const deleteProject = (name: string) => api.delete(`/projects/${name}`)
 export const getProjectProgress = (name: string) => api.get(`/projects/${name}/progress`).then(r => r.data)
+export const updateProjectSettings = (name: string, body: { llm_provider?: string, model?: string, fallback_chain?: string[] }) => api.put(`/projects/${name}/settings`, body).then(r => r.data)
 export const getProjectStatus = (name: string) => api.get(`/projects/${name}/status`).then(r => r.data)
 
 // ─── Generation ──────────────────────────────────────────────

@@ -3,10 +3,19 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { useProject } from '../hooks/useProject'
 import { useWebSocket } from '../hooks/useWebSocket'
 import { useGenerationStore } from '../store/generationSlice'
-import { startGeneration, cancelGeneration, resumeGeneration, listChapters, getCost } from '../api/client'
-import { Play, Square, BookOpen, Map, FileText, Download } from 'lucide-react'
+import { startGeneration, cancelGeneration, resumeGeneration, listChapters, getCost, updateProjectSettings, fetchProviderModels } from '../api/client'
+import { Play, Square, BookOpen, Map, FileText, Download, Save, RefreshCw, Loader2 } from 'lucide-react'
 
 const STAGES = ['concept', 'outline', 'characters', 'worldbuilding', 'chapters', 'formatting']
+const PROVIDERS = [
+  { value: 'openai', label: 'OpenAI' },
+  { value: 'claude', label: 'Claude' },
+  { value: 'google_ai_studio', label: 'Google AI Studio' },
+  { value: 'deepseek', label: 'DeepSeek' },
+  { value: 'mistral', label: 'Mistral' },
+  { value: 'openrouter', label: 'OpenRouter' },
+  { value: 'local', label: 'Local (OpenAI-compatible)' },
+]
 
 export default function ProjectDashboard() {
   const { name } = useParams<{ name: string }>()
@@ -17,8 +26,21 @@ export default function ProjectDashboard() {
   const [chapters, setChapters] = useState<any[]>([])
   const [cost, setCost] = useState<any>(null)
   const logEndRef = useRef<HTMLDivElement>(null)
+  const [llmProvider, setLlmProvider] = useState('openai')
+  const [llmModel, setLlmModel] = useState('')
+  const [llmModels, setLlmModels] = useState<any[]>([])
+  const [loadingLlmModels, setLoadingLlmModels] = useState(false)
+  const [savingLlm, setSavingLlm] = useState(false)
+  const [savedLlm, setSavedLlm] = useState(false)
 
   useEffect(() => { reset() }, [name])
+
+  useEffect(() => {
+    if (project) {
+      setLlmProvider(project.llm_provider || 'openai')
+      setLlmModel(project.model || '')
+    }
+  }, [project])
 
   useEffect(() => {
     if (name) {
@@ -52,6 +74,31 @@ export default function ProjectDashboard() {
     try {
       await resumeGeneration(name!, { proceed, apply_ai_style: applyStyle })
     } catch {}
+  }
+
+  const loadLlmModels = async () => {
+    setLoadingLlmModels(true)
+    try {
+      setLlmModels(await fetchProviderModels({ provider: llmProvider }))
+    } catch (e: any) {
+      alert(e?.response?.data?.detail || 'Failed to load models')
+    } finally {
+      setLoadingLlmModels(false)
+    }
+  }
+
+  const saveLlm = async () => {
+    setSavingLlm(true)
+    try {
+      await updateProjectSettings(name!, { llm_provider: llmProvider, model: llmModel })
+      setSavedLlm(true)
+      setTimeout(() => setSavedLlm(false), 2000)
+      refresh()
+    } catch (e: any) {
+      alert(e?.response?.data?.detail || 'Failed to save AI settings')
+    } finally {
+      setSavingLlm(false)
+    }
   }
 
   const isRunning = jobStatus === 'running'
@@ -164,6 +211,57 @@ export default function ProjectDashboard() {
           </div>
         </div>
       )}
+
+      {/* AI / LLM Configuration */}
+      <div className="bg-gray-900 border border-gray-800 rounded-xl p-4 space-y-3">
+        <h3 className="text-sm font-medium text-gray-400">AI / LLM Configuration</h3>
+        <p className="text-xs text-gray-500">
+          Switch the provider or model for this project — e.g. when a model is no longer
+          available or useful. API keys / local base URL come from Settings.
+        </p>
+        <div className="grid grid-cols-2 gap-3">
+          <label className="block">
+            <span className="text-xs text-gray-400">Provider</span>
+            <select
+              className="w-full mt-1 px-3 py-1.5 bg-gray-800 border border-gray-700 rounded-lg text-sm"
+              value={llmProvider}
+              onChange={e => setLlmProvider(e.target.value)}
+            >
+              {PROVIDERS.map(p => <option key={p.value} value={p.value}>{p.label}</option>)}
+            </select>
+          </label>
+          <label className="block">
+            <span className="text-xs text-gray-400">Model</span>
+            <div className="flex gap-2 mt-1">
+              <input
+                list="project-llm-models"
+                className="flex-1 px-3 py-1.5 bg-gray-800 border border-gray-700 rounded-lg text-sm"
+                value={llmModel}
+                onChange={e => setLlmModel(e.target.value)}
+                placeholder="leave blank for the provider default"
+              />
+              <button
+                onClick={loadLlmModels}
+                disabled={loadingLlmModels}
+                title="Fetch available models from the provider"
+                className="flex items-center gap-1 px-3 py-1.5 bg-gray-700 hover:bg-gray-600 rounded-lg text-sm disabled:opacity-50"
+              >
+                {loadingLlmModels ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />} Load
+              </button>
+            </div>
+            <datalist id="project-llm-models">
+              {llmModels.map((m: any) => <option key={m.id} value={m.id}>{m.label}{m.free ? ' — free' : ''}</option>)}
+            </datalist>
+          </label>
+        </div>
+        <button
+          onClick={saveLlm}
+          disabled={savingLlm}
+          className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 rounded-lg text-sm font-medium disabled:opacity-50"
+        >
+          <Save size={14} /> {savingLlm ? 'Saving...' : savedLlm ? 'Saved!' : 'Save AI Settings'}
+        </button>
+      </div>
 
       {/* Downloads */}
       <div className="bg-gray-900 border border-gray-800 rounded-xl p-4">

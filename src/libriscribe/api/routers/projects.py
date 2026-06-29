@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, HTTPException
+from pydantic import BaseModel
 
 from libriscribe.api.schemas.project import (
     CreateProjectRequest,
@@ -50,6 +51,32 @@ def get_project(name: str):
     if not detail:
         raise HTTPException(status_code=404, detail="Project not found")
     return detail
+
+
+class UpdateProjectSettings(BaseModel):
+    llm_provider: str | None = None
+    model: str | None = None
+    fallback_chain: list[str] | None = None
+
+
+@router.put("/{name}/settings", response_model=ProjectDetail)
+def update_project_settings(name: str, body: UpdateProjectSettings):
+    """Update a project's LLM configuration (provider / model / fallback chain).
+
+    Lets the user switch the AI for an existing project when a model is no longer
+    valid, available, or useful.
+    """
+    kb = project_service.load_kb(name)
+    if not kb:
+        raise HTTPException(status_code=404, detail="Project not found")
+    if body.llm_provider is not None:
+        kb.llm_provider = body.llm_provider
+    if body.model is not None:
+        kb.model = body.model
+    if body.fallback_chain is not None:
+        kb.fallback_chain = body.fallback_chain
+    project_service.save_kb(name, kb)
+    return project_service.get_project_detail(name)
 
 
 @router.delete("/{name}", status_code=204)
