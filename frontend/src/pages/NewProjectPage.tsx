@@ -4,7 +4,15 @@ import { createProject } from '../api/client'
 
 const CATEGORIES = ['Fiction', 'Non-Fiction', 'Business', 'Research Paper']
 const LENGTHS = ['Short Story', 'Novella', 'Novel']
-const PROVIDERS = ['openai', 'claude', 'google_ai_studio', 'deepseek', 'mistral', 'openrouter']
+const PROVIDERS = [
+  { value: 'openai', label: 'OpenAI' },
+  { value: 'claude', label: 'Claude' },
+  { value: 'google_ai_studio', label: 'Google AI Studio' },
+  { value: 'deepseek', label: 'DeepSeek' },
+  { value: 'mistral', label: 'Mistral' },
+  { value: 'openrouter', label: 'OpenRouter' },
+  { value: 'local', label: 'Local (OpenAI-compatible)' },
+]
 const REVIEW_PREFS = ['AI', 'Human']
 
 export default function NewProjectPage() {
@@ -126,12 +134,18 @@ export default function NewProjectPage() {
       <label className="block">
         <span className="text-sm text-gray-400">LLM Provider</span>
         <select className="w-full mt-1 px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg" value={form.llm_provider} onChange={e => update('llm_provider', e.target.value)}>
-          {PROVIDERS.map(p => <option key={p}>{p}</option>)}
+          {PROVIDERS.map(p => <option key={p.value} value={p.value}>{p.label}</option>)}
         </select>
       </label>
       <label className="block">
-        <span className="text-sm text-gray-400">Model (optional, leave blank for default)</span>
-        <input className="w-full mt-1 px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg" value={form.model} onChange={e => update('model', e.target.value)} placeholder="e.g. gpt-4o, claude-3-opus..." />
+        <span className="text-sm text-gray-400">Model (optional, leave blank for the provider default)</span>
+        <input className="w-full mt-1 px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg" value={form.model} onChange={e => update('model', e.target.value)} placeholder="e.g. gpt-4o, claude-3-opus, or a local model id" />
+        {form.llm_provider === 'local' && (
+          <span className="text-xs text-emerald-400/80">
+            Uses your Local provider from Settings (base URL). Set a model id here or as the
+            Local model in Settings — requests stay on your machine.
+          </span>
+        )}
       </label>
     </div>,
   ]

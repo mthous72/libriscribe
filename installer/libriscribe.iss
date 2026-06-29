@@ -2,7 +2,7 @@
 ; Requires Inno Setup 6.x -- https://jrsoftware.org/isinfo.php
 
 #define MyAppName "LibriScribe GUI"
-#define MyAppVersion "0.6.0"
+#define MyAppVersion "0.6.1"
 #define MyAppPublisher "mthous72"
 #define MyAppURL "https://github.com/mthous72/libriscribe"
 #define MyAppExeName "LibriScribeGUI.exe"
