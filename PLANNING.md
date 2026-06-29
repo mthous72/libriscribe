@@ -21,9 +21,30 @@ Each item is built only after its spec is approved.
 
 ## Spec #1 — B1 + B2: server overhaul (single-instance + tray/quit + dirty flag)
 
-**Status: AWAITING APPROVAL.** Combines B1 and B2 because both rewrite `server.py`'s
-startup/run model — done in one pass. Also establishes the dirty-flag foundation that
-B3 reuses. (Decision records: see B1 and B2 in the Backlog below.)
+**Status: BUILT (v0.6.0) — pending installed verification.** Combines B1 and B2
+because both rewrite `server.py`'s startup/run model — done in one pass. Also
+establishes the dirty-flag foundation that B3 reuses. (Decision records: see B1 and
+B2 in the Backlog below.)
+
+**Implementation notes (as built):**
+- New `libriscribe.runtime` (shutdown event + in-memory `{dirty, active_generation}`).
+- New `api/routers/system.py`: `GET /api/health`, `GET|POST /api/ui-state`,
+  `POST /api/shutdown`. App version sourced from `libriscribe.__version__` (0.6.0).
+- `server.py` rewritten: port-walk `_choose_port()` over 8000..8010; programmatic
+  `uvicorn.Server` (background thread) + `pystray` tray (main thread) when frozen, or
+  `LIBRISCRIBE_TRAY=1`; plain main-thread run otherwise; `log_config=None` (belt-and-
+  suspenders for the windowed no-tty logging crash); native Windows confirm on tray
+  Quit when `dirty`.
+- Frontend: `store/uiSlice.ts` dirty flag (debounced report to `/api/ui-state`);
+  `App.tsx` Quit button + `beforeunload` guard + shutdown screen; dirty wired into
+  ChapterEditor, Outline, and Lorebook (FieldEditor/World/saves).
+- Deps `pystray` + `Pillow` added to `setup.py`, spec `hiddenimports`, and the `.ico`
+  bundled via spec `datas`.
+- Tests: `tests/test_server_port_walk.py` (8, pass locally), `tests/test_system_endpoints.py`
+  (needs app deps; runs in CI/standard env).
+- **Coverage caveat:** dirty-flag wiring covers the main editors; some sub-fields
+  (e.g. character voice-profile inputs) don't yet set dirty — best-effort, acceptable
+  per the agreed design. Extend incrementally if needed.
 
 ### Dependencies to add
 - `pystray` + `Pillow` → `setup.py` install_requires, PyInstaller `hiddenimports`,
@@ -284,6 +305,16 @@ exactly what the **Import/Export bundle** (Active spec) produces. Reuse it: each
 saved version is a `.libriscribe.json` written to a `versions/` folder inside the
 project; **restore = import that bundle** over the project. One snapshot mechanism,
 not two.
+
+**⚠️ Namespace warning — story version ≠ app version ≠ schema version.** These are
+three distinct things and must never be conflated:
+- **App/software version** (e.g. `0.6.0`) — global, in `libriscribe.__version__`,
+  `setup.py`, the installer `.iss`, and `GET /api/health`.
+- **Schema versions** — already exist as `version: 1` integers in `configuration.py`
+  and `project_status.py` (file-format versions).
+- **Story version (this feature)** — per-project snapshot counter (`vNNN`). Give its
+  metadata field an unambiguous name (e.g. `snapshot_number` / `story_version`), not
+  bare `version`, to avoid colliding with the schema-version fields above.
 
 **File naming (decided): `storyshort_vNNN_yymmdd`**
 - e.g. `mybook_v003_250629`. `storyshort` = sanitized project name.

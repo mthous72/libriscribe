@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { getChapter, saveChapter } from '../api/client'
+import { useUiStore } from '../store/uiSlice'
 import { ArrowLeft, Save } from 'lucide-react'
 
 export default function ChapterEditorPage() {
@@ -26,6 +27,7 @@ export default function ChapterEditorPage() {
     try {
       await saveChapter(name, parseInt(n), { chapter_number: parseInt(n), title, content, word_count: content.split(/\s+/).length })
       setDirty(false)
+      useUiStore.getState().markClean()
     } catch (e) {
       alert('Failed to save')
     } finally {
@@ -52,7 +54,7 @@ export default function ChapterEditorPage() {
       </div>
       <textarea
         value={content}
-        onChange={e => { setContent(e.target.value); setDirty(true) }}
+        onChange={e => { setContent(e.target.value); setDirty(true); useUiStore.getState().markDirty() }}
         className="w-full h-[calc(100vh-200px)] bg-gray-900 border border-gray-800 rounded-xl p-4 font-mono text-sm text-gray-200 resize-none focus:outline-none focus:border-indigo-600"
         spellCheck={false}
       />

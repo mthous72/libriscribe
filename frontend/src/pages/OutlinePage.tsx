@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { getOutline, updateOutline, listScenes, updateScene, createScene, deleteScene, regenerateOutline } from '../api/client'
+import { useUiStore } from '../store/uiSlice'
 import { ArrowLeft, Save, Plus, Trash2, Lock, Unlock, RefreshCw } from 'lucide-react'
 
 export default function OutlinePage() {
@@ -32,12 +33,14 @@ export default function OutlinePage() {
   const saveOutline = async () => {
     if (!name) return
     await updateOutline(name, { outline_markdown: markdown })
+    useUiStore.getState().markClean()
     alert('Outline saved')
   }
 
   const saveScene = async () => {
     if (!name || !selectedChapter || !editScene) return
     await updateScene(name, selectedChapter, editScene.scene_number, editScene)
+    useUiStore.getState().markClean()
     const updated = await listScenes(name, selectedChapter)
     setScenes(updated)
     setEditScene(null)
@@ -75,7 +78,7 @@ export default function OutlinePage() {
           </div>
           <textarea
             value={markdown}
-            onChange={e => setMarkdown(e.target.value)}
+            onChange={e => { setMarkdown(e.target.value); useUiStore.getState().markDirty() }}
             className="w-full h-64 bg-gray-900 border border-gray-800 rounded-lg p-3 font-mono text-xs text-gray-300 resize-none"
           />
 

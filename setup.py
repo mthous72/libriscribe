@@ -2,7 +2,7 @@ from setuptools import find_packages, setup
 
 setup(
     name="libriscribe",
-    version="0.5.2",
+    version="0.6.0",
     python_requires=">=3.10",
     packages=find_packages(where="src"),
     package_dir={"": "src"},
@@ -23,6 +23,8 @@ setup(
         "tenacity",
         "anthropic",
         "google-genai>=2.7.0",
+        "pystray",
+        "Pillow",
     ],
     entry_points={
         "console_scripts": [

@@ -18,6 +18,8 @@ a = Analysis(
         ("prompts/templates", "prompts/templates"),
         # .env example for first-run reference
         (".env.example", "."),
+        # Tray icon (loaded at runtime by pystray)
+        ("installer/libriscribe.ico", "installer"),
     ],
     hiddenimports=[
         "libriscribe.api.app",
@@ -82,6 +84,12 @@ a = Analysis(
         "tenacity",
         "anthropic",
         "google.genai",
+        "pystray",
+        "pystray._win32",
+        "PIL",
+        "PIL.Image",
+        "libriscribe.runtime",
+        "libriscribe.api.routers.system",
     ],
     hookspath=[],
     hooksconfig={},

@@ -5,7 +5,8 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
-from libriscribe.api.routers import projects, generation, settings, lorebook, ws
+from libriscribe import __version__
+from libriscribe.api.routers import projects, generation, settings, lorebook, ws, system
 from libriscribe.utils.paths import get_frontend_dist
 
 
@@ -13,7 +14,7 @@ def create_app() -> FastAPI:
     app = FastAPI(
         title="LibriScribe",
         description="AI-powered book generation platform",
-        version="0.5.0",
+        version=__version__,
     )
 
     # CORS for local development (Vite dev server)
@@ -26,6 +27,7 @@ def create_app() -> FastAPI:
     )
 
     # API routers
+    app.include_router(system.router)
     app.include_router(projects.router)
     app.include_router(generation.router)
     app.include_router(settings.router)

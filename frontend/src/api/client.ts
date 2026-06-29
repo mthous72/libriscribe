@@ -90,4 +90,9 @@ export const deleteThread = (name: string, threadName: string) => api.delete(`/p
 // ─── Outline Regeneration ───────────────────────────────
 export const regenerateOutline = (name: string, body: { locked_chapters: number[], regenerate_chapters: number[] }) => api.post(`/projects/${name}/regenerate-outline`, body).then(r => r.data)
 
+// ─── System (health / ui-state / shutdown) ──────────────
+export const getHealth = () => api.get('/health').then(r => r.data)
+export const reportUiState = (body: { dirty?: boolean, active_generation?: boolean }) => api.post('/ui-state', body).then(r => r.data)
+export const shutdownApp = () => api.post('/shutdown').then(r => r.data)
+
 export default api

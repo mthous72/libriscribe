@@ -13,6 +13,7 @@ import {
   listThreads, createThread, updateThread, deleteThread,
 } from '../api/client'
 import { Plus, Trash2, Search, Sparkles, Check, X, Edit3, AlertTriangle, Loader2, ChevronDown, ChevronRight } from 'lucide-react'
+import { useUiStore } from '../store/uiSlice'
 
 const TABS = ['Characters', 'Locations', 'Lore', 'Arcs', 'Threads', 'World', 'Graph']
 
@@ -43,11 +44,11 @@ function FieldEditor({ fields, data, onChange }: { fields: string[], data: any, 
         <label key={f} className="block">
           <span className="text-xs text-gray-400 capitalize">{f.replace(/_/g, ' ')}</span>
           {typeof data[f] === 'object' && !Array.isArray(data[f]) ? (
-            <textarea className="w-full mt-1 px-2 py-1.5 bg-gray-800 border border-gray-700 rounded text-sm h-20" value={JSON.stringify(data[f], null, 2)} onChange={e => { try { onChange(f, JSON.parse(e.target.value)) } catch {} }} />
+            <textarea className="w-full mt-1 px-2 py-1.5 bg-gray-800 border border-gray-700 rounded text-sm h-20" value={JSON.stringify(data[f], null, 2)} onChange={e => { try { onChange(f, JSON.parse(e.target.value)); useUiStore.getState().markDirty() } catch {} }} />
           ) : Array.isArray(data[f]) ? (
-            <input className="w-full mt-1 px-2 py-1.5 bg-gray-800 border border-gray-700 rounded text-sm" value={data[f].join(', ')} onChange={e => onChange(f, e.target.value.split(',').map((s: string) => s.trim()).filter(Boolean))} />
+            <input className="w-full mt-1 px-2 py-1.5 bg-gray-800 border border-gray-700 rounded text-sm" value={data[f].join(', ')} onChange={e => { onChange(f, e.target.value.split(',').map((s: string) => s.trim()).filter(Boolean)); useUiStore.getState().markDirty() }} />
           ) : (
-            <input className="w-full mt-1 px-2 py-1.5 bg-gray-800 border border-gray-700 rounded text-sm" value={data[f] ?? ''} onChange={e => onChange(f, e.target.value)} />
+            <input className="w-full mt-1 px-2 py-1.5 bg-gray-800 border border-gray-700 rounded text-sm" value={data[f] ?? ''} onChange={e => { onChange(f, e.target.value); useUiStore.getState().markDirty() }} />
           )}
         </label>
       ))}
@@ -165,6 +166,7 @@ export default function LorebookPage() {
       if (tab === 'Lore') await updateLoreEntry(name, s._origName || s.name, s)
       if (tab === 'Arcs') await updateArc(name, s._origName || s.name, s)
       if (tab === 'Threads') await updateThread(name, s._origName || s.name, s)
+      useUiStore.getState().markClean()
       reload()
     } catch (e) { alert('Save failed') }
   }
@@ -333,11 +335,11 @@ export default function LorebookPage() {
                   <textarea
                     className="w-full mt-1 px-2 py-1.5 bg-gray-800 border border-gray-700 rounded text-sm h-16"
                     value={world[f] || ''}
-                    onChange={e => setWorld({ ...world, [f]: e.target.value })}
+                    onChange={e => { setWorld({ ...world, [f]: e.target.value }); useUiStore.getState().markDirty() }}
                   />
                 </label>
               ))}
-              <button onClick={() => name && updateWorldbuilding(name, world).then(reload)} className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 rounded-lg text-sm">Save Worldbuilding</button>
+              <button onClick={() => name && updateWorldbuilding(name, world).then(() => { useUiStore.getState().markClean(); reload() })} className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 rounded-lg text-sm">Save Worldbuilding</button>
             </div>
           )}
           {/* Suggestion Review Panel */}
