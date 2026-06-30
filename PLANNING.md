@@ -580,6 +580,12 @@ toggle) with a link to the Lorebook. Ships with the v0.6.1 fixes as **v0.7.0**.
 - Largely composes existing endpoints; the new work is the per-entity chat UI + pulling
   related-entity context into the call.
 
+**Status:** BUILT (v0.8.0). Delivered via the Brainstorm focus engine: each Lorebook
+entry (character/location/lore/arc) has a **"Brainstorm this"** button that opens the
+drawer pre-focused on it (shared `brainstormSlice` store), which already loads the
+entity + surrounding lore as read-only context. (A separate inline per-entity chat
+wasn't needed — the focused drawer covers it.)
+
 ### B8. Series / multi-book arc planning — **effort: L** (phase it)
 - Today: one project = one book (`ProjectKnowledgeBase`). A series needs a **Series**
   container above Project, a shared **series bible** (characters/locations/lore/world/
@@ -595,6 +601,11 @@ toggle) with a link to the Lorebook. Ships with the v0.6.1 fixes as **v0.7.0**.
 - The new-project wizard keeps everything in browser state; nothing saves until "Create
   Project," so closing mid-setup loses it. Persist the in-progress draft (localStorage,
   or a server draft) so a partial setup survives.
+
+**Status:** BUILT (v0.8.0). The wizard autosaves the form to `localStorage`
+(`libriscribe:new-project-draft`) on every change and restores it on return (with a
+"Resumed your in-progress draft — Start fresh" banner); the draft is cleared on
+successful create.
 
 **Recommended sequence:** B9 (chat/RAG co-writer) → B10 (per-lore assist) → B8 (series,
 phased). Each is independently valuable; B9/B10 also de-risk B8 by proving the lore-aware

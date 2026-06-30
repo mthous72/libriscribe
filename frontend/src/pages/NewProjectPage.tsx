@@ -1,6 +1,25 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { createProject } from '../api/client'
+
+const DRAFT_KEY = 'libriscribe:new-project-draft'
+const defaultForm = {
+  project_name: '',
+  title: '',
+  genre: '',
+  description: '',
+  category: 'Fiction',
+  language: 'English',
+  num_characters: 3,
+  worldbuilding_needed: true,
+  review_preference: 'AI',
+  book_length: 'Novel',
+  tone: 'Engaging',
+  target_audience: 'General',
+  num_chapters: 10,
+  llm_provider: 'openai',
+  model: '',
+}
 
 const CATEGORIES = ['Fiction', 'Non-Fiction', 'Business', 'Research Paper']
 const LENGTHS = ['Short Story', 'Novella', 'Novel']
@@ -18,26 +37,35 @@ const REVIEW_PREFS = ['AI', 'Human']
 export default function NewProjectPage() {
   const navigate = useNavigate()
   const [step, setStep] = useState(0)
-  const [form, setForm] = useState({
-    project_name: '',
-    title: '',
-    genre: '',
-    description: '',
-    category: 'Fiction',
-    language: 'English',
-    num_characters: 3,
-    worldbuilding_needed: true,
-    review_preference: 'AI',
-    book_length: 'Novel',
-    tone: 'Engaging',
-    target_audience: 'General',
-    num_chapters: 10,
-    llm_provider: 'openai',
-    model: '',
+  const [form, setForm] = useState(() => {
+    try {
+      const saved = localStorage.getItem(DRAFT_KEY)
+      if (saved) return { ...defaultForm, ...JSON.parse(saved) }
+    } catch {}
+    return defaultForm
+  })
+  const [draftRestored, setDraftRestored] = useState(() => {
+    try {
+      const saved = localStorage.getItem(DRAFT_KEY)
+      if (saved) { const d = JSON.parse(saved); return !!(d.title || d.description || d.genre) }
+    } catch {}
+    return false
   })
   const [submitting, setSubmitting] = useState(false)
 
+  // Persist the in-progress draft so closing mid-setup doesn't lose it.
+  useEffect(() => {
+    try { localStorage.setItem(DRAFT_KEY, JSON.stringify(form)) } catch {}
+  }, [form])
+
   const update = (field: string, value: any) => setForm({ ...form, [field]: value })
+
+  const startFresh = () => {
+    localStorage.removeItem(DRAFT_KEY)
+    setForm(defaultForm)
+    setStep(0)
+    setDraftRestored(false)
+  }
 
   const submit = async () => {
     setSubmitting(true)
@@ -45,6 +73,7 @@ export default function NewProjectPage() {
       const data = { ...form }
       if (!data.project_name) data.project_name = data.title.toLowerCase().replace(/[^a-z0-9]+/g, '_').slice(0, 40)
       await createProject(data)
+      localStorage.removeItem(DRAFT_KEY)
       navigate(`/projects/${data.project_name}`)
     } catch (e: any) {
       alert(e?.response?.data?.detail || 'Failed to create project')
@@ -153,6 +182,13 @@ export default function NewProjectPage() {
   return (
     <div className="max-w-xl mx-auto">
       <h1 className="text-2xl font-bold mb-6">Create New Project</h1>
+
+      {draftRestored && (
+        <div className="mb-4 px-3 py-2 bg-indigo-900/30 border border-indigo-800 rounded-lg text-xs text-indigo-200 flex items-center justify-between">
+          <span>Resumed your in-progress draft.</span>
+          <button onClick={startFresh} className="underline hover:text-white">Start fresh</button>
+        </div>
+      )}
 
       {/* Step indicators */}
       <div className="flex gap-2 mb-6">

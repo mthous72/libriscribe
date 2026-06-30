@@ -13,7 +13,10 @@ import {
   listThreads, createThread, updateThread, deleteThread,
   importLore,
 } from '../api/client'
+import { useBrainstormStore } from '../store/brainstormSlice'
 import { Plus, Trash2, Search, Sparkles, Check, X, Edit3, AlertTriangle, Loader2, ChevronDown, ChevronRight, Upload } from 'lucide-react'
+
+const TAB_TO_FOCUS: Record<string, string> = { Characters: 'character', Locations: 'location', Lore: 'lore', Arcs: 'arc' }
 import { useUiStore } from '../store/uiSlice'
 
 const TABS = ['Characters', 'Locations', 'Lore', 'Arcs', 'Threads', 'World', 'Graph']
@@ -79,6 +82,7 @@ export default function LorebookPage() {
   const [smartImport, setSmartImport] = useState(false)
   const [importing, setImporting] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
+  const openBrainstorm = useBrainstormStore(s => s.openBrainstorm)
 
   const onImportFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
@@ -320,19 +324,52 @@ export default function LorebookPage() {
                   </label>
                 </div>
               </details>
-              <button onClick={handleSave} className="mt-4 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 rounded-lg text-sm">Save</button>
+              <div className="mt-4 flex gap-2">
+                <button onClick={handleSave} className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 rounded-lg text-sm">Save</button>
+                {selected && TAB_TO_FOCUS[tab] && (
+                  <button
+                    onClick={() => openBrainstorm({ type: TAB_TO_FOCUS[tab], name: selected._origName || selected.name })}
+                    title="Brainstorm this entry with the AI (uses surrounding lore as context)"
+                    className="px-4 py-2 bg-gray-700 hover:bg-gray-600 rounded-lg text-sm flex items-center gap-1"
+                  >
+                    <Sparkles size={14} /> Brainstorm this
+                  </button>
+                )}
+              </div>
             </div>
           )}
           {tab === 'Locations' && selected && (
             <div>
               <FieldEditor fields={locFields} data={selected} onChange={(k, v) => setSelected({ ...selected, [k]: v })} />
-              <button onClick={handleSave} className="mt-4 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 rounded-lg text-sm">Save</button>
+              <div className="mt-4 flex gap-2">
+                <button onClick={handleSave} className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 rounded-lg text-sm">Save</button>
+                {selected && TAB_TO_FOCUS[tab] && (
+                  <button
+                    onClick={() => openBrainstorm({ type: TAB_TO_FOCUS[tab], name: selected._origName || selected.name })}
+                    title="Brainstorm this entry with the AI (uses surrounding lore as context)"
+                    className="px-4 py-2 bg-gray-700 hover:bg-gray-600 rounded-lg text-sm flex items-center gap-1"
+                  >
+                    <Sparkles size={14} /> Brainstorm this
+                  </button>
+                )}
+              </div>
             </div>
           )}
           {tab === 'Lore' && selected && (
             <div>
               <FieldEditor fields={loreFields} data={selected} onChange={(k, v) => setSelected({ ...selected, [k]: v })} />
-              <button onClick={handleSave} className="mt-4 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 rounded-lg text-sm">Save</button>
+              <div className="mt-4 flex gap-2">
+                <button onClick={handleSave} className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 rounded-lg text-sm">Save</button>
+                {selected && TAB_TO_FOCUS[tab] && (
+                  <button
+                    onClick={() => openBrainstorm({ type: TAB_TO_FOCUS[tab], name: selected._origName || selected.name })}
+                    title="Brainstorm this entry with the AI (uses surrounding lore as context)"
+                    className="px-4 py-2 bg-gray-700 hover:bg-gray-600 rounded-lg text-sm flex items-center gap-1"
+                  >
+                    <Sparkles size={14} /> Brainstorm this
+                  </button>
+                )}
+              </div>
             </div>
           )}
           {tab === 'Arcs' && selected && (
@@ -356,13 +393,35 @@ export default function LorebookPage() {
                   </div>
                 </div>
               )}
-              <button onClick={handleSave} className="mt-4 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 rounded-lg text-sm">Save</button>
+              <div className="mt-4 flex gap-2">
+                <button onClick={handleSave} className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 rounded-lg text-sm">Save</button>
+                {selected && TAB_TO_FOCUS[tab] && (
+                  <button
+                    onClick={() => openBrainstorm({ type: TAB_TO_FOCUS[tab], name: selected._origName || selected.name })}
+                    title="Brainstorm this entry with the AI (uses surrounding lore as context)"
+                    className="px-4 py-2 bg-gray-700 hover:bg-gray-600 rounded-lg text-sm flex items-center gap-1"
+                  >
+                    <Sparkles size={14} /> Brainstorm this
+                  </button>
+                )}
+              </div>
             </div>
           )}
           {tab === 'Threads' && selected && (
             <div>
               <FieldEditor fields={threadFields} data={selected} onChange={(k, v) => setSelected({ ...selected, [k]: v })} />
-              <button onClick={handleSave} className="mt-4 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 rounded-lg text-sm">Save</button>
+              <div className="mt-4 flex gap-2">
+                <button onClick={handleSave} className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 rounded-lg text-sm">Save</button>
+                {selected && TAB_TO_FOCUS[tab] && (
+                  <button
+                    onClick={() => openBrainstorm({ type: TAB_TO_FOCUS[tab], name: selected._origName || selected.name })}
+                    title="Brainstorm this entry with the AI (uses surrounding lore as context)"
+                    className="px-4 py-2 bg-gray-700 hover:bg-gray-600 rounded-lg text-sm flex items-center gap-1"
+                  >
+                    <Sparkles size={14} /> Brainstorm this
+                  </button>
+                )}
+              </div>
             </div>
           )}
           {tab === 'World' && (

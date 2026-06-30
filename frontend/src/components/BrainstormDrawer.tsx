@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { getChat, clearChat, applyChat, streamChat, listCharacters, listLocations, listLoreEntries, listArcs } from '../api/client'
+import { useBrainstormStore } from '../store/brainstormSlice'
 import { MessageSquarePlus, X, Send, Trash2, Loader2, Sparkles } from 'lucide-react'
 
 interface Msg { role: string; content: string }
@@ -14,16 +15,18 @@ const TARGETS = [
 
 export default function BrainstormDrawer({ projectName }: { projectName: string }) {
   const navigate = useNavigate()
-  const [open, setOpen] = useState(false)
+  const { open, focus, openBrainstorm, close, setFocus } = useBrainstormStore()
   const [messages, setMessages] = useState<Msg[]>([])
   const [input, setInput] = useState('')
   const [sending, setSending] = useState(false)
   const [applyFor, setApplyFor] = useState<number | null>(null)
   const [ents, setEnts] = useState<{ character: string[], location: string[], lore: string[], arc: string[] }>({ character: [], location: [], lore: [], arc: [] })
-  const [focusKey, setFocusKey] = useState('')
   const endRef = useRef<HTMLDivElement>(null)
 
-  const focus = focusKey ? { type: focusKey.slice(0, focusKey.indexOf(':')), name: focusKey.slice(focusKey.indexOf(':') + 1) } : null
+  const focusKey = focus ? `${focus.type}:${focus.name}` : ''
+
+  // The drawer is remounted per project (keyed on projectName); clear stale focus.
+  useEffect(() => { setFocus(null) }, [projectName])
 
   useEffect(() => {
     if (!open || !projectName) return
@@ -78,7 +81,7 @@ export default function BrainstormDrawer({ projectName }: { projectName: string 
     <>
       {!open && (
         <button
-          onClick={() => setOpen(true)}
+          onClick={() => openBrainstorm()}
           title="Brainstorm with the AI (lore-aware)"
           className="fixed bottom-5 right-5 z-40 flex items-center gap-2 px-4 py-2.5 bg-indigo-600 hover:bg-indigo-500 rounded-full shadow-lg text-sm font-medium"
         >
@@ -95,14 +98,14 @@ export default function BrainstormDrawer({ projectName }: { projectName: string 
             </div>
             <div className="flex items-center gap-2">
               <button onClick={clear} title="Clear conversation" className="text-gray-500 hover:text-red-400"><Trash2 size={15} /></button>
-              <button onClick={() => setOpen(false)} className="text-gray-500 hover:text-gray-200"><X size={18} /></button>
+              <button onClick={() => close()} className="text-gray-500 hover:text-gray-200"><X size={18} /></button>
             </div>
           </div>
 
           <div className="px-3 py-2 border-b border-gray-800">
             <label className="text-xs text-gray-500 flex items-center gap-2">
               Focus
-              <select value={focusKey} onChange={e => setFocusKey(e.target.value)} className="flex-1 px-2 py-1 bg-gray-800 border border-gray-700 rounded text-xs">
+              <select value={focusKey} onChange={e => { const v = e.target.value; setFocus(v ? { type: v.slice(0, v.indexOf(':')), name: v.slice(v.indexOf(':') + 1) } : null) }} className="flex-1 px-2 py-1 bg-gray-800 border border-gray-700 rounded text-xs">
                 <option value="">Whole project</option>
                 {ents.character.length > 0 && <optgroup label="Characters">{ents.character.map(n => <option key={'character:' + n} value={'character:' + n}>{n}</option>)}</optgroup>}
                 {ents.location.length > 0 && <optgroup label="Locations">{ents.location.map(n => <option key={'location:' + n} value={'location:' + n}>{n}</option>)}</optgroup>}
@@ -133,7 +136,7 @@ export default function BrainstormDrawer({ projectName }: { projectName: string 
                         projectName={projectName}
                         text={m.content}
                         onDone={() => setApplyFor(null)}
-                        onView={() => { setOpen(false); navigate(`/projects/${projectName}/lorebook`) }}
+                        onView={() => { close(); navigate(`/projects/${projectName}/lorebook`) }}
                       />
                     )}
                   </div>
