@@ -279,3 +279,128 @@ def export_story_text(project_name: str) -> str | None:
         parts.extend([header, "", prose, ""])
 
     return "\n".join(parts).strip() + "\n"
+
+
+# ─── Version snapshots / rollback (B4 Phase 1) ────────────────────────────────
+
+def _versions_dir(project_name: str) -> Path:
+    return get_projects_dir() / project_name / "versions"
+
+
+def _versions_index_path(project_name: str) -> Path:
+    return _versions_dir(project_name) / "versions.json"
+
+
+def _slug(text: str) -> str:
+    return re.sub(r"[^a-z0-9]+", "_", (text or "").lower()).strip("_")[:40] or "project"
+
+
+def _load_versions_index(project_name: str) -> list[dict[str, Any]]:
+    path = _versions_index_path(project_name)
+    if path.exists():
+        try:
+            return json.loads(path.read_text(encoding="utf-8"))
+        except Exception:
+            return []
+    return []
+
+
+def _save_versions_index(project_name: str, entries: list[dict[str, Any]]) -> None:
+    _versions_dir(project_name).mkdir(parents=True, exist_ok=True)
+    _versions_index_path(project_name).write_text(json.dumps(entries, indent=2), encoding="utf-8")
+
+
+def _project_summary_counts(project_name: str) -> dict[str, int]:
+    project_dir = get_projects_dir() / project_name
+    kb = load_kb(project_name)
+    counts = {"chapters": 0, "words": 0, "characters": 0, "locations": 0, "lore": 0, "arcs": 0}
+    if kb:
+        counts["characters"] = len(kb.characters)
+        counts["locations"] = len(kb.locations)
+        counts["lore"] = len(kb.lore_entries)
+        counts["arcs"] = len(kb.story_arcs)
+    counts["chapters"] = len(get_existing_chapter_numbers(project_dir))
+    words = 0
+    for path in project_dir.glob("chapter_*.md"):
+        if path.name.endswith("_original.md"):
+            continue
+        try:
+            words += len(path.read_text(encoding="utf-8").split())
+        except Exception:
+            pass
+    counts["words"] = words
+    return counts
+
+
+def save_project_version(project_name: str, label: str | None = None) -> dict[str, Any]:
+    """Snapshot the project as a versioned export bundle in versions/."""
+    bundle = export_project_bundle(project_name)
+    if bundle is None:
+        raise ValueError("Project not found")
+
+    entries = _load_versions_index(project_name)
+    version = max((e.get("version", 0) for e in entries), default=0) + 1
+    fname = f"{_slug(project_name)}_v{version:03d}_{datetime.now(timezone.utc).strftime('%y%m%d')}.libriscribe.json"
+
+    _versions_dir(project_name).mkdir(parents=True, exist_ok=True)
+    (_versions_dir(project_name) / fname).write_text(json.dumps(bundle), encoding="utf-8")
+
+    entry = {
+        "version": version,
+        "file": fname,
+        "label": (label or "").strip(),
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        "summary": _project_summary_counts(project_name),
+    }
+    entries.append(entry)
+    _save_versions_index(project_name, entries)
+    return entry
+
+
+def list_project_versions(project_name: str) -> list[dict[str, Any]]:
+    return sorted(_load_versions_index(project_name), key=lambda e: e.get("version", 0), reverse=True)
+
+
+def _restore_bundle_in_place(project_name: str, bundle: dict[str, Any]) -> None:
+    project_dir = get_projects_dir() / project_name
+    project_data = bundle.get("project_data")
+    if not isinstance(project_data, dict):
+        raise ValueError("Version bundle is malformed")
+
+    project_data = dict(project_data)
+    project_data["project_name"] = project_name
+    kb = ProjectKnowledgeBase.model_validate(project_data)
+    save_kb(project_name, kb)
+
+    # Replace prose: drop current top-level .md, then write the version's files.
+    for path in project_dir.glob("*.md"):
+        try:
+            path.unlink()
+        except Exception:
+            pass
+    for fname, content in {**(bundle.get("files") or {}), **(bundle.get("extras") or {})}.items():
+        if _safe_filename(fname) and isinstance(content, str):
+            try:
+                (project_dir / fname).write_text(content, encoding="utf-8")
+            except Exception:
+                pass
+
+
+def restore_project_version(project_name: str, version: int) -> dict[str, Any]:
+    """Roll the project back to a saved version. Auto-snapshots current state first."""
+    entry = next((e for e in _load_versions_index(project_name) if e.get("version") == version), None)
+    if not entry:
+        raise ValueError("Version not found")
+    bundle_path = _versions_dir(project_name) / entry["file"]
+    if not bundle_path.exists():
+        raise ValueError("Version file is missing")
+    bundle = json.loads(bundle_path.read_text(encoding="utf-8"))
+
+    # Safety: snapshot current state so the rollback is itself reversible.
+    try:
+        save_project_version(project_name, label=f"auto: before restore to v{version:03d}")
+    except Exception:
+        pass
+
+    _restore_bundle_in_place(project_name, bundle)
+    return {"restored_version": version}

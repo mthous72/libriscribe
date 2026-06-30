@@ -12,6 +12,9 @@ export const deleteProject = (name: string) => api.delete(`/projects/${name}`)
 export const importProject = (body: { bundle: any, target_name?: string }) => api.post('/projects/import', body).then(r => r.data)
 export const getProjectProgress = (name: string) => api.get(`/projects/${name}/progress`).then(r => r.data)
 export const updateProjectSettings = (name: string, body: { llm_provider?: string, model?: string, fallback_chain?: string[] }) => api.put(`/projects/${name}/settings`, body).then(r => r.data)
+export const listVersions = (name: string) => api.get(`/projects/${name}/versions`).then(r => r.data)
+export const saveVersion = (name: string, body: { label?: string }) => api.post(`/projects/${name}/versions`, body).then(r => r.data)
+export const restoreVersion = (name: string, version: number) => api.post(`/projects/${name}/versions/${version}/restore`).then(r => r.data)
 export const getProjectStatus = (name: string) => api.get(`/projects/${name}/status`).then(r => r.data)
 
 // ─── Generation ──────────────────────────────────────────────

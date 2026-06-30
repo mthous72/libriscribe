@@ -94,6 +94,34 @@ def export_story(name: str):
     )
 
 
+class SaveVersionRequest(BaseModel):
+    label: str | None = None
+
+
+@router.get("/{name}/versions")
+def list_versions(name: str):
+    return project_service.list_project_versions(name)
+
+
+@router.post("/{name}/versions")
+def save_version(name: str, body: SaveVersionRequest):
+    try:
+        return project_service.save_project_version(name, body.label)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+
+
+@router.post("/{name}/versions/{version}/restore")
+def restore_version(name: str, version: int):
+    """Roll the project back to a saved version (auto-snapshots current state first)."""
+    try:
+        result = project_service.restore_project_version(name, version)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    result["detail"] = project_service.get_project_detail(name)
+    return result
+
+
 class UpdateProjectSettings(BaseModel):
     llm_provider: str | None = None
     model: str | None = None

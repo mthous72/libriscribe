@@ -391,8 +391,14 @@ Phase 2.
 **Pairs with:** Active spec (reuses the bundle format) and B3 (save action is the
 natural snapshot trigger).
 
-**Status:** backlog — versioning & rollback model decided; remaining open questions
-are trigger/retention/export-interaction, then promote to a full spec.
+**Status:** BUILT — Phase 1 (wholesale) in v0.8.0, reusing the export/import bundle.
+`project_service`: `save_project_version` (export bundle → `versions/<slug>_vNNN_yymmdd.libriscribe.json`
++ `versions/versions.json` index with label, timestamp, count summary), `list_project_versions`,
+`restore_project_version` (auto-snapshots current first, then overwrites in place). Endpoints
+`GET|POST /{name}/versions`, `POST /{name}/versions/{version}/restore`. Dashboard **Versions**
+panel: Save Version (optional label), list with counts, Restore (confirm, reversible).
+**Still backlog:** Phase 2 granular per-element restore; retention/pruning; explicit
+"snapshot every manual save" trigger.
 
 ### B5. Settings / API-key overhaul (no junk defaults, per-provider enable)
 

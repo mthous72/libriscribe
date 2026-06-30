@@ -3,8 +3,8 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { useProject } from '../hooks/useProject'
 import { useWebSocket } from '../hooks/useWebSocket'
 import { useGenerationStore } from '../store/generationSlice'
-import { startGeneration, cancelGeneration, resumeGeneration, listChapters, getCost, updateProjectSettings, fetchProviderModels } from '../api/client'
-import { Play, Square, BookOpen, Map, FileText, Download, Save, RefreshCw, Loader2 } from 'lucide-react'
+import { startGeneration, cancelGeneration, resumeGeneration, listChapters, getCost, updateProjectSettings, fetchProviderModels, listVersions, saveVersion, restoreVersion } from '../api/client'
+import { Play, Square, BookOpen, Map, FileText, Download, Save, RefreshCw, Loader2, RotateCcw } from 'lucide-react'
 
 const STAGES = ['concept', 'outline', 'characters', 'worldbuilding', 'chapters', 'formatting']
 const PROVIDERS = [
@@ -32,6 +32,39 @@ export default function ProjectDashboard() {
   const [loadingLlmModels, setLoadingLlmModels] = useState(false)
   const [savingLlm, setSavingLlm] = useState(false)
   const [savedLlm, setSavedLlm] = useState(false)
+  const [versions, setVersions] = useState<any[]>([])
+  const [versionLabel, setVersionLabel] = useState('')
+  const [savingVersion, setSavingVersion] = useState(false)
+
+  const refreshVersions = () => { if (name) listVersions(name).then(setVersions).catch(() => {}) }
+  useEffect(() => { refreshVersions() }, [name])
+
+  const doSaveVersion = async () => {
+    setSavingVersion(true)
+    try {
+      await saveVersion(name!, { label: versionLabel })
+      setVersionLabel('')
+      refreshVersions()
+    } catch (e: any) {
+      alert(e?.response?.data?.detail || 'Failed to save version')
+    } finally {
+      setSavingVersion(false)
+    }
+  }
+
+  const doRestore = async (version: number) => {
+    const vstr = 'v' + String(version).padStart(3, '0')
+    if (!confirm(`Restore to ${vstr}? Your current state is auto-saved as a new version first, so this is reversible.`)) return
+    try {
+      await restoreVersion(name!, version)
+      refresh()
+      if (name) listChapters(name).then(setChapters).catch(() => {})
+      refreshVersions()
+      alert(`Restored to ${vstr}.`)
+    } catch (e: any) {
+      alert(e?.response?.data?.detail || 'Restore failed')
+    }
+  }
 
   useEffect(() => { reset() }, [name])
 
@@ -261,6 +294,45 @@ export default function ProjectDashboard() {
         >
           <Save size={14} /> {savingLlm ? 'Saving...' : savedLlm ? 'Saved!' : 'Save AI Settings'}
         </button>
+      </div>
+
+      {/* Versions */}
+      <div className="bg-gray-900 border border-gray-800 rounded-xl p-4 space-y-3">
+        <div className="flex items-center justify-between gap-2 flex-wrap">
+          <h3 className="text-sm font-medium text-gray-400">Versions</h3>
+          <div className="flex items-center gap-2">
+            <input
+              value={versionLabel}
+              onChange={e => setVersionLabel(e.target.value)}
+              placeholder="optional label (e.g. before Act 2 rewrite)"
+              className="px-2 py-1 bg-gray-800 border border-gray-700 rounded text-xs w-64"
+            />
+            <button onClick={doSaveVersion} disabled={savingVersion} className="flex items-center gap-1 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 rounded-lg text-sm disabled:opacity-50">
+              {savingVersion ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />} Save Version
+            </button>
+          </div>
+        </div>
+        {versions.length === 0 ? (
+          <p className="text-xs text-gray-500">No saved versions yet. Save one to create a restore point — your work, lore, and chapters are snapshotted.</p>
+        ) : (
+          <div className="space-y-1 max-h-56 overflow-y-auto">
+            {versions.map((v: any) => (
+              <div key={v.version} className="flex items-center justify-between px-3 py-2 bg-gray-800 rounded text-xs">
+                <div>
+                  <span className="font-medium">v{String(v.version).padStart(3, '0')}</span>
+                  {v.label && <span className="ml-2 text-indigo-300">{v.label}</span>}
+                  <span className="ml-2 text-gray-500">{v.created_at ? new Date(v.created_at).toLocaleString() : ''}</span>
+                  <div className="text-gray-500 mt-0.5">
+                    {v.summary?.chapters ?? 0} ch · {v.summary?.words ?? 0} words · {v.summary?.characters ?? 0} chars · {v.summary?.locations ?? 0} loc · {v.summary?.lore ?? 0} lore · {v.summary?.arcs ?? 0} arcs
+                  </div>
+                </div>
+                <button onClick={() => doRestore(v.version)} title="Roll back to this version" className="flex items-center gap-1 px-2 py-1 bg-gray-700 hover:bg-amber-700 rounded shrink-0">
+                  <RotateCcw size={12} /> Restore
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Downloads & Export */}
