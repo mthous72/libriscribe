@@ -44,6 +44,28 @@ This fork extends the original CLI tool into a **web application** (FastAPI + Re
 - **Context Builder** with token budgeting assembles relevant lore, character states, continuity notes, arc milestones, and open threads into each scene prompt
 - **Lore Sync** service analyzes entities for consistency and surfaces suggestions
 
+### Desktop app, providers & co-writer (v0.6.0–v0.8.0)
+
+**Packaging & reliability (v0.6.0)**
+- One-click **Windows installer** (no prerequisites); **single-instance** launch, **system-tray** open/quit, and a startup splash
+- User data (projects, `.env`, versions, logs) lives under `%LOCALAPPDATA%\LibriScribe` and survives upgrades
+
+**Providers & models (v0.6.0)**
+- **Model dropdowns** populated live from each provider's API (free models flagged)
+- **Local / OpenAI-compatible provider** (LM Studio, Ollama, llama.cpp, …) for fully offline, private generation
+- Switch the AI **per project**; cleaner Settings (providers off until a real key is added)
+
+**Brainstorm co-writer (v0.7.0)**
+- Lore-aware **side-panel chat** with a **Focus** mode — develop a specific character/location/lore/arc using the surrounding world (companions, arcs, world lore) as read-only context
+- **Apply to lore** turns a brainstormed idea into a draft Character/Location/Lore/Arc (optionally LLM-extracted into typed fields)
+- **Lore JSON import**
+
+**Backup, versioning & portability (v0.8.0)**
+- **Project Export / Import** as a single self-contained `.libriscribe.json` bundle, plus **Story `.txt`** export
+- **Version snapshots** with reversible **rollback**
+- **"Brainstorm this"** button on each lore entry; new-project wizard **draft persistence**
+- Backend **test suite** run automatically by CI
+
 ### Inherited from Original
 - Multi-provider LLM support (OpenAI, Claude, Gemini, DeepSeek, Mistral, OpenRouter)
 - Configurable fallback chain for provider resilience
