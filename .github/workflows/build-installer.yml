@@ -10,6 +10,27 @@ permissions:
   contents: write
 
 jobs:
+  test:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install -e . pytest
+
+      - name: Run tests (non-blocking)
+        continue-on-error: true
+        run: |
+          $env:PYTHONPATH = "src"
+          python -m pytest tests/ -q
+        shell: pwsh
+
   build:
     runs-on: windows-latest
 
@@ -31,14 +52,6 @@ jobs:
         run: |
           pip install -e .
           pip install pyinstaller
-
-      - name: Run tests (non-blocking)
-        continue-on-error: true
-        run: |
-          pip install pytest
-          $env:PYTHONPATH = "src"
-          python -m pytest tests/ -q
-        shell: pwsh
 
       - name: Build frontend
         working-directory: frontend
