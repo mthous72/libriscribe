@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, HTTPException
+from fastapi.responses import JSONResponse, PlainTextResponse
 from pydantic import BaseModel
 
 from libriscribe.api.schemas.project import (
@@ -45,12 +46,52 @@ def create_project(req: CreateProjectRequest):
     return result
 
 
+class ImportProjectRequest(BaseModel):
+    bundle: dict
+    target_name: str | None = None
+
+
+@router.post("/import")
+def import_project(body: ImportProjectRequest):
+    """Import a project from a .libriscribe.json bundle. Auto-renames on collision."""
+    try:
+        result = project_service.import_project_bundle(body.bundle, body.target_name)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    result["detail"] = project_service.get_project_detail(result["project_name"])
+    return result
+
+
 @router.get("/{name}", response_model=ProjectDetail)
 def get_project(name: str):
     detail = project_service.get_project_detail(name)
     if not detail:
         raise HTTPException(status_code=404, detail="Project not found")
     return detail
+
+
+@router.get("/{name}/export")
+def export_project(name: str):
+    """Download the whole project as a single self-contained .libriscribe.json bundle."""
+    bundle = project_service.export_project_bundle(name)
+    if bundle is None:
+        raise HTTPException(status_code=404, detail="Project not found")
+    return JSONResponse(
+        content=bundle,
+        headers={"Content-Disposition": f'attachment; filename="{name}.libriscribe.json"'},
+    )
+
+
+@router.get("/{name}/export/story")
+def export_story(name: str):
+    """Download the story as plain text (chapters as they currently stand)."""
+    text = project_service.export_story_text(name)
+    if text is None:
+        raise HTTPException(status_code=404, detail="Project not found")
+    return PlainTextResponse(
+        content=text,
+        headers={"Content-Disposition": f'attachment; filename="{name}.txt"'},
+    )
 
 
 class UpdateProjectSettings(BaseModel):

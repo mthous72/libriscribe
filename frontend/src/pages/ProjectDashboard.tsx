@@ -263,10 +263,16 @@ export default function ProjectDashboard() {
         </button>
       </div>
 
-      {/* Downloads */}
+      {/* Downloads & Export */}
       <div className="bg-gray-900 border border-gray-800 rounded-xl p-4">
-        <h3 className="text-sm font-medium text-gray-400 mb-3">Downloads</h3>
-        <div className="flex gap-3">
+        <h3 className="text-sm font-medium text-gray-400 mb-3">Downloads &amp; Export</h3>
+        <div className="flex gap-3 flex-wrap">
+          <a href={`/api/projects/${name}/export`} className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 rounded-lg text-sm flex items-center gap-1" title="Full project bundle (lossless) — re-importable">
+            <Download size={14} /> Export Project (.json)
+          </a>
+          <a href={`/api/projects/${name}/export/story`} className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 rounded-lg text-sm flex items-center gap-1" title="The story as plain text (chapters as they stand)">
+            <Download size={14} /> Export Story (.txt)
+          </a>
           <a href={`/api/projects/${name}/download/manuscript.md`} target="_blank" rel="noopener" className="px-3 py-1.5 bg-gray-800 hover:bg-gray-700 rounded-lg text-sm flex items-center gap-1">
             <Download size={14} /> manuscript.md
           </a>

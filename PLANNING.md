@@ -186,7 +186,13 @@ the *entire* project (lossless) and the *readable story* (plain text).
 - **Tests:** export→import round-trip fidelity; story assembly ordering and
   revised-vs-original selection.
 
-**Status:** spec approved — ready to build once the rest of the backlog is captured.
+**Status:** BUILT (v0.8.0). `project_service`: `export_project_bundle` (KB + inlined
+`.md` prose + chat history; excludes keys/indexes), `import_project_bundle` (validates
+schema, recreates the project, **auto-renames on collision**), `export_story_text`
+(assembles current chapters, prefers revised, light Markdown strip). Endpoints:
+`GET /{name}/export`, `GET /{name}/export/story`, `POST /import`. UI: Dashboard
+"Export Project (.json)" + "Export Story (.txt)"; Home "Import Project" (file picker →
+upload → navigate, notes rename). Retrieval index rebuilds lazily on next use.
 
 ---
 

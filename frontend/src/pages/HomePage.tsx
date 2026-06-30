@@ -1,12 +1,32 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { listProjects, deleteProject } from '../api/client'
-import { Plus, Trash2, BookOpen } from 'lucide-react'
+import { listProjects, deleteProject, importProject } from '../api/client'
+import { Plus, Trash2, BookOpen, Upload } from 'lucide-react'
 
 export default function HomePage() {
   const [projects, setProjects] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
+  const [importing, setImporting] = useState(false)
+  const fileRef = useRef<HTMLInputElement>(null)
   const navigate = useNavigate()
+
+  const onImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setImporting(true)
+    try {
+      const bundle = JSON.parse(await file.text())
+      const res = await importProject({ bundle })
+      if (res.renamed) alert(`Imported as "${res.project_name}" — a project named "${res.requested_name}" already existed.`)
+      navigate(`/projects/${res.project_name}`)
+    } catch (err: any) {
+      if (err instanceof SyntaxError) alert('That file is not valid JSON.')
+      else alert(err?.response?.data?.detail || 'Import failed')
+    } finally {
+      setImporting(false)
+      if (fileRef.current) fileRef.current.value = ''
+    }
+  }
 
   const load = async () => {
     try {
@@ -30,12 +50,23 @@ export default function HomePage() {
     <div>
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-2xl font-bold">Projects</h1>
-        <button
-          onClick={() => navigate('/projects/new')}
-          className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 rounded-lg text-sm font-medium"
-        >
-          <Plus size={16} /> New Project
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => fileRef.current?.click()}
+            disabled={importing}
+            title="Import a project from a .libriscribe.json bundle"
+            className="flex items-center gap-2 px-4 py-2 bg-gray-800 hover:bg-gray-700 rounded-lg text-sm font-medium disabled:opacity-50"
+          >
+            <Upload size={16} /> {importing ? 'Importing…' : 'Import Project'}
+          </button>
+          <input ref={fileRef} type="file" accept="application/json,.json,.libriscribe.json" className="hidden" onChange={onImport} />
+          <button
+            onClick={() => navigate('/projects/new')}
+            className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 rounded-lg text-sm font-medium"
+          >
+            <Plus size={16} /> New Project
+          </button>
+        </div>
       </div>
 
       {projects.length === 0 ? (
