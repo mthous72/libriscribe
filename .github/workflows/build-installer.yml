@@ -32,6 +32,14 @@ jobs:
           pip install -e .
           pip install pyinstaller
 
+      - name: Run tests (non-blocking)
+        continue-on-error: true
+        run: |
+          pip install pytest
+          $env:PYTHONPATH = "src"
+          python -m pytest tests/ -q
+        shell: pwsh
+
       - name: Build frontend
         working-directory: frontend
         run: |
