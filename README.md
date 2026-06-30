@@ -54,7 +54,31 @@ This fork extends the original CLI tool into a **web application** (FastAPI + Re
 
 ---
 
-## Quickstart
+## Install (Windows)
+
+The easiest way to use LibriScribe is the prebuilt Windows installer — **no Python, Node.js, or other prerequisites required.**
+
+1. Go to the [**Releases**](https://github.com/mthous72/libriscribe/releases) page and download the latest `LibriScribeGUI-<version>-Setup.exe`.
+2. Run the installer (a standard wizard; installs for your user account).
+3. Launch **LibriScribe GUI** from the Start Menu. It starts a local web server and opens your browser at `http://127.0.0.1:8000`. A **system-tray icon** lets you open the app or quit it.
+4. Open **Settings** and add an API key for any provider you want (OpenAI, Claude, Gemini, DeepSeek, Mistral, OpenRouter) — or point it at a **local LLM** (LM Studio / Ollama) via the *Local (OpenAI-compatible)* provider for fully offline, private generation.
+
+**Where your data lives:** projects, settings (`.env`), version snapshots, and logs are stored under `%LOCALAPPDATA%\LibriScribe` (not in Program Files), so they survive upgrades. Use **Export Project** / **Import Project** on the dashboard to move a book between machines.
+
+**Updating:** download the newer `Setup.exe` and run it over your existing install — your projects and settings are untouched.
+
+**It runs locally:** the app is a web server bound to `127.0.0.1`; nothing leaves your machine except calls to whichever LLM provider you configure (and nothing at all if you use a local LLM).
+
+### Building the installer yourself
+
+Installers are produced by GitHub Actions ([`.github/workflows/build-installer.yml`](.github/workflows/build-installer.yml)): PyInstaller bundles the app with a Python runtime, then Inno Setup wraps it into a single self-contained `Setup.exe`.
+
+- **Publish a release:** push a `v*` tag (e.g. `git tag v0.8.0 && git push origin v0.8.0`) — the workflow builds the installer and attaches it to a GitHub Release.
+- **Just get an installer (no release):** Actions → *Build Windows Installer* → **Run workflow**, then download the `LibriScribeGUI-Installer` artifact.
+
+---
+
+## Run from source (developers)
 
 ### 1. Install
 
