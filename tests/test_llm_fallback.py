@@ -32,7 +32,7 @@ class ScriptedLLMClient(LLMClient):
         self.scripts = {key: list(value) for key, value in scripts.items()}
         self.calls = []
 
-    def _generate_once(self, route, prompt, max_tokens, temperature):
+    def _generate_once(self, route, prompt, max_tokens, temperature, system_prompt=None):
         self.calls.append((route.provider, route.model, prompt))
         key = (route.provider, route.model)
         result = self.scripts[key].pop(0)
