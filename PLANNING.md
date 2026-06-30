@@ -607,6 +607,42 @@ wasn't needed — the focused drawer covers it.)
 "Resumed your in-progress draft — Start fresh" banner); the draft is cleared on
 successful create.
 
+### Spec — B12. Smart Apply: multi-category lore extraction from brainstorm — APPROVED, building
+
+**Problem:** today's "Apply to lore" (chat.py `apply_to_lore`) targets ONE entity of ONE
+type with a curated field subset and OVERWRITES by name. A rich brainstorm reply has too
+much info for that — it often spans several entities/categories and should *update*
+existing entries, not clobber them.
+
+**Decisions (resolved):**
+- **Smart merge** for existing entries (match by name, case-insensitive): fill empty
+  fields, update fields the parse clearly revises, **preserve anything not mentioned**
+  (never wipe untouched data). New names are created.
+- **Review & confirm**: parse → show a review panel (records grouped by category, New vs
+  Update badge, editable, per-record checkboxes) → nothing is written until "Apply
+  selected".
+
+**Backend (api/routers/chat.py, reuse lore-import shape + `_SMART_FIELDS`):**
+- `POST /{name}/chat/parse` `{text}` → LLM extracts `{characters:[], locations:[], lore:[],
+  arcs:[]}` (each item = name + the `_SMART_FIELDS` for its type). For each record, annotate
+  `status: "new" | "update"` by matching name against the KB. **Does NOT write.** Returns the
+  proposal. (Reuse `generate_content_with_json_repair`; prompt = "parse into these categories
+  with these fields…".)
+- `POST /{name}/chat/apply-parsed` `{records: {...}}` → upsert with **merge**: for each entity,
+  start from existing `model_dump()` (or empty), overlay provided non-empty fields, rebuild the
+  model, save. Return per-category counts. (Generalize the lore-import `_coerce` to merge onto an
+  existing record instead of replacing.)
+
+**Frontend (BrainstormDrawer):**
+- Replace the simple Apply (type+name) form with **Parse to lore**: call `/chat/parse`, render a
+  review list grouped by category — each row: New/Update badge, editable fields, checkbox
+  (default checked). **Apply selected** → `/chat/apply-parsed` with the chosen/edited records →
+  toast with counts + link to Lorebook.
+- Keep the old quick draft-apply path as a fallback option if useful.
+
+**Reuses:** lore-import normalized shape & `_iter_entities`/`_coerce`, `_SMART_FIELDS`, the
+focus context engine. **Target:** next feature (post v0.8.0 staging).
+
 **Recommended sequence:** B9 (chat/RAG co-writer) → B10 (per-lore assist) → B8 (series,
 phased). Each is independently valuable; B9/B10 also de-risk B8 by proving the lore-aware
 context pipeline before the bigger data-model change. **Status: brainstorm — none specced
