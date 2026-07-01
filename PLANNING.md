@@ -7,6 +7,32 @@ Last updated: 2026-06-29
 
 ---
 
+## Backlog (held) — Cloud storage / sync (researched 2026-07-01, HELD per user)
+
+Idea: let users keep project data on OneDrive / Google Drive / Proton Drive. The export/import
+`.libriscribe.json` bundle is the natural sync unit. **Held for now** after a Proton reality check.
+
+**Proton Drive reality (key reason held):**
+- No official third-party API/SDK ready yet. Proton is building a Drive SDK (JS/C#) but the
+  **auth + standalone-integration modules aren't available**, with a crypto migration targeted
+  ~end-2026/early-2027. (proton.me/blog/proton-drive-sdk-preview; github ProtonDriveApps/sdk)
+- Only path that works today = **unofficial** rclone `protondrive` backend + Proton-API-Bridge
+  (reverse-engineered, E2EE-complex, can break on Proton changes). rclone.org/protondrive
+- **In-app Proton account sign-up is NOT feasible** (CAPTCHA/anti-abuse + ToS). Best UX =
+  connect an existing account + deep-link to Proton's sign-up page.
+- Net: Proton is the hardest/riskiest of the three; OneDrive/Google Drive are the easy ones
+  (official OAuth: Microsoft Graph / Google Drive API).
+
+**Recommended approach when revisited (phased):**
+1. **Sync-folder MVP** — a configurable data directory + guided setup so users point LibriScribe
+   at a folder their OneDrive/GDrive/Proton **desktop client already syncs**. Works for all three
+   today, zero API/crypto/ToS risk. (Settings already has `projects_dir`; mostly a UI + doc task.)
+2. **rclone-backed app-managed backup/restore** — bundle rclone; one `CloudBackend` interface
+   (list/upload/download/auth) covering OneDrive + GDrive (official OAuth) and Proton (experimental).
+3. **Native Proton SDK** integration once Proton ships third-party auth (~2027).
+
+---
+
 ## Refactoring (from codebase review, 2026-07-01)
 
 A 4-agent maintainability review produced a tiered plan. **Tier 1 (glue dedup + logging)
