@@ -175,7 +175,7 @@ export default function BrainstormDrawer({ projectName }: { projectName: string 
                 <option value="">Whole project</option>
                 {ents.character.length > 0 && <optgroup label="Characters">{ents.character.map(n => <option key={'character:' + n} value={'character:' + n}>{n}</option>)}</optgroup>}
                 {ents.location.length > 0 && <optgroup label="Locations">{ents.location.map(n => <option key={'location:' + n} value={'location:' + n}>{n}</option>)}</optgroup>}
-                {ents.lore.length > 0 && <optgroup label="Lore">{ents.lore.map(n => <option key={'lore:' + n} value={'lore:' + n}>{n}</option>)}</optgroup>}
+                {ents.lore.length > 0 && <optgroup label="Codex">{ents.lore.map(n => <option key={'lore:' + n} value={'lore:' + n}>{n}</option>)}</optgroup>}
                 {ents.arc.length > 0 && <optgroup label="Arcs">{ents.arc.map(n => <option key={'arc:' + n} value={'arc:' + n}>{n}</option>)}</optgroup>}
               </select>
             </label>
@@ -206,7 +206,7 @@ export default function BrainstormDrawer({ projectName }: { projectName: string 
             {messages.length === 0 && (
               <p className="text-xs text-gray-500 text-center py-8">
                 Bounce ideas around — the AI sees this project's lore. Use <b>Apply</b> on a reply
-                to turn an idea into a character, location, lore entry, or arc.
+                to turn an idea into a character, location, codex entry, or arc.
               </p>
             )}
             {messages.map((m, i) => (

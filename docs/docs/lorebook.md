@@ -14,7 +14,8 @@ Tabs for each kind of lore:
 - **Characters** — role, appearance, personality, background, motivations, arcs, relationships,
   and a **voice profile** (speech patterns, vocabulary, verbal tics) that shapes their dialogue.
 - **Locations** — description, significance, associated characters.
-- **Lore** — factions, items, concepts, events (typed entries).
+- **Codex** — factions, organizations, items, technology, concepts, events, rules (the named
+  world entities that aren't people, places, or plots).
 - **Arcs** — story arcs with milestones tracked during generation.
 - **Worldbuilding**, **Threads** (auto-detected plot promises), and a cross-reference **Graph**.
 

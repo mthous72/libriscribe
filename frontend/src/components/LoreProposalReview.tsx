@@ -18,7 +18,7 @@ interface RecState { include: boolean; name: string; status: string; fields: Rec
 const CATS: [keyof Proposal, string][] = [
   ['characters', 'Characters'],
   ['locations', 'Locations'],
-  ['lore', 'Lore'],
+  ['lore', 'Codex'],
   ['arcs', 'Arcs'],
 ]
 

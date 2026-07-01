@@ -22,6 +22,8 @@ const TAB_TO_FOCUS: Record<string, string> = { Characters: 'character', Location
 import { useUiStore } from '../store/uiSlice'
 
 const TABS = ['Characters', 'Locations', 'Lore', 'Arcs', 'Threads', 'World', 'Graph', 'References']
+// Display labels (the internal tab key stays 'Lore' so routing/backend keys are unchanged).
+const TAB_LABELS: Record<string, string> = { Lore: 'Codex' }
 
 function EntityList({ items, onSelect, onDelete, onAnalyze, labelKey = 'name', badgeKey }: any) {
   return (
@@ -255,7 +257,7 @@ export default function LorebookPage() {
       <div className="flex items-center justify-between mb-4 gap-2 flex-wrap">
         <div className="flex gap-1">
           {TABS.map(t => (
-            <button key={t} onClick={() => { setTab(t); setSelected(null) }} className={`px-3 py-1.5 rounded-lg text-sm ${tab === t ? 'bg-indigo-600' : 'bg-gray-800 hover:bg-gray-700'}`}>{t}</button>
+            <button key={t} onClick={() => { setTab(t); setSelected(null) }} className={`px-3 py-1.5 rounded-lg text-sm ${tab === t ? 'bg-indigo-600' : 'bg-gray-800 hover:bg-gray-700'}`}>{TAB_LABELS[t] || t}</button>
           ))}
         </div>
         {tab !== 'References' && (
