@@ -49,7 +49,7 @@ export default function ChapterEditorPage() {
     <div className="space-y-4">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div className="flex items-center gap-3 min-w-0">
-          <button onClick={() => navigate(`/projects/${name}`)} className="text-gray-400 hover:text-gray-200 shrink-0">
+          <button onClick={() => navigate(`/projects/${name}`)} className="text-gray-400 hover:text-gray-200 shrink-0 p-1.5 -m-1.5" title="Back to project">
             <ArrowLeft size={20} />
           </button>
           <h1 className="text-xl font-bold truncate">Chapter {n}: {title}</h1>
@@ -74,7 +74,7 @@ export default function ChapterEditorPage() {
                 <h2 className="text-sm font-semibold">AI context for Chapter {n}</h2>
                 <p className="text-[11px] text-gray-500">The lore/context injected into the chapter-writing prompt · ~{ctx.token_estimate} tokens · no LLM call</p>
               </div>
-              <button onClick={() => setCtx(null)} className="text-gray-500 hover:text-gray-200"><X size={18} /></button>
+              <button onClick={() => setCtx(null)} className="text-gray-500 hover:text-gray-200 p-1.5 -m-1" title="Close"><X size={18} /></button>
             </div>
             <pre className="max-h-[65vh] overflow-auto text-[11px] text-gray-300 whitespace-pre-wrap bg-gray-900 border border-gray-800 rounded p-2">{ctx.context || '(no context assembled — add lore, or write earlier chapters)'}</pre>
           </div>
@@ -84,7 +84,7 @@ export default function ChapterEditorPage() {
       <textarea
         value={content}
         onChange={e => { setContent(e.target.value); setDirty(true); useUiStore.getState().markDirty() }}
-        className="w-full h-[calc(100vh-200px)] bg-gray-900 border border-gray-800 rounded-xl p-4 font-mono text-sm text-gray-200 resize-none focus:outline-none focus:border-indigo-600"
+        className="w-full h-[65vh] sm:h-[calc(100vh-200px)] bg-gray-900 border border-gray-800 rounded-xl p-4 font-mono text-sm text-gray-200 resize-none focus:outline-none focus:border-indigo-600"
         spellCheck={false}
       />
     </div>

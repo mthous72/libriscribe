@@ -65,7 +65,7 @@ export default function OutlinePage() {
   return (
     <div className="space-y-4">
       <div className="flex items-center gap-3">
-        <button onClick={() => navigate(`/projects/${name}`)} className="text-gray-400 hover:text-gray-200"><ArrowLeft size={20} /></button>
+        <button onClick={() => navigate(`/projects/${name}`)} className="text-gray-400 hover:text-gray-200 p-1.5 -m-1.5" title="Back to project"><ArrowLeft size={20} /></button>
         <h1 className="text-2xl font-bold">Outline</h1>
       </div>
 
@@ -99,7 +99,7 @@ export default function OutlinePage() {
                       <p className="text-gray-400 mt-0.5">{s.summary?.slice(0, 80)}</p>
                       <p className="text-gray-500 mt-0.5">Setting: {s.setting} | Characters: {s.characters?.join(', ')}</p>
                     </div>
-                    <button onClick={() => removeScene(s.scene_number)} className="text-gray-600 hover:text-red-400"><Trash2 size={12} /></button>
+                    <button onClick={() => removeScene(s.scene_number)} className="text-gray-600 hover:text-red-400 p-2 -m-1" title="Delete scene"><Trash2 size={12} /></button>
                   </div>
                 ))}
               </div>
@@ -178,7 +178,7 @@ export default function OutlinePage() {
                         return next
                       })
                     }}
-                    className={`shrink-0 ${isLocked ? 'text-amber-400' : 'text-gray-600 hover:text-gray-400'}`}
+                    className={`shrink-0 p-1.5 -ml-1 ${isLocked ? 'text-amber-400' : 'text-gray-600 hover:text-gray-400'}`}
                     title={isLocked ? 'Locked (click to unlock)' : 'Unlocked (click to lock)'}
                   >
                     {isLocked ? <Lock size={14} /> : <Unlock size={14} />}

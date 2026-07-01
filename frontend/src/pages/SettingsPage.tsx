@@ -149,9 +149,9 @@ export default function SettingsPage() {
                 <>
                   <label className="block">
                     <span className="text-xs text-gray-400">Server Base URL</span>
-                    <div className="flex gap-2 mt-1">
+                    <div className="flex flex-wrap gap-2 mt-1">
                       <input
-                        className="flex-1 px-3 py-1.5 bg-gray-800 border border-gray-700 rounded-lg text-sm"
+                        className="flex-1 min-w-0 basis-full sm:basis-0 px-3 py-1.5 bg-gray-800 border border-gray-700 rounded-lg text-sm"
                         value={settings.local_base_url || ''}
                         onChange={e => setSettings({ ...settings, local_base_url: e.target.value })}
                         onBlur={e => {
