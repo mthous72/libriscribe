@@ -27,6 +27,14 @@ cd frontend && npm run build
 # Output in frontend/dist/, served by FastAPI StaticFiles
 ```
 
+### Run frontend responsive/layout tests
+```bash
+cd frontend && npm run test:responsive
+# Playwright builds the bundle, serves it, mocks /api, and asserts no
+# horizontal overflow at 320/375/414px plus correct nav collapse.
+# First run elsewhere: `npx playwright install chromium`.
+```
+
 ### Run all tests
 ```bash
 PYTHONPATH=src python -m pytest tests/

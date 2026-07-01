@@ -12,6 +12,9 @@ build/
 dist/
 projects/
 frontend/dist/
+frontend/test-results/
+frontend/playwright-report/
+frontend/playwright/.cache/
 libriscribe.log
 llm_usage.jsonl
 *.spec.bak
