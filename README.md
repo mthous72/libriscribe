@@ -73,6 +73,15 @@ This fork extends the original CLI tool into a **web application** (FastAPI + Re
 - **Smart import** of lore JSON from other tools — **SillyTavern** character cards & World Info, **KoboldAI** World Info, or our own bundle — auto-detected and mapped into your lorebook (with an optional AI-map pass for unknown formats), also via the same review panel
 - **Smart merge** on apply: existing entries are updated field-by-field — empty fields filled, revised fields updated, and **anything not mentioned is preserved** (never overwrites untouched data)
 
+**Retrieval, references & co-writer upgrades (v0.9.0)**
+- **Semantic & hybrid search** over your lore and prose, powered by embeddings from a cloud provider or a **local (offline) server** (LM Studio / Ollama) — chosen per book, with a safe keyword fallback
+- **Bring-your-own reference material** — import **PDF / TXT / Markdown** (and **scanned PDFs / images via OCR**) as a distinct *source* that grounds brainstorming and generation but never becomes canon and is excluded from exports
+- **OCR** for scanned documents via bundled **Tesseract** (no separate install in the packaged app)
+- **Multiple parallel brainstorm sessions** per book — named threads, each with its own history and persistent Focus
+- **Manuscript stats** — readability (Flesch), counts, dialogue/adverb ratios, and per-chapter pacing
+- **Prompt / context preview** — see the exact assembled prompt and injected lore/context before spending a token (brainstorm and chapter generation)
+- **Live documentation site** (Docusaurus)
+
 ### Inherited from Original
 - Multi-provider LLM support (OpenAI, Claude, Gemini, DeepSeek, Mistral, OpenRouter)
 - Configurable fallback chain for provider resilience
