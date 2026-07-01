@@ -1,6 +1,6 @@
-import { useMemo, useState } from 'react'
-import { applyParsed, extractFields } from '../api/client'
-import { Loader2, Check } from 'lucide-react'
+import { useEffect, useMemo, useState } from 'react'
+import { applyParsed, extractFields, listCharacters, listLocations, listLoreEntries, listArcs } from '../api/client'
+import { Loader2, Check, RefreshCw } from 'lucide-react'
 
 // A reviewable lore proposal: records grouped by category, each with a new/update status
 // and editable typed fields. Shared by the brainstorm Smart Apply and JSON import flows.
@@ -13,7 +13,7 @@ export interface Proposal {
   worldbuilding?: { status: 'new' | 'update'; fields: Record<string, string> }
 }
 
-interface RecState { _id: string; include: boolean; name: string; status: string; fields: Record<string, string>; reparsing?: boolean }
+interface RecState { _id: string; include: boolean; name: string; status: string; fields: Record<string, string>; reparsing?: boolean; note?: string }
 
 const CATS: [keyof Proposal, string][] = [
   ['characters', 'Characters'],
@@ -54,6 +54,34 @@ export default function LoreProposalReview({
   const [busy, setBusy] = useState(false)
   const [summary, setSummary] = useState<any | null>(null)
   const [error, setError] = useState('')
+  // Names of existing records per category, so an imported entry can be pointed at an existing
+  // entity (pulldown next to the name) to merge/update it instead of creating a new one.
+  const [existing, setExisting] = useState<Record<string, string[]>>({ characters: [], locations: [], lore: [], arcs: [] })
+  // Global lock: only one LLM re-parse runs at a time so we never fire concurrent LM Studio calls.
+  const [reparsingActive, setReparsingActive] = useState(false)
+
+  useEffect(() => {
+    if (!projectName) return
+    Promise.all([
+      listCharacters(projectName).catch(() => []),
+      listLocations(projectName).catch(() => []),
+      listLoreEntries(projectName).catch(() => []),
+      listArcs(projectName).catch(() => []),
+    ]).then(([c, l, lo, a]) => setExisting({
+      characters: (c || []).map((x: any) => x?.name).filter(Boolean),
+      locations: (l || []).map((x: any) => x?.name).filter(Boolean),
+      lore: (lo || []).map((x: any) => x?.name).filter(Boolean),
+      arcs: (a || []).map((x: any) => x?.name).filter(Boolean),
+    })).catch(() => {})
+  }, [projectName])
+
+  // An entry is an Update when its (trimmed, case-insensitive) name matches an existing record
+  // of its current category — recomputed live as the name/type is edited or picked from the pulldown.
+  const statusFor = (cat: string, name: string, fallback: string) => {
+    const n = (name || '').trim().toLowerCase()
+    if (!n) return fallback
+    return (existing[cat] || []).some(e => e.toLowerCase() === n) ? 'update' : (fallback === 'update' ? 'new' : fallback)
+  }
 
   const clone = (s: typeof state) => JSON.parse(JSON.stringify(s)) as typeof state
 
@@ -76,15 +104,37 @@ export default function LoreProposalReview({
     return c
   })
 
+  // Re-parse an entry's raw content into a category's sub-fields via one LLM call. Serialized
+  // behind `reparsingActive` so re-filing several entries never fires concurrent LM Studio calls,
+  // and the outcome is surfaced (note) so a failed/empty parse isn't silently "all in background".
+  const runExtract = async (id: string, name: string, content: string, category: string) => {
+    if (reparsingActive) return
+    setReparsingActive(true)
+    findAndUpdate(id, r => { r.reparsing = true; r.note = '' })
+    try {
+      const res = await extractFields(projectName, { name, content, category })
+      const fields = res?.fields || {}
+      if (Object.keys(fields).length) findAndUpdate(id, r => { r.fields = fields; r.note = '' })
+      else findAndUpdate(id, r => { r.note = 'empty' })  // model returned nothing usable
+    } catch {
+      findAndUpdate(id, r => { r.note = 'error' })        // no LLM configured / call failed
+    } finally {
+      findAndUpdate(id, r => { r.reparsing = false })
+      setReparsingActive(false)
+    }
+  }
+
+  const currentContent = (rec: RecState) => Object.values(rec.fields || {}).filter(Boolean).join('\n')
+
   // Reassign an entry's type (e.g. a World Info entry that's really a character), then re-parse
-  // its content into that type's sub-fields via the LLM. The move preserves content
-  // (description <-> background) so it survives even if the re-parse is skipped or fails.
+  // its content into that type's sub-fields. The move preserves content (description <-> background)
+  // so it survives even if the re-parse is skipped or fails.
   const changeType = async (fromCat: string, idx: number, toCat: string) => {
-    if (fromCat === toCat) return
+    if (fromCat === toCat || reparsingActive) return
     const rec = (state as any)[fromCat]?.[idx] as RecState | undefined
     if (!rec) return
     const id = rec._id
-    const content = Object.values(rec.fields || {}).filter(Boolean).join('\n')
+    const content = currentContent(rec)
 
     setState(prev => {
       const c = clone(prev)
@@ -98,14 +148,15 @@ export default function LoreProposalReview({
       return c
     })
 
-    findAndUpdate(id, r => { r.reparsing = true })
-    try {
-      const res = await extractFields(projectName, { name: rec.name, content, category: toCat })
-      if (res?.fields && Object.keys(res.fields).length) {
-        findAndUpdate(id, r => { r.fields = res.fields })
-      }
-    } catch { /* keep the moved record as-is (content preserved above) */ }
-    finally { findAndUpdate(id, r => { r.reparsing = false }) }
+    await runExtract(id, rec.name, content, toCat)
+  }
+
+  // Manually re-run the parse for an entry's current category (retry after a failed/empty parse,
+  // or after editing the name/content).
+  const reparseRecord = (cat: string, idx: number) => {
+    const rec = (state as any)[cat]?.[idx] as RecState | undefined
+    if (!rec || reparsingActive) return
+    runExtract(rec._id, rec.name, currentContent(rec), cat)
   }
 
   const selectedCount = useMemo(() => {
@@ -158,7 +209,9 @@ export default function LoreProposalReview({
         Review what will be saved. <b className="text-green-300">New</b> entries are created;{' '}
         <b className="text-amber-300">Update</b> entries fill empty fields and revise changed ones —
         anything not shown here is preserved. Use the type dropdown to re-file an entry
-        (e.g. a World Info entry that's really a character); uncheck or edit anything before applying.
+        (e.g. a World Info entry that's really a character), or the <i>match…</i> dropdown to point
+        it at an existing record so it merges into that one. Re-parses run one at a time; edit or
+        uncheck anything before applying.
       </p>
 
       {!hasAny && <p className="text-xs text-gray-500 italic">Nothing to review.</p>}
@@ -173,25 +226,53 @@ export default function LoreProposalReview({
               <div className="space-y-2">
                 {recs.map((r, idx) => (
                   <div key={idx} className={`rounded border ${r.include ? 'border-gray-700 bg-gray-900' : 'border-gray-800 bg-gray-900/40 opacity-60'} p-2`}>
-                    <div className="flex items-center gap-2">
+                    <div className="flex flex-wrap items-center gap-1.5">
                       <input type="checkbox" checked={r.include} onChange={e => setRec(key as string, idx, { include: e.target.checked })} />
                       <input
                         value={r.name}
                         onChange={e => setRec(key as string, idx, { name: e.target.value })}
-                        className="flex-1 px-2 py-1 bg-gray-800 border border-gray-700 rounded text-xs font-medium"
+                        className="flex-1 min-w-[8rem] px-2 py-1 bg-gray-800 border border-gray-700 rounded text-xs font-medium"
                       />
+                      {(existing[key as string] || []).length > 0 && (
+                        <select
+                          value=""
+                          onChange={e => { if (e.target.value) setRec(key as string, idx, { name: e.target.value }) }}
+                          title="Match an existing entry — its name is used so this merges into that record instead of creating a new one"
+                          className="px-1 py-1 bg-gray-800 border border-gray-700 rounded text-[11px] text-gray-400 max-w-[7rem]"
+                        >
+                          <option value="">match…</option>
+                          {(existing[key as string] || []).map(n => <option key={n} value={n}>{n}</option>)}
+                        </select>
+                      )}
                       <select
                         value={key as string}
                         onChange={e => changeType(key as string, idx, e.target.value)}
-                        disabled={r.reparsing}
+                        disabled={r.reparsing || reparsingActive}
                         title="Change this entry's type — its fields are re-parsed for the new type"
                         className="px-1.5 py-1 bg-gray-800 border border-gray-700 rounded text-[11px] text-gray-300 disabled:opacity-50"
                       >
                         {CATS.map(([k, lbl]) => <option key={k as string} value={k as string}>{lbl}</option>)}
                       </select>
-                      {r.reparsing && <Loader2 size={12} className="animate-spin text-indigo-400" />}
-                      <Badge status={r.status} />
+                      <button
+                        onClick={() => reparseRecord(key as string, idx)}
+                        disabled={r.reparsing || reparsingActive}
+                        title="Re-parse this entry's content into the fields for its current type"
+                        className="p-1 text-gray-400 hover:text-indigo-300 disabled:opacity-40"
+                      >
+                        {r.reparsing ? <Loader2 size={12} className="animate-spin text-indigo-400" /> : <RefreshCw size={12} />}
+                      </button>
+                      <Badge status={statusFor(key as string, r.name, r.status)} />
                     </div>
+                    {r.note === 'empty' && (
+                      <p className="mt-1 pl-6 text-[10px] text-amber-400/90">
+                        Couldn't auto-parse into fields — content kept in {key === 'characters' ? 'Background' : 'Description'}. Edit below or re-parse.
+                      </p>
+                    )}
+                    {r.note === 'error' && (
+                      <p className="mt-1 pl-6 text-[10px] text-red-400/90">
+                        Re-parse failed — check that a model is configured for this project, then retry.
+                      </p>
+                    )}
                     {r.include && Object.keys(r.fields).length > 0 && (
                       <div className="mt-2 space-y-1.5 pl-6">
                         {Object.entries(r.fields).map(([f, v]) => (
