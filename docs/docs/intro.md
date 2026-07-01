@@ -2,36 +2,52 @@
 sidebar_position: 1
 ---
 
-# Introduction to LibriScribe
+# Introduction
 
-LibriScribe is an AI-powered book writing assistant designed to streamline the creative process. It uses a multi-agent architecture, with each agent specialized in a particular task. It now supports three setup flows: Simple Guided Setup, Advanced Guided Setup, and Expert configuration files for repeatable runs and deeper customization.
+**LibriScribe** is an AI-powered, multi-agent book-writing application. Specialized agents
+collaborate — concept, outline, characters, worldbuilding, chapter drafting, editing,
+formatting — orchestrated by a project manager agent that runs the whole pipeline.
 
-## Core Concepts
+This documentation covers the **web-app fork**: the original command-line tool has been
+extended into a local **desktop/web application** (FastAPI + React) with a one-click Windows
+installer, live provider/model selection, local-LLM support, a lore-aware brainstorm
+co-writer, versioning, portable export/import, semantic search over your own reference
+material, and more.
 
-LibriScribe is built around the idea of a **multi-agent system**.  Each agent is a Python class responsible for a specific aspect of the book writing process.  This modular design makes the project extensible and easier to maintain.
+## What you get
 
-## Agents
+- **Runs locally.** A web server on `127.0.0.1` with a browser UI and a system-tray icon.
+  Nothing leaves your machine except calls to whichever LLM provider you configure — and
+  nothing at all if you use a local model.
+- **Multi-agent generation** from concept → outline → characters → worldbuilding → chapters →
+  editing → formatting.
+- **A living lorebook** — characters, locations, lore entries, story arcs, worldbuilding — with
+  cross-references and search.
+- **A brainstorm co-writer** that sees your lore, can focus on a single entity, keeps multiple
+  parallel chat sessions, and turns ideas into structured lore.
+- **Bring-your-own sources** — import reference PDFs/text (with OCR for scans) and ground the
+  AI in them without polluting your canon.
+- **Your data stays yours** — export/import a whole project as one file, snapshot versions and
+  roll back, and read everything as plain files under `%LOCALAPPDATA%\LibriScribe`.
 
-Here's a brief overview of the key agents:
+## Where to go next
 
-*   **`ProjectManagerAgent`:**  Manages the overall workflow and coordinates the other agents.  This is the main interface for the command-line tool.
-*   **`ConceptGeneratorAgent`:**  Generates initial book concepts, including title, logline, and a detailed description.
-*   **`OutlinerAgent`:**  Creates a comprehensive chapter-by-chapter outline for the book.
-*   **`CharacterGeneratorAgent`:**  Generates detailed character profiles, including background, personality, and relationships.
-*   **`WorldbuildingAgent`:**  Creates detailed worldbuilding information (history, culture, geography, etc.) relevant to the book's genre and setting.
-*   **`ChapterWriterAgent`:**  Writes the first draft of a chapter based on the outline, character profiles, and worldbuilding details.
-*   **`EditorAgent`:**  Refines and edits a chapter, focusing on clarity, consistency, grammar, and style.
-*   **`StyleEditorAgent`:** Refines the chapter's writing style based on specified tone and target audience preferences.
-*   **`ContentReviewerAgent`:** Reviews chapter content for consistency, clarity, and plot holes.
-*   **`FactCheckerAgent`:**  (Primarily for non-fiction) Verifies factual claims made within a chapter.
-*   **`PlagiarismCheckerAgent`:**  Identifies potential plagiarism issues in a chapter.
-*   **`ResearcherAgent`:**  Conducts web research on a specified topic and provides a summary of findings.
-*   **`FormattingAgent`:**  Combines all generated chapters into a single, well-formatted Markdown or PDF document.
+- **[Getting Started](./getting-started)** — install the Windows app (or run from source) and
+  create your first project.
+- **[Using LibriScribe](./usage)** — the end-to-end workflow.
+- **[Providers & Models](./providers-and-models)** — cloud providers, live model lists, and
+  local (offline) LLMs.
+- **[The Lorebook](./lorebook)**, **[Brainstorm Co-writer](./brainstorm)**,
+  **[Semantic Search & Local Embeddings](./semantic-search)**,
+  **[Versioning, Export & Import](./versioning-and-export)**, and
+  **[Manuscript Stats & Prompt Preview](./stats-and-preview)**.
 
-## Getting Started
+## Credits
 
-See the [Installation Guide](./getting-started) for detailed instructions on setting up LibriScribe.
-
-## Usage
-
-The [Usage Guide](./usage) explains the current CLI workflow, including Simple, Advanced, and Expert modes, plus provider defaults, project-level model overrides, and per-agent model selection.
+This project is a fork of [LibriScribe](https://github.com/guerra2fernando/libriscribe) by
+**Fernando Guerra** and **Lenxys**, which provided the core multi-agent architecture, LLM
+client, and prompt system. Several of the fork's features (semantic retrieval, bring-your-own
+reference RAG, OCR, and multi-session brainstorming) were inspired by
+[Writingway](https://github.com/a-omukai/Writingway) by **a-omukai** (MIT) — a kindred
+open-source AI writing tool; support them via their
+[Discord](https://discord.gg/xkkGaRFXNX).

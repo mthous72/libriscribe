@@ -20,10 +20,7 @@ const config: Config = {
   organizationName: 'mthous72', // Usually your GitHub org/user name.
   projectName: 'libriscribe', // Usually your repo name.
 
-  // NOTE: set to 'warn' so a stale-content link doesn't fail the whole build/deploy
-  // while the fork's docs are being refreshed (see the "Docs refresh" track in PLANNING.md).
-  // Restore to 'throw' once the content pass is done.
-  onBrokenLinks: 'warn',
+  onBrokenLinks: 'throw',
   onBrokenMarkdownLinks: 'warn',
 
   // Even if you don't use internationalization, you can use this field to set
@@ -45,21 +42,7 @@ const config: Config = {
           editUrl:
             'https://github.com/mthous72/libriscribe/tree/main/docs/',
         },
-        blog: {
-          showReadingTime: true,
-          feedOptions: {
-            type: ['rss', 'atom'],
-            xslt: true,
-          },
-          // Please change this to your repo.
-          // Remove this to remove the "edit this page" links.
-          editUrl:
-            'https://github.com/mthous72/libriscribe/tree/main/docs/',
-          // Useful options to enforce blogging best practices
-          onInlineTags: 'warn',
-          onInlineAuthors: 'warn',
-          onUntruncatedBlogPosts: 'warn',
-        },
+        blog: false,
         theme: {
           customCss: './src/css/custom.css',
         },

@@ -12,6 +12,8 @@
 ---
 
 > **Attribution:** This project is a fork of [LibriScribe](https://github.com/guerra2fernando/libriscribe) originally created by **Fernando Guerra** and **Lenxys**. The original project provided the core multi-agent architecture, CLI pipeline, LLM client, and prompt template system that this version builds upon. If you appreciate the foundational work, consider [supporting the original author](https://buymeacoffee.com/guerra2fernando).
+>
+> Several of this fork's features — semantic retrieval, bring-your-own reference RAG, OCR, and multi-session brainstorming — were inspired by [Writingway](https://github.com/a-omukai/Writingway) by **a-omukai** (MIT), a kindred open-source AI writing tool. Support them via their [Discord](https://discord.gg/xkkGaRFXNX).
 
 ---
 

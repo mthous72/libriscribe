@@ -4,100 +4,68 @@ sidebar_position: 2
 
 # Getting Started
 
-This guide walks you through installing LibriScribe, configuring model defaults, and launching the CLI.
+There are two ways to run LibriScribe: the **prebuilt Windows installer** (easiest — no
+prerequisites) or **from source** (for development or other platforms).
 
-## Prerequisites
+## Option A — Windows installer (recommended)
 
-- **Python 3.10 or later:** Check with `python --version`.
-- **pip:** Usually included with Python.
-- **At least one LLM API key** from one of these providers:
-  - **OpenAI:** [Get API Key](https://platform.openai.com/signup/)
-  - **Anthropic:** [Get API Key](https://console.anthropic.com/)
-  - **DeepSeek:** [Get API Key](https://platform.deepseek.com/)
-  - **Google AI Studio (Gemini):** [Get API Key](https://aistudio.google.com/)
-  - **Mistral AI:** [Get API Key](https://console.mistral.ai/)
-  - **OpenRouter:** [Get API Key](https://openrouter.ai/)
+No Python, Node.js, or other prerequisites required.
 
-## Installation Steps
+1. Download the latest `LibriScribeGUI-<version>-Setup.exe` from the
+   [**Releases**](https://github.com/mthous72/libriscribe/releases) page.
+2. Run the installer (a standard wizard; installs for your user account).
+3. Launch **LibriScribe GUI** from the Start Menu. It starts a local web server and opens your
+   browser at `http://127.0.0.1:8000`. A **system-tray icon** lets you open the app or quit it.
+4. Open **Settings** and add an API key for any provider — or point it at a **local LLM**. See
+   [Providers & Models](./providers-and-models).
 
-1. **Clone the repository**
+**Where your data lives:** projects, settings (`.env`), version snapshots, references, and logs
+are stored under `%LOCALAPPDATA%\LibriScribe` (not in Program Files), so they survive upgrades.
 
-   ```bash
-   git clone https://github.com/guerra2fernando/libriscribe.git
-   cd libriscribe
-   ```
+**Updating:** download the newer `Setup.exe` and run it over your existing install — your
+projects and settings are untouched.
 
-2. **Install LibriScribe**
+## Option B — Run from source
 
-   ```bash
-   pip install -e .
-   ```
-
-   Editable install is convenient if you plan to customize prompts or work on the codebase locally.
-
-3. **Create your `.env` file**
-
-   Start from the provided example:
-
-   ```bash
-   cp .env.example .env
-   ```
-
-4. **Add API keys and optional model defaults**
-
-   Example:
-
-   ```env
-   OPENAI_API_KEY=your_openai_key_here
-   OPENAI_MODEL=gpt-4o-mini
-
-   GOOGLE_AI_STUDIO_API_KEY=your_google_key_here
-   GOOGLE_AI_STUDIO_MODEL=gemini-2.5-flash
-
-   CLAUDE_API_KEY=your_claude_key_here
-   CLAUDE_MODEL=claude-3-opus-20240229
-
-   DEEPSEEK_API_KEY=your_deepseek_key_here
-   DEEPSEEK_MODEL=deepseek-coder-6.7b-instruct
-
-   MISTRAL_API_KEY=your_mistral_key_here
-   MISTRAL_MODEL=mistral-medium-latest
-
-   OPENROUTER_API_KEY=your_openrouter_key_here
-   OPENROUTER_BASE_URL=https://openrouter.ai/api/v1
-   OPENROUTER_MODEL=anthropic/claude-3-haiku
-   ```
-
-   LibriScribe uses these model values as **provider defaults**:
-
-   - **Simple Guided Setup** uses the selected provider's default model automatically.
-   - **Advanced Guided Setup** lets you keep the `.env` default or enter a single custom model ID for the project.
-   - **Expert mode** can override both the provider default and the project default through config files.
-
-## Launching LibriScribe
-
-Start the interactive CLI with:
+Requires **Python 3.10+** and (for the frontend) **Node.js 18+**.
 
 ```bash
-libriscribe start
+git clone https://github.com/mthous72/libriscribe.git
+cd libriscribe
+pip install -e .
 ```
 
-LibriScribe currently offers three setup flows:
-
-- **Simple Guided Setup**
-- **Advanced Guided Setup**
-- **Expert: Configuration File**
-
-You can also jump directly into Expert mode:
+Build the frontend once (served by the app):
 
 ```bash
-libriscribe start --config examples/expert-config.yaml
+cd frontend && npm install && npm run build && cd ..
 ```
 
-## Verifying the Installation
-
-After installation, you can verify the CLI is available with:
+Launch the app:
 
 ```bash
-libriscribe start --help
+libriscribe
 ```
+
+This starts the server at `http://127.0.0.1:8000` and opens your browser.
+
+### Frontend dev server (optional)
+
+For UI development with hot reload:
+
+```bash
+cd frontend && npm run dev
+```
+
+Vite runs at `http://localhost:5173` and proxies API/WebSocket calls to the backend on `:8000`.
+
+## First run
+
+1. Open **Settings** and configure at least one provider (cloud key or a local LLM). Providers
+   stay disabled until a real key is added.
+2. From the home page, create a **New Project** — pick a title, genre, and the AI provider/model
+   for the book. The wizard autosaves your draft as you go.
+3. Generate a concept and outline, then write chapters — or jump straight into the
+   [Lorebook](./lorebook) and [Brainstorm co-writer](./brainstorm).
+
+Next: **[Using LibriScribe](./usage)**.

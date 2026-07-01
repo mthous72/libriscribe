@@ -910,20 +910,21 @@ track, not a blocker for feature work.
 - Added `.github/workflows/deploy-docs.yml` (build `docs/` → publish to Pages on push to
   `docs/**`). Verified the site builds locally.
 
+**Done (content pass — 2026-07-01):** Pages enabled (site live at
+`https://mthous72.github.io/libriscribe/`). Rewrote intro / getting-started / usage for the web
+app; added feature pages (providers & models incl. local LLM, lorebook + smart import incl.
+SillyTavern/KoboldAI + references + OCR, brainstorm + Focus/sessions/Smart Apply/preview,
+semantic search, versioning/export, stats + preview). Folded the **Writingway attribution** into
+the docs intro **and** the README (deferred trigger fired — semantic/references/OCR/sessions
+shipped). Disabled the default template blog (`blog: false`, removed sample posts) and restored
+`onBrokenLinks: 'throw'`; docs build passes clean.
+
 **Remaining:**
-1. **Manual, one-time:** enable GitHub Pages for the repo with **Source: GitHub Actions**
-   (Settings → Pages). Until then the workflow builds but has nothing to publish to.
-2. **Content pass** — the current docs are upstream/CLI-era: the blog is still the default
-   Docusaurus template ("2019-…first-blog-post"), agent pages describe the old CLI, and none
-   of the fork's work is covered. Rewrite intro / getting-started / usage for the **web app**,
-   and add feature pages as we ship: providers & model dropdowns, local LLM, Brainstorm
-   co-writer + Focus, **smart lore intake** (incl. importing SillyTavern/KoboldAI), export/
-   import & version snapshots, and (when built) B14/B15/B17–B19. Fold the **deferred Writingway
-   attribution** in here too.
-3. After the content pass, restore `onBrokenLinks: 'throw'`.
-4. **Internal docs hygiene:** PLANNING.md is ~800 lines doing spec + backlog + history; when it
-   gets unwieldy, split shipped specs into a `PLANNING-history.md` / CHANGELOG and keep this file
-   to the live backlog.
+1. Ongoing: add/refresh a page whenever a new user-facing feature ships. The `agents/*` pages
+   still describe the pipeline agents (roughly accurate) — light touch-up someday.
+2. **Internal docs hygiene:** PLANNING.md is large (spec + backlog + history); when it gets
+   unwieldy, split shipped specs into a `PLANNING-history.md` / CHANGELOG and keep this file to
+   the live backlog.
 
 **Out of scope (separate item if wanted):** an *in-app* help system for authors (a "how do I
 use the lorebook / brainstorm" panel inside LibriScribe itself) — distinct from this public
