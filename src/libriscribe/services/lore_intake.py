@@ -325,24 +325,34 @@ def llm_map(client, genre: str, data) -> dict:
 
 
 def extract_from_text(client, genre: str, text: str) -> dict:
-    """Parse a free-text brainstorm note into canonical categories (B12)."""
+    """Parse a free-text brainstorm note into canonical categories, reasoning per entity (B12).
+
+    As with imported lore, the model reasons about each entity it finds before assigning a
+    category, and emits a short `reasoning` field that is discarded when the proposal is built.
+    """
     if client is None:
         return _empty_cats()
     prompt = (
         f"Extract structured lore from the brainstorming note below for a {genre} book.\n\n"
+        "First identify each distinct entity the note actually describes — people, places, "
+        "factions/items/concepts, and plotlines. For EACH one, reason about which single "
+        "category fits best, then record it:\n"
+        "- characters: a person, being, creature, or named individual\n"
+        "- locations: a place, building, region, or setting\n"
+        "- lore: a faction, organization, item, technology, concept, event, rule, or system\n"
+        "- arcs: a storyline, plot thread, or narrative arc\n\n"
         "Produce a JSON object with keys characters, locations, lore, arcs — each a LIST of "
-        "objects. Every object MUST have a 'name'. Include only these fields, and only when "
-        "the note actually implies them:\n"
+        "objects. Every object MUST have a 'name' and a short 'reasoning' field (why this "
+        "category). Include these typed fields only when the note implies them:\n"
         "- character: role, physical_description, personality_traits, background, motivations, character_arc\n"
         "- location: description, significance\n"
         "- lore: entry_type, description, significance\n"
         "- arc: arc_type, description, resolution_notes\n\n"
-        "Split distinct people, places, factions/items/concepts, and plotlines into separate "
-        "objects. Only include an entity if the note gives real information about it. Use "
-        "empty strings for unknown fields. Return ONLY the JSON.\n\nNOTE:\n" + text
+        "Only include an entity if the note gives real information about it. Do not invent "
+        "entities. Use empty strings for unknown fields. Return ONLY the JSON.\n\nNOTE:\n" + text
     )
     try:
-        raw = client.generate_content_with_json_repair(prompt, max_tokens=2500, temperature=0.3)
+        raw = client.generate_content_with_json_repair(prompt, max_tokens=3000, temperature=0.3)
         return _normalize_cats(json.loads(raw))
     except Exception:
         return _empty_cats()
