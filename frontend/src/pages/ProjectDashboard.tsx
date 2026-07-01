@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { useProject } from '../hooks/useProject'
 import { useWebSocket } from '../hooks/useWebSocket'
 import { useGenerationStore } from '../store/generationSlice'
-import { startGeneration, cancelGeneration, resumeGeneration, listChapters, getCost, updateProjectSettings, fetchProviderModels, listVersions, saveVersion, restoreVersion, getRetrieval, setRetrieval } from '../api/client'
+import { startGeneration, cancelGeneration, resumeGeneration, listChapters, getCost, updateProjectSettings, fetchProviderModels, listVersions, saveVersion, restoreVersion, getRetrieval, setRetrieval, getStats } from '../api/client'
 import { Play, Square, BookOpen, Map, FileText, Download, Save, RefreshCw, Loader2, RotateCcw } from 'lucide-react'
 
 const STAGES = ['concept', 'outline', 'characters', 'worldbuilding', 'chapters', 'formatting']
@@ -38,6 +38,8 @@ export default function ProjectDashboard() {
   const [retrieval, setRetrievalState] = useState<any>(null)
   const [retMode, setRetMode] = useState('keyword')
   const [savingRet, setSavingRet] = useState(false)
+  const [stats, setStats] = useState<any>(null)
+  const [showStats, setShowStats] = useState(false)
 
   const refreshVersions = () => { if (name) listVersions(name).then(setVersions).catch(() => {}) }
   useEffect(() => { refreshVersions() }, [name])
@@ -46,6 +48,12 @@ export default function ProjectDashboard() {
     if (!name) return
     getRetrieval(name).then((r: any) => { setRetrievalState(r); setRetMode(r.mode === 'disabled' ? 'keyword' : r.mode) }).catch(() => {})
   }, [name])
+
+  const loadStats = async () => {
+    if (!name) return
+    setShowStats(true)
+    try { setStats(await getStats(name)) } catch { setStats(null) }
+  }
 
   const saveRetrieval = async () => {
     if (!name) return
@@ -362,6 +370,57 @@ export default function ProjectDashboard() {
                     No embedding source configured — set one in Settings → Embeddings, or semantic/hybrid falls back to keyword.
                   </div>
             )}
+          </div>
+        )}
+      </div>
+
+      {/* Manuscript stats (B14) */}
+      <div className="bg-gray-900 border border-gray-800 rounded-xl p-4 space-y-3">
+        <div className="flex items-center justify-between gap-2 flex-wrap">
+          <h3 className="text-sm font-medium text-gray-400">Manuscript stats</h3>
+          <button onClick={loadStats} className="flex items-center gap-1 px-3 py-1.5 bg-gray-800 hover:bg-gray-700 rounded-lg text-sm">
+            <RefreshCw size={14} /> {stats ? 'Refresh' : 'Load stats'}
+          </button>
+        </div>
+        {showStats && !stats && <p className="text-xs text-gray-500">No chapters written yet, or stats unavailable.</p>}
+        {stats && (
+          <div className="space-y-3">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-center">
+              {[
+                ['Words', (stats.overall.word_count || 0).toLocaleString()],
+                ['Chapters', stats.overall.chapter_count || 0],
+                ['Reading ease', stats.overall.flesch_reading_ease],
+                ['Grade level', stats.overall.flesch_kincaid_grade],
+                ['Avg sentence', `${stats.overall.avg_sentence_length}w`],
+                ['Dialogue', `${Math.round((stats.overall.dialogue_ratio || 0) * 100)}%`],
+                ['Adverbs', `${Math.round((stats.overall.adverb_ratio || 0) * 100)}%`],
+                ['Read time', `${Math.round(stats.overall.reading_time_min || 0)} min`],
+              ].map(([label, val]: any) => (
+                <div key={label} className="bg-gray-800 rounded-lg py-2">
+                  <div className="text-sm font-semibold">{val}</div>
+                  <div className="text-[10px] text-gray-500 uppercase tracking-wide">{label}</div>
+                </div>
+              ))}
+            </div>
+            {stats.chapters?.length > 0 && (() => {
+              const maxW = Math.max(...stats.chapters.map((c: any) => c.word_count), 1)
+              return (
+                <div className="space-y-1">
+                  <div className="text-[11px] text-gray-500">Per chapter — length (bar) & reading ease</div>
+                  {stats.chapters.map((c: any) => (
+                    <div key={c.chapter_number} className="flex items-center gap-2 text-xs">
+                      <span className="w-6 text-gray-500 text-right">{c.chapter_number}</span>
+                      <div className="flex-1 bg-gray-800 rounded h-4 overflow-hidden">
+                        <div className="bg-indigo-700/70 h-full rounded" style={{ width: `${Math.max(3, (c.word_count / maxW) * 100)}%` }} />
+                      </div>
+                      <span className="w-16 text-gray-400 text-right">{c.word_count.toLocaleString()}w</span>
+                      <span className="w-14 text-gray-500 text-right" title="Flesch reading ease">RE {c.flesch_reading_ease}</span>
+                    </div>
+                  ))}
+                </div>
+              )
+            })()}
+            <p className="text-[10px] text-gray-600">Flesch reading ease: higher = easier (60–70 ≈ plain English). Grade = US school grade level. Estimates only.</p>
           </div>
         )}
       </div>

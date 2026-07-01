@@ -706,7 +706,16 @@ scaffold in `retrieval/models.py` but cuts against our deliberate no-external-ve
 design — hold), and swapping the fragile Google-scrape in `agents/researcher.py` for the
 Wikipedia API (reliability win — revisit later).
 
-### B14. Readability & manuscript statistics — **effort: S** — *near-term*
+### B14. Readability & manuscript statistics — **effort: S** — ✅ **BUILT**
+
+**Status: BUILT.** `services/stats_service.py` (dependency-free, offline): per-chapter + whole-
+book word/sentence/paragraph counts, avg sentence length, syllable-based Flesch Reading Ease +
+Flesch-Kincaid grade, adverb & dialogue ratios, and reading time — reusing the chapter-file +
+`_strip_markdown` path from `export_story_text`. Endpoint `GET /{name}/stats`. UI: a **Manuscript
+stats** card on the Project Dashboard (overall tiles + a per-chapter length-bar / reading-ease
+pacing view). Tests: `tests/test_stats_service.py` (5). Full suite **149 passed**.
+
+### ~~B14.~~ Readability & manuscript statistics — **effort: S** — *near-term*
 **What:** per-chapter and whole-book writing stats — Flesch reading-ease + grade level,
 word / sentence / paragraph counts, avg sentence length, adverb & dialogue ratio, estimated
 reading time, and a simple pacing view across chapters. Writingway uses `textstat`; we can
@@ -719,7 +728,18 @@ add `textstat` (pure-Python, no network) or hand-roll the handful of formulas.
 - **Why it wins:** highest-value author-polish feature Writingway has that we lack, and it
   fits our stack cleanly. No new heavy deps.
 
-### B15. Assembled-prompt / injected-context preview — **effort: M** — *near-term*
+### B15. Assembled-prompt / injected-context preview — **effort: M** — ✅ **BUILT**
+
+**Status: BUILT.** No-LLM dry-run of prompt assembly. Brainstorm: `POST /{name}/chat/preview`
+returns the exact assembled system prompt (focus/general lore context + reference band) for a
+message/focus, via a shared `_assemble_system_prompt()` the live chat now also uses. Generation:
+`GET /{name}/preview-context/{chapter}` runs `ContextBuilder.build_scene_context` for a chapter's
+representative scene and returns the injected context + token estimate. UI: a **Preview prompt**
+button in the Brainstorm drawer (overlay showing the system prompt) and a **Preview AI context**
+button on the Chapter editor (modal with the injected context + ~token count). Neither calls the
+LLM. Full suite **149 passed**; frontend builds clean.
+
+### ~~B15.~~ Assembled-prompt / injected-context preview — **effort: M** — *near-term*
 **What:** before (or alongside) a generation call, show the *fully assembled* prompt with the
 exact lore/context our `context_builder` + `TokenBudget` injected. Writingway has a
 `prompt_preview_dialog`; for us it's both a transparency feature and a real debugging aid for

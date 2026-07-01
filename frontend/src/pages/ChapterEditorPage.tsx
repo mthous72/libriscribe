@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { getChapter, saveChapter } from '../api/client'
+import { getChapter, saveChapter, previewContext } from '../api/client'
 import { useUiStore } from '../store/uiSlice'
-import { ArrowLeft, Save } from 'lucide-react'
+import { ArrowLeft, Save, Eye, X, Loader2 } from 'lucide-react'
 
 export default function ChapterEditorPage() {
   const { name, n } = useParams<{ name: string; n: string }>()
@@ -11,6 +11,16 @@ export default function ChapterEditorPage() {
   const [title, setTitle] = useState('')
   const [saving, setSaving] = useState(false)
   const [dirty, setDirty] = useState(false)
+  const [ctx, setCtx] = useState<any | null>(null)
+  const [loadingCtx, setLoadingCtx] = useState(false)
+
+  const previewCtx = async () => {
+    if (!name || !n) return
+    setLoadingCtx(true)
+    try { setCtx(await previewContext(name, parseInt(n))) }
+    catch (e: any) { setCtx({ context: `[Preview failed: ${e?.response?.data?.detail || 'error'}]`, token_estimate: 0 }) }
+    finally { setLoadingCtx(false) }
+  }
 
   useEffect(() => {
     if (name && n) {
@@ -47,11 +57,30 @@ export default function ChapterEditorPage() {
         <div className="flex items-center gap-3">
           <span className="text-xs text-gray-500">{content.split(/\s+/).length} words</span>
           {dirty && <span className="text-xs text-yellow-500">Unsaved</span>}
+          <button onClick={previewCtx} disabled={loadingCtx} title="See the lore/context the AI would receive to write this chapter (no LLM call)" className="flex items-center gap-1 px-3 py-1.5 bg-gray-800 hover:bg-gray-700 rounded-lg text-sm disabled:opacity-50">
+            {loadingCtx ? <Loader2 size={14} className="animate-spin" /> : <Eye size={14} />} Preview AI context
+          </button>
           <button onClick={handleSave} disabled={saving} className="flex items-center gap-1 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 rounded-lg text-sm disabled:opacity-50">
             <Save size={14} /> {saving ? 'Saving...' : 'Save'}
           </button>
         </div>
       </div>
+
+      {ctx !== null && (
+        <div className="fixed inset-0 z-50 bg-black/60 flex items-start justify-center overflow-y-auto p-4" onClick={() => setCtx(null)}>
+          <div className="bg-gray-950 border border-gray-800 rounded-lg shadow-2xl w-full max-w-2xl mt-10 p-4" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-2">
+              <div>
+                <h2 className="text-sm font-semibold">AI context for Chapter {n}</h2>
+                <p className="text-[11px] text-gray-500">The lore/context injected into the chapter-writing prompt · ~{ctx.token_estimate} tokens · no LLM call</p>
+              </div>
+              <button onClick={() => setCtx(null)} className="text-gray-500 hover:text-gray-200"><X size={18} /></button>
+            </div>
+            <pre className="max-h-[65vh] overflow-auto text-[11px] text-gray-300 whitespace-pre-wrap bg-gray-900 border border-gray-800 rounded p-2">{ctx.context || '(no context assembled — add lore, or write earlier chapters)'}</pre>
+          </div>
+        </div>
+      )}
+
       <textarea
         value={content}
         onChange={e => { setContent(e.target.value); setDirty(true); useUiStore.getState().markDirty() }}

@@ -520,6 +520,44 @@ def clear_session(name: str, sid: str):
     _save_session(name, session)
 
 
+def _assemble_system_prompt(name, kb, message, focus_type, focus_name, use_references) -> str:
+    """Build the exact system prompt the brainstorm chat would send (focus/general + lore
+    context + optional reference band). Shared by the live chat and the preview (B15)."""
+    focus = None
+    if focus_type and focus_name:
+        focus = _focus_context(kb, name, focus_type, focus_name, message)
+    if focus:
+        resolved, record, related = focus
+        system_prompt = _focus_system_prompt(kb, focus_type, resolved, record, related)
+    else:
+        system_prompt = _system_prompt(kb, _build_lore_context(name, kb, message))
+    if use_references:
+        refs = _reference_context(name, kb, message)
+        if refs:
+            system_prompt = system_prompt + "\n\n" + refs
+    return system_prompt
+
+
+class PreviewRequest(BaseModel):
+    message: str = ""
+    focus_type: str | None = None
+    focus_name: str | None = None
+    use_references: bool = True
+
+
+@router.post("/{name}/chat/preview")
+def chat_preview(name: str, body: PreviewRequest):
+    """Return the fully assembled brainstorm system prompt (lore + references injected) for
+    the given message/focus — WITHOUT calling the LLM or touching history (B15)."""
+    kb = load_kb(name)
+    if not kb:
+        raise HTTPException(status_code=404, detail="Project not found")
+    system_prompt = _assemble_system_prompt(
+        name, kb, body.message or "(no message yet)", body.focus_type, body.focus_name, body.use_references
+    )
+    return {"system_prompt": system_prompt, "token_estimate": int(len(system_prompt.split()) * 1.3)}
+
+
 @router.post("/{name}/chat")
 def chat(name: str, body: ChatRequest):
     kb = load_kb(name)
@@ -530,21 +568,9 @@ def chat(name: str, body: ChatRequest):
     _append_message(name, session, "user", body.message)
     history = session["messages"]
 
-    focus = None
-    if body.focus_type and body.focus_name:
-        focus = _focus_context(kb, name, body.focus_type, body.focus_name, body.message)
-    if focus:
-        resolved, record, related = focus
-        system_prompt = _focus_system_prompt(kb, body.focus_type, resolved, record, related)
-    else:
-        context = _build_lore_context(name, kb, body.message)
-        system_prompt = _system_prompt(kb, context)
-
-    # Ground in imported reference material (B19) when enabled.
-    if body.use_references:
-        refs = _reference_context(name, kb, body.message)
-        if refs:
-            system_prompt = system_prompt + "\n\n" + refs
+    system_prompt = _assemble_system_prompt(
+        name, kb, body.message, body.focus_type, body.focus_name, body.use_references
+    )
 
     conversation = _build_conversation(history)
     client = _client_for(kb)

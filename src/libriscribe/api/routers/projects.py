@@ -231,6 +231,57 @@ def set_retrieval(name: str, body: UpdateRetrievalRequest):
     return _retrieval_status(name, kb)
 
 
+# ─── Manuscript stats (B14) ───────────────────────────────────────────────────
+
+@router.get("/{name}/stats")
+def get_stats(name: str):
+    """Readability + count metrics per chapter and for the whole book (no LLM)."""
+    from libriscribe.services import stats_service
+
+    stats = stats_service.project_stats(name)
+    if stats is None:
+        raise HTTPException(status_code=404, detail="Project not found")
+    return stats
+
+
+# ─── Prompt / context preview (B15) ───────────────────────────────────────────
+
+@router.get("/{name}/preview-context/{chapter_number}")
+def preview_context(name: str, chapter_number: int):
+    """Dry-run the generation context assembly for a chapter — the exact lore/context that
+    ContextBuilder + TokenBudget would inject into the chapter-writing prompt. No LLM call."""
+    kb = project_service.load_kb(name)
+    if not kb:
+        raise HTTPException(status_code=404, detail="Project not found")
+    chapter = kb.get_chapter(chapter_number)
+    if not chapter:
+        raise HTTPException(status_code=404, detail="Chapter not found")
+
+    from libriscribe.knowledge_base import Scene
+    from libriscribe.services.context_builder import ContextBuilder
+
+    scene = chapter.scenes[0] if chapter.scenes else Scene(
+        scene_number=1, summary=chapter.summary or chapter.title or "", setting="", characters=[],
+    )
+
+    svc = None
+    try:
+        from libriscribe.retrieval.search_service import SearchServiceImpl
+        from libriscribe.retrieval.models import RetrievalConfig
+        cfg = kb.retrieval if kb.retrieval and kb.retrieval.enabled else RetrievalConfig(enabled=True, mode="keyword")
+        svc = SearchServiceImpl(project_service.get_projects_dir() / name, cfg)
+    except Exception:
+        svc = None
+
+    context = ContextBuilder(kb, svc).build_scene_context(chapter_number, scene, chapter)
+    return {
+        "chapter_number": chapter_number,
+        "scene_number": scene.scene_number,
+        "context": context,
+        "token_estimate": int(len(context.split()) * 1.3),
+    }
+
+
 @router.delete("/{name}", status_code=204)
 def delete_project(name: str):
     if not project_service.delete_project(name):

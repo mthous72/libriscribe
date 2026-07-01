@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { parseChat, streamChat, listCharacters, listLocations, listLoreEntries, listArcs, listSessions, createSession, updateSession, deleteSession, getSession, clearSession } from '../api/client'
+import { parseChat, streamChat, previewChat, listCharacters, listLocations, listLoreEntries, listArcs, listSessions, createSession, updateSession, deleteSession, getSession, clearSession } from '../api/client'
 import { useBrainstormStore } from '../store/brainstormSlice'
 import LoreProposalReview, { Proposal } from './LoreProposalReview'
-import { MessageSquarePlus, X, Send, Trash2, Loader2, Sparkles, Plus, Pencil } from 'lucide-react'
+import { MessageSquarePlus, X, Send, Trash2, Loader2, Sparkles, Plus, Pencil, Eye } from 'lucide-react'
 
 interface Msg { role: string; content: string }
 
@@ -18,6 +18,7 @@ export default function BrainstormDrawer({ projectName }: { projectName: string 
   const [ents, setEnts] = useState<{ character: string[], location: string[], lore: string[], arc: string[] }>({ character: [], location: [], lore: [], arc: [] })
   const [sessions, setSessions] = useState<any[]>([])
   const [activeId, setActiveId] = useState<string | null>(null)
+  const [preview, setPreview] = useState<string | null>(null)
   const endRef = useRef<HTMLDivElement>(null)
 
   const focusKey = focus ? `${focus.type}:${focus.name}` : ''
@@ -118,6 +119,15 @@ export default function BrainstormDrawer({ projectName }: { projectName: string 
     } catch {}
   }
 
+  const doPreview = async () => {
+    try {
+      const r = await previewChat(projectName, { message: input, focus_type: focus?.type || null, focus_name: focus?.name || null, use_references: useRefs })
+      setPreview(r.system_prompt || '(empty)')
+    } catch (e: any) {
+      setPreview(`[Preview failed: ${e?.response?.data?.detail || e?.message || 'error'}]`)
+    }
+  }
+
   const changeFocus = (v: string) => {
     const nf = v ? { type: v.slice(0, v.indexOf(':')), name: v.slice(v.indexOf(':') + 1) } : null
     setFocus(nf)
@@ -170,11 +180,27 @@ export default function BrainstormDrawer({ projectName }: { projectName: string 
               </select>
             </label>
             {focus && <p className="text-[11px] text-indigo-400/80 mt-1">Developing {focus.type} "{focus.name}" — draws on the world, arcs &amp; connected lore as context, but only develops this.</p>}
-            <label className="flex items-center gap-1.5 text-[11px] text-gray-400 mt-2" title="Include imported reference material (Lorebook → References) as background source">
-              <input type="checkbox" checked={useRefs} onChange={e => setUseRefs(e.target.checked)} />
-              Use reference material
-            </label>
+            <div className="flex items-center justify-between mt-2">
+              <label className="flex items-center gap-1.5 text-[11px] text-gray-400" title="Include imported reference material (Lorebook → References) as background source">
+                <input type="checkbox" checked={useRefs} onChange={e => setUseRefs(e.target.checked)} />
+                Use reference material
+              </label>
+              <button onClick={doPreview} title="See the exact prompt (lore + references) the AI will receive" className="flex items-center gap-1 text-[11px] text-gray-500 hover:text-indigo-300">
+                <Eye size={12} /> Preview prompt
+              </button>
+            </div>
           </div>
+
+          {preview !== null && (
+            <div className="absolute inset-0 z-10 bg-gray-950/95 flex flex-col p-3">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-xs font-medium text-gray-300">Assembled prompt (what the AI receives)</span>
+                <button onClick={() => setPreview(null)} className="text-gray-500 hover:text-gray-200"><X size={16} /></button>
+              </div>
+              <pre className="flex-1 overflow-auto text-[11px] text-gray-300 whitespace-pre-wrap bg-gray-900 border border-gray-800 rounded p-2">{preview}</pre>
+              <p className="text-[10px] text-gray-600 mt-2">This is the system prompt (lore context + any reference material) for the current Focus/message — no LLM call was made.</p>
+            </div>
+          )}
 
           <div className="flex-1 overflow-y-auto p-3 space-y-3">
             {messages.length === 0 && (
