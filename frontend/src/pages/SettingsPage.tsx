@@ -118,7 +118,7 @@ export default function SettingsPage() {
           <h2 className="text-sm font-medium text-gray-400">Provider Status</h2>
           <span className="text-[11px] text-gray-600">Uncheck a provider to hide its section below</span>
         </div>
-        <div className="grid grid-cols-3 gap-2">
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
           {providers.map((p: any) => (
             <label key={p.name} className="flex items-center gap-2 px-3 py-2 bg-gray-800 rounded-lg text-sm cursor-pointer" title="Show this provider in API Configuration">
               <input type="checkbox" checked={!hiddenProviders.has(p.name)} onChange={() => toggleProvider(p.name)} />
@@ -149,9 +149,9 @@ export default function SettingsPage() {
                 <>
                   <label className="block">
                     <span className="text-xs text-gray-400">Server Base URL</span>
-                    <div className="flex gap-2 mt-1">
+                    <div className="flex flex-wrap gap-2 mt-1">
                       <input
-                        className="flex-1 px-3 py-1.5 bg-gray-800 border border-gray-700 rounded-lg text-sm"
+                        className="flex-1 min-w-0 basis-full sm:basis-0 px-3 py-1.5 bg-gray-800 border border-gray-700 rounded-lg text-sm"
                         value={settings.local_base_url || ''}
                         onChange={e => setSettings({ ...settings, local_base_url: e.target.value })}
                         onBlur={e => {

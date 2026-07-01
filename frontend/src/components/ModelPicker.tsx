@@ -21,7 +21,7 @@ export default function ModelPicker({
     <div>
       <div className="flex gap-2 mt-1">
         <input
-          className="flex-1 px-3 py-1.5 bg-gray-800 border border-gray-700 rounded-lg text-sm"
+          className="flex-1 min-w-0 px-3 py-1.5 bg-gray-800 border border-gray-700 rounded-lg text-sm"
           value={value}
           onChange={e => onChange(e.target.value)}
           placeholder={placeholder || 'Type a model id, or Load to choose from a list'}

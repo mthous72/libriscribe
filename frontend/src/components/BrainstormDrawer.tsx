@@ -154,8 +154,8 @@ export default function BrainstormDrawer({ projectName }: { projectName: string 
               <span className="text-xs text-gray-500 truncate max-w-[120px]">{projectName}</span>
             </div>
             <div className="flex items-center gap-2">
-              <button onClick={clear} title="Clear conversation" className="text-gray-500 hover:text-red-400"><Trash2 size={15} /></button>
-              <button onClick={() => close()} className="text-gray-500 hover:text-gray-200"><X size={18} /></button>
+              <button onClick={clear} title="Clear conversation" className="text-gray-500 hover:text-red-400 p-1.5"><Trash2 size={15} /></button>
+              <button onClick={() => close()} title="Close" className="text-gray-500 hover:text-gray-200 p-1.5 -mr-1"><X size={18} /></button>
             </div>
           </div>
 
@@ -163,9 +163,9 @@ export default function BrainstormDrawer({ projectName }: { projectName: string 
             <select value={activeId || ''} onChange={e => setActiveId(e.target.value)} title="Brainstorm session" className="flex-1 px-2 py-1 bg-gray-800 border border-gray-700 rounded text-xs">
               {sessions.map(s => <option key={s.id} value={s.id}>{s.title}{s.message_count ? ` (${s.message_count})` : ''}</option>)}
             </select>
-            <button onClick={newSession} title="New session" className="text-gray-400 hover:text-indigo-300 p-1"><Plus size={15} /></button>
-            <button onClick={renameSession} title="Rename session" className="text-gray-400 hover:text-gray-200 p-1"><Pencil size={13} /></button>
-            <button onClick={removeSession} title="Delete session" className="text-gray-500 hover:text-red-400 p-1"><Trash2 size={14} /></button>
+            <button onClick={newSession} title="New session" className="text-gray-400 hover:text-indigo-300 p-1.5"><Plus size={15} /></button>
+            <button onClick={renameSession} title="Rename session" className="text-gray-400 hover:text-gray-200 p-1.5"><Pencil size={13} /></button>
+            <button onClick={removeSession} title="Delete session" className="text-gray-500 hover:text-red-400 p-1.5"><Trash2 size={14} /></button>
           </div>
 
           <div className="px-3 py-2 border-b border-gray-800">
@@ -195,7 +195,7 @@ export default function BrainstormDrawer({ projectName }: { projectName: string 
             <div className="absolute inset-0 z-10 bg-gray-950/95 flex flex-col p-3">
               <div className="flex items-center justify-between mb-2">
                 <span className="text-xs font-medium text-gray-300">Assembled prompt (what the AI receives)</span>
-                <button onClick={() => setPreview(null)} className="text-gray-500 hover:text-gray-200"><X size={16} /></button>
+                <button onClick={() => setPreview(null)} title="Close preview" className="text-gray-500 hover:text-gray-200 p-1.5 -m-1"><X size={16} /></button>
               </div>
               <pre className="flex-1 overflow-auto text-[11px] text-gray-300 whitespace-pre-wrap bg-gray-900 border border-gray-800 rounded p-2">{preview}</pre>
               <p className="text-[10px] text-gray-600 mt-2">This is the system prompt (lore context + any reference material) for the current Focus/message — no LLM call was made.</p>

@@ -47,14 +47,14 @@ export default function ChapterEditorPage() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <button onClick={() => navigate(`/projects/${name}`)} className="text-gray-400 hover:text-gray-200">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+        <div className="flex items-center gap-3 min-w-0">
+          <button onClick={() => navigate(`/projects/${name}`)} className="text-gray-400 hover:text-gray-200 shrink-0 p-1.5 -m-1.5" title="Back to project">
             <ArrowLeft size={20} />
           </button>
-          <h1 className="text-xl font-bold">Chapter {n}: {title}</h1>
+          <h1 className="text-xl font-bold truncate">Chapter {n}: {title}</h1>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 flex-wrap">
           <span className="text-xs text-gray-500">{content.split(/\s+/).length} words</span>
           {dirty && <span className="text-xs text-yellow-500">Unsaved</span>}
           <button onClick={previewCtx} disabled={loadingCtx} title="See the lore/context the AI would receive to write this chapter (no LLM call)" className="flex items-center gap-1 px-3 py-1.5 bg-gray-800 hover:bg-gray-700 rounded-lg text-sm disabled:opacity-50">
@@ -67,16 +67,16 @@ export default function ChapterEditorPage() {
       </div>
 
       {ctx !== null && (
-        <div className="fixed inset-0 z-50 bg-black/60 flex items-start justify-center overflow-y-auto p-4" onClick={() => setCtx(null)}>
-          <div className="bg-gray-950 border border-gray-800 rounded-lg shadow-2xl w-full max-w-2xl mt-10 p-4" onClick={e => e.stopPropagation()}>
-            <div className="flex items-center justify-between mb-2">
+        <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center overflow-y-auto p-4" onClick={() => setCtx(null)}>
+          <div className="bg-gray-950 border border-gray-800 rounded-lg shadow-2xl w-full max-w-2xl max-h-[calc(100vh-2rem)] flex flex-col p-4" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-2 shrink-0">
               <div>
                 <h2 className="text-sm font-semibold">AI context for Chapter {n}</h2>
                 <p className="text-[11px] text-gray-500">The lore/context injected into the chapter-writing prompt · ~{ctx.token_estimate} tokens · no LLM call</p>
               </div>
-              <button onClick={() => setCtx(null)} className="text-gray-500 hover:text-gray-200"><X size={18} /></button>
+              <button onClick={() => setCtx(null)} className="text-gray-500 hover:text-gray-200 p-1.5 -m-1 shrink-0" title="Close"><X size={18} /></button>
             </div>
-            <pre className="max-h-[65vh] overflow-auto text-[11px] text-gray-300 whitespace-pre-wrap bg-gray-900 border border-gray-800 rounded p-2">{ctx.context || '(no context assembled — add lore, or write earlier chapters)'}</pre>
+            <pre className="flex-1 min-h-0 overflow-auto text-[11px] text-gray-300 whitespace-pre-wrap bg-gray-900 border border-gray-800 rounded p-2">{ctx.context || '(no context assembled — add lore, or write earlier chapters)'}</pre>
           </div>
         </div>
       )}
@@ -84,7 +84,7 @@ export default function ChapterEditorPage() {
       <textarea
         value={content}
         onChange={e => { setContent(e.target.value); setDirty(true); useUiStore.getState().markDirty() }}
-        className="w-full h-[calc(100vh-200px)] bg-gray-900 border border-gray-800 rounded-xl p-4 font-mono text-sm text-gray-200 resize-none focus:outline-none focus:border-indigo-600"
+        className="w-full h-[65vh] sm:h-[calc(100vh-200px)] bg-gray-900 border border-gray-800 rounded-xl p-4 font-mono text-sm text-gray-200 resize-none focus:outline-none focus:border-indigo-600"
         spellCheck={false}
       />
     </div>

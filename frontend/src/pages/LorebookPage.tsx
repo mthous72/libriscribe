@@ -34,9 +34,9 @@ function EntityList({ items, onSelect, onDelete, onAnalyze, labelKey = 'name', b
             <span className="text-sm">{item[labelKey]}</span>
             {badgeKey && item[badgeKey] && <span className="ml-2 text-xs px-1.5 py-0.5 bg-gray-700 rounded">{item[badgeKey]}</span>}
           </div>
-          <div className="flex gap-1">
-            {onAnalyze && <button onClick={e => { e.stopPropagation(); onAnalyze(item) }} className="text-gray-600 hover:text-amber-400" title="Analyze"><Sparkles size={14} /></button>}
-            <button onClick={e => { e.stopPropagation(); onDelete(item) }} className="text-gray-600 hover:text-red-400"><Trash2 size={14} /></button>
+          <div className="flex gap-0.5 -mr-1">
+            {onAnalyze && <button onClick={e => { e.stopPropagation(); onAnalyze(item) }} className="text-gray-600 hover:text-amber-400 p-2" title="Analyze"><Sparkles size={14} /></button>}
+            <button onClick={e => { e.stopPropagation(); onDelete(item) }} className="text-gray-600 hover:text-red-400 p-2" title="Delete"><Trash2 size={14} /></button>
           </div>
         </div>
       ))}
@@ -235,14 +235,14 @@ export default function LorebookPage() {
   return (
     <div>
       {importProposal && (
-        <div className="fixed inset-0 z-50 bg-black/60 flex items-start justify-center overflow-y-auto p-4" onClick={() => setImportProposal(null)}>
-          <div className="bg-gray-950 border border-gray-800 rounded-lg shadow-2xl w-full max-w-2xl mt-10 p-4" onClick={e => e.stopPropagation()}>
+        <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center overflow-y-auto p-4" onClick={() => setImportProposal(null)}>
+          <div className="bg-gray-950 border border-gray-800 rounded-lg shadow-2xl w-full max-w-2xl max-h-[calc(100vh-2rem)] overflow-y-auto p-4" onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-2">
               <div>
                 <h2 className="text-sm font-semibold">Review import</h2>
                 {importFormat && <p className="text-[11px] text-gray-500">Detected: {importFormat}</p>}
               </div>
-              <button onClick={() => setImportProposal(null)} className="text-gray-500 hover:text-gray-200"><X size={18} /></button>
+              <button onClick={() => setImportProposal(null)} className="text-gray-500 hover:text-gray-200 p-1.5 -m-1" title="Close"><X size={18} /></button>
             </div>
             <LoreProposalReview
               projectName={name!}
@@ -255,7 +255,7 @@ export default function LorebookPage() {
       )}
       <h1 className="text-2xl font-bold mb-4">Lorebook</h1>
       <div className="flex items-center justify-between mb-4 gap-2 flex-wrap">
-        <div className="flex gap-1">
+        <div className="flex gap-1 flex-wrap">
           {TABS.map(t => (
             <button key={t} onClick={() => { setTab(t); setSelected(null) }} className={`px-3 py-1.5 rounded-lg text-sm ${tab === t ? 'bg-indigo-600' : 'bg-gray-800 hover:bg-gray-700'}`}>{TAB_LABELS[t] || t}</button>
           ))}
@@ -280,9 +280,9 @@ export default function LorebookPage() {
 
       {tab === 'References' && <ReferencesPanel name={name!} />}
 
-      <div className={`grid grid-cols-3 gap-4 ${tab === 'References' ? 'hidden' : ''}`}>
+      <div className={`grid grid-cols-1 lg:grid-cols-3 gap-4 ${tab === 'References' ? 'hidden' : ''}`}>
         {/* List */}
-        <div className="col-span-1 space-y-2">
+        <div className="lg:col-span-1 space-y-2">
           <button onClick={handleCreate} className="w-full flex items-center justify-center gap-1 px-3 py-1.5 bg-gray-800 hover:bg-gray-700 rounded-lg text-sm"><Plus size={14} /> Add</button>
           {tab === 'Characters' && <EntityList items={characters} onSelect={(c: any) => { setSelected({ ...c, _origName: c.name }); setShowSuggestions(false) }} onDelete={handleDelete} onAnalyze={handleAnalyze} badgeKey="role" />}
           {tab === 'Locations' && <EntityList items={locations} onSelect={(l: any) => { setSelected({ ...l, _origName: l.name }); setShowSuggestions(false) }} onDelete={handleDelete} onAnalyze={handleAnalyze} />}
@@ -301,7 +301,7 @@ export default function LorebookPage() {
                     </div>
                     <div className="flex gap-1">
                       <span className={`text-xs px-1.5 py-0.5 rounded ${t.status === 'resolved' ? 'bg-green-900 text-green-300' : t.status === 'abandoned' ? 'bg-red-900 text-red-300' : 'bg-yellow-900 text-yellow-300'}`}>{t.status}</span>
-                      <button onClick={e => { e.stopPropagation(); handleDelete(t) }} className="text-gray-600 hover:text-red-400"><Trash2 size={14} /></button>
+                      <button onClick={e => { e.stopPropagation(); handleDelete(t) }} className="text-gray-600 hover:text-red-400 p-2 -mr-1" title="Delete"><Trash2 size={14} /></button>
                     </div>
                   </div>
                 )
@@ -331,7 +331,7 @@ export default function LorebookPage() {
         </div>
 
         {/* Detail / Editor */}
-        <div className="col-span-2 bg-gray-900 border border-gray-800 rounded-xl p-4">
+        <div className="lg:col-span-2 bg-gray-900 border border-gray-800 rounded-xl p-4">
           {tab === 'Characters' && selected && (
             <div>
               <FieldEditor fields={charFields} data={selected} onChange={(k, v) => setSelected({ ...selected, [k]: v })} />
@@ -507,14 +507,14 @@ export default function LorebookPage() {
                   </div>
                   {s.reason && <p className="text-gray-500 italic mb-2">{s.reason}</p>}
                   {s.status === 'pending' && (
-                    <div className="flex gap-1.5 mt-1">
-                      <button onClick={() => handleAccept(s.index)} className="flex items-center gap-0.5 px-2 py-0.5 bg-green-700 hover:bg-green-600 rounded text-xs"><Check size={12} /> Accept</button>
+                    <div className="flex gap-1.5 mt-1 flex-wrap">
+                      <button onClick={() => handleAccept(s.index)} className="flex items-center gap-0.5 px-2 py-1 bg-green-700 hover:bg-green-600 rounded text-xs"><Check size={12} /> Accept</button>
                       {editingIdx === s.index ? (
-                        <button onClick={() => handleEditSuggestion(s.index)} className="flex items-center gap-0.5 px-2 py-0.5 bg-indigo-600 hover:bg-indigo-500 rounded text-xs"><Check size={12} /> Save</button>
+                        <button onClick={() => handleEditSuggestion(s.index)} className="flex items-center gap-0.5 px-2 py-1 bg-indigo-600 hover:bg-indigo-500 rounded text-xs"><Check size={12} /> Save</button>
                       ) : (
-                        <button onClick={() => { setEditingIdx(s.index); setEditValue(s.proposed_value) }} className="flex items-center gap-0.5 px-2 py-0.5 bg-gray-600 hover:bg-gray-500 rounded text-xs"><Edit3 size={12} /> Edit</button>
+                        <button onClick={() => { setEditingIdx(s.index); setEditValue(s.proposed_value) }} className="flex items-center gap-0.5 px-2 py-1 bg-gray-600 hover:bg-gray-500 rounded text-xs"><Edit3 size={12} /> Edit</button>
                       )}
-                      <button onClick={() => handleReject(s.index)} className="flex items-center gap-0.5 px-2 py-0.5 bg-red-700 hover:bg-red-600 rounded text-xs"><X size={12} /> Reject</button>
+                      <button onClick={() => handleReject(s.index)} className="flex items-center gap-0.5 px-2 py-1 bg-red-700 hover:bg-red-600 rounded text-xs"><X size={12} /> Reject</button>
                     </div>
                   )}
                   {s.status !== 'pending' && (
@@ -526,9 +526,9 @@ export default function LorebookPage() {
           )}
           {tab === 'Graph' && (
             <div className="space-y-3">
-              <div className="flex gap-2">
+              <div className="flex gap-2 flex-wrap">
                 <input
-                  className="flex-1 px-2 py-1.5 bg-gray-800 border border-gray-700 rounded text-sm"
+                  className="flex-1 min-w-[10rem] px-2 py-1.5 bg-gray-800 border border-gray-700 rounded text-sm"
                   placeholder="Search across all content..."
                   value={searchQuery}
                   onChange={e => setSearchQuery(e.target.value)}
@@ -674,7 +674,7 @@ function ReferencesPanel({ name }: { name: string }) {
                   </div>
                 )}
               </div>
-              <button onClick={() => remove(r.id, r.title || r.filename)} className="text-gray-600 hover:text-red-400" title="Remove reference">
+              <button onClick={() => remove(r.id, r.title || r.filename)} className="text-gray-600 hover:text-red-400 p-2 -mr-1" title="Remove reference">
                 <Trash2 size={15} />
               </button>
             </div>
