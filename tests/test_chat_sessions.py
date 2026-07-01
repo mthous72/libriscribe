@@ -45,6 +45,7 @@ class ChatSessionStorageTests(unittest.TestCase):
     def test_resolve_specific_vs_default(self):
         default = chat._list_sessions("demo")[0]
         other = chat._new_session("Plot")
+        other["created_at"] = "2099-01-01T00:00:00+00:00"  # explicitly newer than the seeded default
         chat._save_session("demo", other)
         self.assertEqual(chat._resolve_session("demo", other["id"])["id"], other["id"])
         # Unknown id falls back to the default (oldest) session.

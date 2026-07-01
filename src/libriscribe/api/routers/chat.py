@@ -119,7 +119,7 @@ def _list_sessions(name: str) -> list[dict]:
             seed["messages"] = legacy
         _save_session(name, seed)
         sessions = [seed]
-    sessions.sort(key=lambda s: s.get("created_at", ""))
+    sessions.sort(key=lambda s: (s.get("created_at", ""), s.get("id", "")))  # stable on ties
     return sessions
 
 
