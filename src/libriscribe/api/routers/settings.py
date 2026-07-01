@@ -28,6 +28,10 @@ class SettingsResponse(BaseModel):
     local_model: str = ""
     default_llm: str = "openai"
     retrieval_enabled: bool = False
+    # Semantic search (B17): embedding source is "off" | "openai" (cloud) | "local".
+    retrieval_embedding_provider: str = "off"
+    retrieval_embedding_model: str = ""
+    openai_embedding_model: str = ""
     writing_system_prompt: str = ""
 
 
@@ -76,6 +80,9 @@ def get_settings():
         local_model=s.local_model,
         default_llm=s.default_llm,
         retrieval_enabled=s.retrieval_enabled,
+        retrieval_embedding_provider=s.retrieval_embedding_provider,
+        retrieval_embedding_model=s.retrieval_embedding_model,
+        openai_embedding_model=s.openai_embedding_model,
         writing_system_prompt=s.writing_system_prompt,
     )
 
@@ -122,6 +129,9 @@ def update_settings(body: dict):
         "local_model": "LOCAL_MODEL",
         "default_llm": "DEFAULT_LLM",
         "retrieval_enabled": "RETRIEVAL_ENABLED",
+        "retrieval_embedding_provider": "RETRIEVAL_EMBEDDING_PROVIDER",
+        "retrieval_embedding_model": "RETRIEVAL_EMBEDDING_MODEL",
+        "openai_embedding_model": "OPENAI_EMBEDDING_MODEL",
     }
 
     for field, env_key in field_to_env.items():
@@ -165,6 +175,9 @@ def get_settings_response():
         local_model=s.local_model,
         default_llm=s.default_llm,
         retrieval_enabled=s.retrieval_enabled,
+        retrieval_embedding_provider=s.retrieval_embedding_provider,
+        retrieval_embedding_model=s.retrieval_embedding_model,
+        openai_embedding_model=s.openai_embedding_model,
         writing_system_prompt=s.writing_system_prompt,
     )
 

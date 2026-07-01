@@ -741,7 +741,23 @@ dependency-free** via the browser `SpeechSynthesis` Web API — no backend, no n
   nice-to-have, not required for v1.
 - **Status:** specced but **parked** — revisit only when the higher-value items below are done.
 
-### B17. Semantic / embeddings retrieval — **effort: M/L** — *wanted (per user)*
+### B17. Semantic / embeddings retrieval — **effort: M/L** — ✅ **BUILT**
+
+**Status: BUILT.** Engine: `retrieval/embedder.py` (OpenAI-compatible, cloud or local via
+base_url; `build_embedder()` from Settings; signature identifies the embedding space),
+`retrieval/semantic_index.py` (cosine, numpy-or-pure-python, filter parity, JSON persistence +
+signature check), wired into `IndexManager` (builds/persists on rebuild when mode is
+semantic/hybrid + embedder present; drops stale vectors / cleans up on embed failure) and
+`SearchServiceImpl.search` (effective-mode resolution + min-max hybrid merge, silent keyword
+fallback). Enablement: embedding source (Off/OpenAI/Local + model) on the **Settings** page;
+per-book **search mode** (Keyword/Semantic/Hybrid) + "Apply & rebuild index" on the **Project
+Dashboard** (`GET`/`PUT /projects/{name}/retrieval`). Tests: `tests/test_semantic_retrieval.py`
+(14). Full suite **127 passed**. Keyword remains the default; semantic/hybrid degrade to keyword
+when no embedder/index is ready. **Next in cluster:** B19 (reference RAG) leans on this.
+
+_Original spec below._
+
+### ~~B17.~~ Semantic / embeddings retrieval — **effort: M/L** — *wanted (per user)*
 **What:** add an optional **semantic** retrieval mode alongside today's keyword BM25 +
 cross-ref, so paraphrased/thematic queries recall the right lore and prose. This is the
 foundation that also makes B19 (external-reference RAG) actually good.

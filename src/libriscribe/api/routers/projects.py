@@ -148,6 +148,89 @@ def update_project_settings(name: str, body: UpdateProjectSettings):
     return project_service.get_project_detail(name)
 
 
+# ─── Retrieval / semantic search (B17) ────────────────────────────────────────
+
+_VALID_RETRIEVAL_MODES = {"disabled", "keyword", "semantic", "hybrid"}
+
+
+class UpdateRetrievalRequest(BaseModel):
+    mode: str  # disabled | keyword | semantic | hybrid
+
+
+def _retrieval_status(name: str, kb) -> dict:
+    """Report the project's retrieval mode + whether a semantic index is ready to serve."""
+    from libriscribe.retrieval.models import RetrievalConfig
+    from libriscribe.retrieval.embedder import build_embedder
+    from libriscribe.settings import Settings
+
+    settings = Settings()
+    embedder = build_embedder(settings)
+    cfg = kb.retrieval or RetrievalConfig()
+    mode = getattr(cfg.mode, "value", str(cfg.mode))
+    semantic_ready, chunk_count = False, 0
+    try:
+        from libriscribe.retrieval.index_manager import IndexManager
+
+        project_dir = project_service.get_projects_dir() / name
+        im = IndexManager(kb, project_dir, cfg, embedder=embedder)
+        im.load_indexes()
+        chunk_count = len(im.keyword_index.chunks_map)
+        semantic_ready = im.semantic_index.is_ready(embedder)
+    except Exception:
+        pass
+    return {
+        "mode": mode,
+        "enabled": bool(cfg.enabled),
+        "embedding_provider": settings.retrieval_embedding_provider or "off",
+        "embedder_configured": embedder is not None,
+        "semantic_ready": semantic_ready,
+        "chunk_count": chunk_count,
+    }
+
+
+@router.get("/{name}/retrieval")
+def get_retrieval(name: str):
+    kb = project_service.load_kb(name)
+    if not kb:
+        raise HTTPException(status_code=404, detail="Project not found")
+    return _retrieval_status(name, kb)
+
+
+@router.put("/{name}/retrieval")
+def set_retrieval(name: str, body: UpdateRetrievalRequest):
+    """Set the project's search mode and (re)build the index. Semantic/hybrid need an
+    embedding source configured in Settings; without one they fall back to keyword."""
+    from libriscribe.retrieval.models import RetrievalConfig
+    from libriscribe.retrieval.embedder import build_embedder
+    from libriscribe.settings import Settings
+
+    kb = project_service.load_kb(name)
+    if not kb:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    mode = (body.mode or "").strip().lower()
+    if mode not in _VALID_RETRIEVAL_MODES:
+        raise HTTPException(status_code=400, detail=f"mode must be one of {sorted(_VALID_RETRIEVAL_MODES)}")
+
+    data = (kb.retrieval.model_dump() if kb.retrieval else RetrievalConfig().model_dump())
+    data.update({"enabled": mode != "disabled", "mode": mode})
+    cfg = RetrievalConfig(**data)
+    kb.retrieval = cfg
+    project_service.save_kb(name, kb)
+
+    # Rebuild the index so the chosen mode is immediately queryable.
+    project_dir = project_service.get_projects_dir() / name
+    embedder = build_embedder(Settings())
+    try:
+        from libriscribe.retrieval.index_manager import IndexManager
+
+        IndexManager(kb, project_dir, cfg, embedder=embedder).rebuild_index()
+    except Exception:
+        pass  # keyword always works; semantic failures are handled internally
+
+    return _retrieval_status(name, kb)
+
+
 @router.delete("/{name}", status_code=204)
 def delete_project(name: str):
     if not project_service.delete_project(name):

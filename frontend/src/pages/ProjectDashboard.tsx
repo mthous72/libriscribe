@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { useProject } from '../hooks/useProject'
 import { useWebSocket } from '../hooks/useWebSocket'
 import { useGenerationStore } from '../store/generationSlice'
-import { startGeneration, cancelGeneration, resumeGeneration, listChapters, getCost, updateProjectSettings, fetchProviderModels, listVersions, saveVersion, restoreVersion } from '../api/client'
+import { startGeneration, cancelGeneration, resumeGeneration, listChapters, getCost, updateProjectSettings, fetchProviderModels, listVersions, saveVersion, restoreVersion, getRetrieval, setRetrieval } from '../api/client'
 import { Play, Square, BookOpen, Map, FileText, Download, Save, RefreshCw, Loader2, RotateCcw } from 'lucide-react'
 
 const STAGES = ['concept', 'outline', 'characters', 'worldbuilding', 'chapters', 'formatting']
@@ -35,9 +35,31 @@ export default function ProjectDashboard() {
   const [versions, setVersions] = useState<any[]>([])
   const [versionLabel, setVersionLabel] = useState('')
   const [savingVersion, setSavingVersion] = useState(false)
+  const [retrieval, setRetrievalState] = useState<any>(null)
+  const [retMode, setRetMode] = useState('keyword')
+  const [savingRet, setSavingRet] = useState(false)
 
   const refreshVersions = () => { if (name) listVersions(name).then(setVersions).catch(() => {}) }
   useEffect(() => { refreshVersions() }, [name])
+
+  useEffect(() => {
+    if (!name) return
+    getRetrieval(name).then((r: any) => { setRetrievalState(r); setRetMode(r.mode === 'disabled' ? 'keyword' : r.mode) }).catch(() => {})
+  }, [name])
+
+  const saveRetrieval = async () => {
+    if (!name) return
+    setSavingRet(true)
+    try {
+      const r = await setRetrieval(name, retMode)
+      setRetrievalState(r)
+      setRetMode(r.mode === 'disabled' ? 'keyword' : r.mode)
+    } catch (e: any) {
+      alert(e?.response?.data?.detail || 'Failed to update search mode')
+    } finally {
+      setSavingRet(false)
+    }
+  }
 
   const doSaveVersion = async () => {
     setSavingVersion(true)
@@ -294,6 +316,54 @@ export default function ProjectDashboard() {
         >
           <Save size={14} /> {savingLlm ? 'Saving...' : savedLlm ? 'Saved!' : 'Save AI Settings'}
         </button>
+      </div>
+
+      {/* Search / Retrieval */}
+      <div className="bg-gray-900 border border-gray-800 rounded-xl p-4 space-y-3">
+        <h3 className="text-sm font-medium text-gray-400">Search (lore retrieval)</h3>
+        <p className="text-xs text-gray-500">
+          How this book's lore is retrieved for brainstorming and generation. <b>Keyword</b> is
+          always available; <b>Semantic</b> and <b>Hybrid</b> need an embedding source (Settings →
+          Embeddings) and re-embed the project when applied.
+        </p>
+        <div className="flex items-end gap-3 flex-wrap">
+          <label className="block">
+            <span className="text-xs text-gray-400">Mode</span>
+            <select
+              className="mt-1 px-3 py-1.5 bg-gray-800 border border-gray-700 rounded-lg text-sm"
+              value={retMode}
+              onChange={e => setRetMode(e.target.value)}
+            >
+              <option value="keyword">Keyword</option>
+              <option value="semantic">Semantic</option>
+              <option value="hybrid">Hybrid (keyword + semantic)</option>
+            </select>
+          </label>
+          <button
+            onClick={saveRetrieval}
+            disabled={savingRet}
+            className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 rounded-lg text-sm font-medium disabled:opacity-50"
+          >
+            {savingRet ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
+            {savingRet ? 'Rebuilding index…' : 'Apply & rebuild index'}
+          </button>
+        </div>
+        {retrieval && (
+          <div className="text-xs text-gray-500 space-y-0.5">
+            <div>Active: <span className="text-gray-300">{retrieval.mode}</span> · {retrieval.chunk_count} indexed chunks</div>
+            {retMode !== 'keyword' && (
+              retrieval.embedder_configured
+                ? <div className={retrieval.semantic_ready ? 'text-emerald-400/80' : 'text-amber-400/80'}>
+                    {retrieval.semantic_ready
+                      ? 'Semantic index ready.'
+                      : 'Embeddings configured, but the semantic index isn’t built yet — click Apply & rebuild.'}
+                  </div>
+                : <div className="text-amber-400/80">
+                    No embedding source configured — set one in Settings → Embeddings, or semantic/hybrid falls back to keyword.
+                  </div>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Versions */}

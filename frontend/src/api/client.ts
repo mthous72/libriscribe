@@ -16,6 +16,8 @@ export const listVersions = (name: string) => api.get(`/projects/${name}/version
 export const saveVersion = (name: string, body: { label?: string }) => api.post(`/projects/${name}/versions`, body).then(r => r.data)
 export const restoreVersion = (name: string, version: number) => api.post(`/projects/${name}/versions/${version}/restore`).then(r => r.data)
 export const getProjectStatus = (name: string) => api.get(`/projects/${name}/status`).then(r => r.data)
+export const getRetrieval = (name: string) => api.get(`/projects/${name}/retrieval`).then(r => r.data)
+export const setRetrieval = (name: string, mode: string) => api.put(`/projects/${name}/retrieval`, { mode }).then(r => r.data)
 
 // ─── Generation ──────────────────────────────────────────────
 export const startGeneration = (name: string, body?: any) => api.post(`/projects/${name}/generate`, body || {}).then(r => r.data)

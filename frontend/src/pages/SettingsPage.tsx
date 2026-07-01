@@ -204,6 +204,66 @@ export default function SettingsPage() {
         </button>
       </div>
 
+      {/* Embeddings (semantic search) */}
+      <div className="bg-gray-900 border border-gray-800 rounded-xl p-4 space-y-3">
+        <h2 className="text-sm font-medium text-gray-400">Embeddings (semantic search)</h2>
+        <p className="text-xs text-gray-500">
+          Powers <span className="text-gray-300">Semantic</span> and <span className="text-gray-300">Hybrid</span> search
+          modes (set per book on each project's dashboard). Choose where embeddings come from —
+          a cloud provider or a local OpenAI-compatible server. Leave <span className="text-gray-300">Off</span> to
+          use keyword search only.
+        </p>
+        <label className="block">
+          <span className="text-xs text-gray-400">Embedding source</span>
+          <select
+            className="w-full mt-1 px-3 py-1.5 bg-gray-800 border border-gray-700 rounded-lg text-sm"
+            value={settings.retrieval_embedding_provider || 'off'}
+            onChange={e => setSettings({ ...settings, retrieval_embedding_provider: e.target.value })}
+          >
+            <option value="off">Off (keyword only)</option>
+            <option value="openai">OpenAI (cloud)</option>
+            <option value="local">Local (OpenAI-compatible server)</option>
+          </select>
+        </label>
+
+        {settings.retrieval_embedding_provider === 'openai' && (
+          <label className="block">
+            <span className="text-xs text-gray-400">OpenAI embedding model</span>
+            <input
+              className="w-full mt-1 px-3 py-1.5 bg-gray-800 border border-gray-700 rounded-lg text-sm"
+              value={settings.openai_embedding_model || ''}
+              onChange={e => setSettings({ ...settings, openai_embedding_model: e.target.value })}
+              placeholder="text-embedding-3-small"
+            />
+            <span className="text-xs text-gray-500">Uses your OpenAI API key from above.</span>
+          </label>
+        )}
+
+        {settings.retrieval_embedding_provider === 'local' && (
+          <label className="block">
+            <span className="text-xs text-gray-400">Local embedding model</span>
+            <input
+              className="w-full mt-1 px-3 py-1.5 bg-gray-800 border border-gray-700 rounded-lg text-sm"
+              value={settings.retrieval_embedding_model || ''}
+              onChange={e => setSettings({ ...settings, retrieval_embedding_model: e.target.value })}
+              placeholder="nomic-embed-text"
+            />
+            <span className="text-xs text-emerald-400/80">
+              Uses the Local server Base URL configured above — fully offline. Load an embedding
+              model in LM Studio / Ollama (e.g. <span className="text-gray-300">nomic-embed-text</span>).
+            </span>
+          </label>
+        )}
+
+        <button
+          onClick={handleSave}
+          disabled={saving}
+          className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 rounded-lg text-sm font-medium disabled:opacity-50"
+        >
+          <Save size={14} /> {saving ? 'Saving...' : saved ? 'Saved!' : 'Save'}
+        </button>
+      </div>
+
       {/* Writing System Prompt */}
       <div className="bg-gray-900 border border-gray-800 rounded-xl p-4 space-y-3">
         <h2 className="text-sm font-medium text-gray-400 mb-2">Writing System Prompt</h2>
