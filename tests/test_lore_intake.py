@@ -136,6 +136,56 @@ class ReasoningClassifierTests(unittest.TestCase):
         self.assertEqual(maren["fields"].get("role"), "technician")
 
 
+class PerEntryClassifierTests(unittest.TestCase):
+    class _PerEntryClient:
+        """Fake client that answers based on the ENTRY NAME in each per-entry prompt."""
+        def __init__(self, mapping):
+            self.mapping = mapping  # name -> (category, fields) or None to simulate failure
+            self.calls = 0
+        def generate_content_with_json_repair(self, prompt, **kw):
+            import re
+            self.calls += 1
+            m = re.search(r"ENTRY NAME: (.+)", prompt)
+            name = m.group(1).strip() if m else ""
+            entry = self.mapping.get(name)
+            if entry is None:
+                raise RuntimeError("classification failed")  # -> caller keeps it as lore
+            cat, fields = entry
+            return json.dumps({"category": cat, "reasoning": "because", "fields": fields})
+
+    def test_sorts_world_info_into_correct_categories(self):
+        cats_in = {"characters": [], "locations": [], "arcs": [], "lore": [
+            {"name": "Maren", "fields": {"entry_type": "world info", "description": "Occupation: technician."}},
+            {"name": "Tya", "fields": {"entry_type": "world info", "description": "Occupation: broker."}},
+            {"name": "The Vault", "fields": {"entry_type": "world info", "description": "A hidden data vault."}},
+        ]}
+        client = self._PerEntryClient({
+            "Maren": ("character", {"role": "technician", "physical_description": "tall"}),
+            "Tya": ("person", {"role": "broker"}),          # alias -> characters
+            "The Vault": ("location", {"description": "A hidden data vault.", "significance": "the goal"}),
+        })
+        out = lore_intake.llm_classify_all(client, "Sci-Fi", cats_in)
+        self.assertEqual(client.calls, 3)                    # one call per entry
+        self.assertEqual({r["name"] for r in out["characters"]}, {"Maren", "Tya"})
+        self.assertEqual([r["name"] for r in out["locations"]], ["The Vault"])
+        self.assertEqual(out["lore"], [])
+
+        prop = lore_intake.build_proposal(_kb(), out)
+        maren = next(r for r in prop["characters"] if r["name"] == "Maren")
+        self.assertEqual(maren["fields"].get("role"), "technician")   # sub-fields extracted
+        self.assertEqual(maren["fields"].get("physical_description"), "tall")
+        self.assertNotIn("reasoning", maren["fields"])                # reasoning dropped
+
+    def test_failed_entry_is_preserved_as_lore(self):
+        cats_in = {"characters": [], "locations": [], "arcs": [], "lore": [
+            {"name": "Glitchy", "fields": {"description": "some content"}},
+        ]}
+        client = self._PerEntryClient({"Glitchy": None})   # simulates a failed call
+        out = lore_intake.llm_classify_all(client, "Sci-Fi", cats_in)
+        self.assertEqual([r["name"] for r in out["lore"]], ["Glitchy"])
+        self.assertEqual(out["lore"][0]["fields"]["description"], "some content")
+
+
 class ProposalTests(unittest.TestCase):
     def test_status_new_vs_update_case_insensitive(self):
         kb = _kb()

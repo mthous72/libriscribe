@@ -264,26 +264,44 @@ def _normalize_cats(data) -> dict:
     return out
 
 
-def _entries_for_llm(data) -> str:
-    """Present the classifier with a clean JSON list of {name, content} entries.
+_TEXT_FIELDS = ("description", "background", "personality_traits", "physical_description",
+                "significance", "role", "motivations", "character_arc", "resolution_notes")
 
-    When we already recognized the format, its records carry clean name+field text — flatten
-    those so the model sees only the lore (not a whole KoboldAI save's game state). Truly
-    unrecognized JSON is passed through (truncated) as a last resort.
-    """
-    _TEXT_FIELDS = ("description", "background", "personality_traits", "physical_description",
-                    "significance", "role", "motivations", "character_arc", "resolution_notes")
+# LLM category label -> canonical category key.
+_CATEGORY_ALIASES = {
+    "character": "characters", "characters": "characters", "person": "characters", "npc": "characters", "being": "characters",
+    "location": "locations", "locations": "locations", "place": "locations", "setting": "locations", "region": "locations",
+    "lore": "lore", "lore_entry": "lore", "item": "lore", "object": "lore", "faction": "lore", "organization": "lore",
+    "concept": "lore", "event": "lore", "technology": "lore", "system": "lore", "rule": "lore", "world": "lore",
+    "arc": "arcs", "arcs": "arcs", "story_arc": "arcs", "plot": "arcs", "plotline": "arcs", "storyline": "arcs",
+}
+
+# Per-type field rubric shown to the model when extracting.
+_TYPE_RUBRIC = (
+    "   character: role, physical_description, personality_traits, background, motivations, character_arc\n"
+    "   location: description, significance\n"
+    "   lore: entry_type, description, significance\n"
+    "   arc: arc_type, description, resolution_notes\n"
+)
+
+
+def _flatten_entries(cats) -> list[dict]:
+    """Flatten canonical cats into clean {name, content} entries (World-Info noise removed)."""
+    entries = []
+    for cat in ENTITY_CATEGORIES:
+        for rec in cats.get(cat, []) or []:
+            fields = rec.get("fields", {}) or {}
+            parts = [str(fields[k]) for k in _TEXT_FIELDS if fields.get(k)]
+            if not parts:  # fall back to any scalar field text
+                parts = [str(v) for v in fields.values() if v and not isinstance(v, (list, dict))]
+            entries.append({"name": str(rec.get("name", "")), "content": "\n".join(parts).strip()[:6000]})
+    return entries
+
+
+def _entries_for_llm(data) -> str:
+    """Serialize input for the batch classifier: clean entries when recognized, else raw."""
     if isinstance(data, dict) and any(data.get(c) for c in ENTITY_CATEGORIES):
-        entries = []
-        for cat in ENTITY_CATEGORIES:
-            for rec in data.get(cat, []) or []:
-                fields = rec.get("fields", {}) or {}
-                parts = [str(fields[k]) for k in _TEXT_FIELDS if fields.get(k)]
-                if not parts:  # fall back to any scalar field text
-                    parts = [str(v) for v in fields.values() if v and not isinstance(v, (list, dict))]
-                content = "\n".join(parts).strip()
-                entries.append({"name": str(rec.get("name", "")), "content": content[:6000]})
-        return json.dumps(entries, ensure_ascii=False)[:14000]
+        return json.dumps(_flatten_entries(data), ensure_ascii=False)[:14000]
     return json.dumps(data, default=str, ensure_ascii=False)[:14000]
 
 
@@ -322,6 +340,68 @@ def llm_map(client, genre: str, data) -> dict:
         return _normalize_cats(json.loads(result))
     except Exception:
         return _empty_cats()
+
+
+# ─── Per-entry classification (one small LLM call per entry) ───────────────────
+
+# Beyond this many entries, per-entry classification is too many calls; use the batch map.
+_PER_ENTRY_LIMIT = 80
+
+
+def llm_classify_entry(client, genre: str, name: str, content: str):
+    """Classify ONE entry and extract its typed fields. Returns (category_key, fields) or None.
+
+    Small, focused prompt per entry — far more reliable than one giant call, especially for
+    local models. The result is tiny and parsed locally."""
+    prompt = (
+        f"Sort ONE lore entry for a {genre} book into a lorebook and pull out its details.\n\n"
+        f"ENTRY NAME: {name}\n"
+        f"ENTRY CONTENT:\n{(content or '')[:6000]}\n\n"
+        "1) Reason briefly, then decide the single best category:\n"
+        "   character = a person, being, creature, android, or named individual\n"
+        "   location  = a place, building, region, or setting\n"
+        "   lore      = a faction, organization, item, technology, concept, event, rule, or system\n"
+        "   arc       = a storyline or plot thread\n"
+        "2) Extract the details into that category's fields:\n"
+        + _TYPE_RUBRIC +
+        "\nReturn ONLY JSON: {\"category\": \"character|location|lore|arc\", \"reasoning\": \"...\", "
+        "\"fields\": { ... }}. Put the real substance into the fields, use empty strings for "
+        "anything not stated, and do not invent details."
+    )
+    try:
+        raw = client.generate_content_with_json_repair(prompt, max_tokens=1500, temperature=0.2)
+        data = json.loads(raw)
+    except Exception:
+        return None
+    if not isinstance(data, dict):
+        return None
+    cat = _CATEGORY_ALIASES.get(str(data.get("category", "")).strip().lower(), "lore")
+    fields = data.get("fields", {})
+    return cat, (fields if isinstance(fields, dict) else {})
+
+
+def llm_classify_all(client, genre: str, cats: dict) -> dict:
+    """Classify each recognized entry with its own LLM call, sorting it into the right
+    category and extracting typed fields. Falls back to the batch map for very large sets,
+    and keeps an entry as lore if its call fails (nothing is lost)."""
+    if client is None:
+        return _empty_cats()
+    entries = _flatten_entries(cats)
+    if len(entries) > _PER_ENTRY_LIMIT:
+        return llm_map(client, genre, cats)
+
+    out = _empty_cats()
+    for e in entries:
+        name = e["name"].strip()
+        if not name:
+            continue
+        result = llm_classify_entry(client, genre, name, e["content"])
+        if result:
+            cat, fields = result
+            out[cat].append({"name": name, "fields": fields})
+        else:  # call failed — preserve the entry as lore rather than drop it
+            out["lore"].append({"name": name, "fields": {"description": e["content"]}})
+    return out
 
 
 def extract_from_text(client, genre: str, text: str) -> dict:

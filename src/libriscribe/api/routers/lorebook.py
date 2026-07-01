@@ -535,14 +535,24 @@ def parse_lore(name: str, body: LoreParseRequest):
     fmt = detected[1] if detected else "unrecognized"
     used_llm = False
 
-    # Hybrid: enrich recognized formats when asked; always LLM-map unrecognized shapes.
-    if body.smart or detected is None:
-        source = body.data if detected is None else {**cats}
-        llm_cats = lore_intake.llm_map(_maybe_client(kb), kb.genre, source)
-        if lore_intake.cats_count(llm_cats) > 0:
-            cats = llm_cats
+    # Hybrid classification:
+    # - recognized format + smart -> classify each entry with its own small LLM call, sorting
+    #   it into the right category (character/location/lore/arc) and extracting typed fields.
+    # - unrecognized shape -> best-effort single LLM map over the raw JSON.
+    if body.smart and detected is not None:
+        client = _maybe_client(kb)
+        if client is not None:
+            classified = lore_intake.llm_classify_all(client, kb.genre, cats)
+            if lore_intake.cats_count(classified) > 0:
+                cats = classified
+                used_llm = True
+                fmt = f"{fmt} + AI"
+    elif detected is None:
+        mapped = lore_intake.llm_map(_maybe_client(kb), kb.genre, body.data)
+        if lore_intake.cats_count(mapped) > 0:
+            cats = mapped
             used_llm = True
-            fmt = f"{fmt} + AI" if detected else "AI-mapped"
+            fmt = "AI-mapped"
 
     if lore_intake.cats_count(cats) == 0:
         raise HTTPException(
