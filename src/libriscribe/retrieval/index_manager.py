@@ -10,32 +10,43 @@ if TYPE_CHECKING:
     from libriscribe.knowledge_base import ProjectKnowledgeBase
 
 from libriscribe.retrieval.config import get_retrieval_dir
-from libriscribe.retrieval.models import RetrievalDocument, RetrievalChunk, RetrievalConfig
+from libriscribe.retrieval.models import RetrievalDocument, RetrievalChunk, RetrievalConfig, RetrievalMode
 from libriscribe.retrieval.document_builder import DocumentBuilder, compute_sha256
 from libriscribe.retrieval.chunking import chunk_document
 from libriscribe.retrieval.keyword_index import KeywordIndex
 from libriscribe.retrieval.cross_reference import CrossReferenceIndex
+from libriscribe.retrieval.semantic_index import SemanticIndex
+
+
+def _mode_str(mode) -> str:
+    return getattr(mode, "value", str(mode)).lower()
 
 
 class IndexManager:
     """Manages the end-to-end indexing flow: builder -> chunker -> persistence -> indexes fitting."""
 
-    def __init__(self, kb: ProjectKnowledgeBase, project_dir: Path, config: RetrievalConfig | None = None):
+    def __init__(self, kb: ProjectKnowledgeBase, project_dir: Path, config: RetrievalConfig | None = None, embedder=None):
         self.kb = kb
         self.project_dir = project_dir
         self.config = config or kb.retrieval or RetrievalConfig()
         self.retrieval_dir = get_retrieval_dir(project_dir, self.config)
+        self.embedder = embedder
 
         # Paths
         self.docs_file = self.retrieval_dir / "documents.jsonl"
         self.chunks_file = self.retrieval_dir / "chunks.jsonl"
         self.keyword_index_file = self.retrieval_dir / "keyword_index.json"
         self.xref_index_file = self.retrieval_dir / "cross_references.json"
+        self.semantic_index_file = self.retrieval_dir / "semantic_index.json"
         self.manifest_file = self.retrieval_dir / "manifests" / "index_state.json"
 
         # Indexes
         self.keyword_index = KeywordIndex(project_dir)
         self.xref_index = CrossReferenceIndex()
+        self.semantic_index = SemanticIndex()
+
+    def _semantic_needed(self) -> bool:
+        return _mode_str(self.config.mode) in ("semantic", "hybrid")
 
     def rebuild_index(self) -> None:
         """Forces a clean, complete rebuild of all local retrieval files and indexes."""
@@ -69,8 +80,29 @@ class IndexManager:
         self.xref_index.build(chunks, entity_defs)
         self.xref_index.save_to_file(self.xref_index_file)
 
+        # 5b. Build and save the semantic (embeddings) index when the project's mode
+        # requires it and an embedder is configured. Any failure (no embedder, network,
+        # bad model) leaves NO semantic file so search cleanly falls back to keyword —
+        # and we never serve stale vectors from a previous build.
+        self._rebuild_semantic(chunks)
+
         # 6. Save build manifest
         self._write_manifest(docs)
+
+    def _rebuild_semantic(self, chunks: List[RetrievalChunk]) -> None:
+        try:
+            if self._semantic_needed() and self.embedder is not None:
+                self.semantic_index.build(chunks, self.embedder)
+                self.semantic_index.save_to_file(self.semantic_index_file)
+                return
+        except Exception:
+            pass  # fall through to cleanup
+        self.semantic_index = SemanticIndex()
+        try:
+            if self.semantic_index_file.exists():
+                self.semantic_index_file.unlink()
+        except Exception:
+            pass
 
     def refresh_index(self) -> bool:
         """Refreshes the index incrementally if changes are detected in sources.
@@ -113,6 +145,7 @@ class IndexManager:
         """Loads fitted indexes from local JSON files."""
         self.keyword_index.load_from_file(self.keyword_index_file)
         self.xref_index.load_from_file(self.xref_index_file)
+        self.semantic_index.load_from_file(self.semantic_index_file)
 
     def _get_entity_definitions(self) -> Dict[str, str]:
         """Assembles the dictionary of entity names and types from characters, worldbuilding, locations, and lore entries."""
