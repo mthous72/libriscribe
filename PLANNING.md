@@ -31,6 +31,18 @@ Idea: let users keep project data on OneDrive / Google Drive / Proton Drive. The
    (list/upload/download/auth) covering OneDrive + GDrive (official OAuth) and Proton (experimental).
 3. **Native Proton SDK** integration once Proton ships third-party auth (~2027).
 
+**Alternative: Supabase (in the back pocket — spec later).** Different model: instead of the
+user's own cloud, WE operate a backend. Fits the original "sign up in the app + sync" wish that
+Proton couldn't: Supabase **Auth** (real email/OAuth sign-up), **Storage** (S3-compatible; upload
+the `.libriscribe.json` bundle per user, RLS-isolated), official libs (`supabase-py` / `supabase-js`),
+self-hostable. **Tradeoffs:** we become the data operator (host/pay/GDPR-ish responsibility; cost
+scales with users) and it's encrypted-at-rest but **not E2E** — a shift from the current
+local-first "nothing leaves your machine" story. **Mitigation:** client-side-encrypt the bundle
+before upload (passphrase-derived key) for a Proton-like "we can't read it" property. **Architecture
+if pursued:** keep local-first as default; optional account for opt-in backup/cross-device sync;
+same `CloudBackend` interface so it coexists with sync-folder/rclone. Needs a Supabase project
+URL + anon key (anon key safe to ship; never bundle the service-role key).
+
 ---
 
 ## Refactoring (from codebase review, 2026-07-01)
