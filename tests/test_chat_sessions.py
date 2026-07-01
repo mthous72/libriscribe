@@ -59,5 +59,64 @@ class ChatSessionStorageTests(unittest.TestCase):
         self.assertEqual(meta["message_count"], 1)
 
 
+class RollingMemoryTests(unittest.TestCase):
+    class _FakeClient:
+        def __init__(self):
+            self.calls = 0
+        def generate_content(self, prompt, **kw):
+            self.calls += 1
+            return "MEMORY: prior + new folded together"
+
+    def setUp(self):
+        from libriscribe.knowledge_base import ProjectKnowledgeBase
+        self.tmp = Path(tempfile.mkdtemp())
+        self._orig = chat.get_projects_dir
+        chat.get_projects_dir = lambda: self.tmp
+        (self.tmp / "demo").mkdir(parents=True, exist_ok=True)
+        self.kb = ProjectKnowledgeBase(project_name="demo", title="Demo", genre="Fantasy")
+
+    def tearDown(self):
+        chat.get_projects_dir = self._orig
+
+    def test_window_start_drops_old_and_build_from_start(self):
+        history = [{"role": "user", "content": "word " * 150} for _ in range(20)]
+        start = chat._window_start_index(history, 3000)
+        self.assertGreater(start, 0)
+        self.assertLess(start, len(history))
+        convo = chat._build_conversation(history, start)
+        self.assertTrue(convo.strip().endswith("Assistant:"))
+
+    def test_summarizes_when_batch_reached(self):
+        s = chat._new_session("Plot")
+        s["messages"] = [{"role": "user" if i % 2 == 0 else "assistant", "content": "word " * 150} for i in range(20)]
+        chat._save_session("demo", s)
+        client = self._FakeClient()
+        orig = chat._RECENT_WINDOW_TOKENS
+        try:
+            summary, start = chat._manage_session_memory("demo", self.kb, s, client)
+        finally:
+            chat._RECENT_WINDOW_TOKENS = orig
+        self.assertTrue(summary)                       # a running summary was produced
+        self.assertGreaterEqual(client.calls, 1)
+        self.assertEqual(s["summarized_upto"], start)
+        # persisted
+        self.assertEqual(chat._load_session("demo", s["id"])["summary"], summary)
+
+    def test_no_summary_for_short_session(self):
+        s = chat._new_session("Plot")
+        s["messages"] = [{"role": "user", "content": "hi"}, {"role": "assistant", "content": "hey"}]
+        chat._save_session("demo", s)
+        client = self._FakeClient()
+        summary, start = chat._manage_session_memory("demo", self.kb, s, client)
+        self.assertEqual(summary, "")
+        self.assertEqual(client.calls, 0)              # nothing old enough to summarize
+        self.assertEqual(start, 0)
+
+    def test_new_session_has_memory_fields(self):
+        s = chat._new_session("X")
+        self.assertEqual(s["summary"], "")
+        self.assertEqual(s["summarized_upto"], 0)
+
+
 if __name__ == "__main__":
     unittest.main()

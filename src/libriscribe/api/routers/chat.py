@@ -75,6 +75,12 @@ def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+# Rolling-memory tuning (per session).
+_RECENT_WINDOW_TOKENS = 3000   # recent turns sent verbatim (token-budgeted, replaces the old 12-msg cap)
+_SUMMARY_BATCH = 4             # only (re)summarize once this many messages have dropped out of the window
+_SUMMARY_CHAR_CAP = 4000       # keep the running summary compact
+
+
 def _new_session(title: str = "New chat", focus: dict | None = None) -> dict:
     return {
         "id": uuid.uuid4().hex[:8],
@@ -83,6 +89,8 @@ def _new_session(title: str = "New chat", focus: dict | None = None) -> dict:
         "created_at": _now(),
         "updated_at": _now(),
         "messages": [],
+        "summary": "",           # rolling memory of older turns (this session only)
+        "summarized_upto": 0,    # messages[:summarized_upto] are folded into `summary`
     }
 
 
@@ -216,13 +224,65 @@ def _system_prompt(kb, context: str) -> str:
     )
 
 
-def _build_conversation(history: list[dict], limit: int = 12) -> str:
-    convo = ""
-    for m in history[-limit:]:
-        speaker = "Author" if m.get("role") == "user" else "Assistant"
-        convo += f"{speaker}: {m.get('content', '')}\n\n"
+def _speaker_line(m: dict) -> str:
+    speaker = "Author" if m.get("role") == "user" else "Assistant"
+    return f"{speaker}: {m.get('content', '')}\n\n"
+
+
+def _window_start_index(history: list[dict], max_tokens: int) -> int:
+    """Index of the first message that fits in the recent token-budgeted window (messages
+    from here to the end are sent verbatim; earlier ones roll into the summary)."""
+    from libriscribe.utils.token_utils import estimate_tokens
+
+    used = 0
+    start = len(history)
+    for i in range(len(history) - 1, -1, -1):
+        t = estimate_tokens(_speaker_line(history[i]))
+        if used + t > max_tokens and start < len(history):
+            break
+        used += t
+        start = i
+    return start
+
+
+def _build_conversation(history: list[dict], start: int = 0) -> str:
+    convo = "".join(_speaker_line(m) for m in history[start:])
     convo += "Assistant:"
     return convo
+
+
+def _summarize_turns(client, kb, prior_summary: str, turns: list[dict]) -> str:
+    """Fold a batch of older turns into a compact running summary (one plain-text LLM call)."""
+    if client is None or not turns:
+        return prior_summary
+    convo = "\n".join(_speaker_line(m).strip() for m in turns)
+    prompt = (
+        f"You are keeping a running memory of a brainstorming conversation for the book "
+        f"'{kb.title}' ({kb.genre}). Update the running summary with the new exchange below. Keep "
+        "it COMPACT — a short set of bullet points or sentences capturing the ideas, decisions, "
+        "names, and open questions that matter for continuity. Merge, don't just append; drop "
+        "trivia. Return ONLY the updated summary.\n\n"
+        f"RUNNING SUMMARY SO FAR:\n{prior_summary or '(none yet)'}\n\n"
+        f"NEW EXCHANGE:\n{convo}\n\nUpdated running summary:"
+    )
+    try:
+        out = client.generate_content(prompt, max_tokens=500, temperature=0.3)
+        return (out or prior_summary).strip()[:_SUMMARY_CHAR_CAP]
+    except Exception:
+        return prior_summary
+
+
+def _manage_session_memory(name: str, kb, session: dict, client) -> tuple[str, int]:
+    """Roll older-than-window turns into the session summary (batched). Returns
+    (summary, window_start_index)."""
+    history = session.get("messages", [])
+    start = _window_start_index(history, _RECENT_WINDOW_TOKENS)
+    upto = int(session.get("summarized_upto", 0) or 0)
+    if start - upto >= _SUMMARY_BATCH:
+        session["summary"] = _summarize_turns(client, kb, session.get("summary", ""), history[upto:start])
+        session["summarized_upto"] = start
+        _save_session(name, session)
+    return session.get("summary", ""), start
 
 
 def _client_for(kb):
@@ -511,6 +571,8 @@ def clear_session(name: str, sid: str):
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
     session["messages"] = []
+    session["summary"] = ""          # reset the rolling memory too
+    session["summarized_upto"] = 0
     session["updated_at"] = _now()
     _save_session(name, session)
 
@@ -563,12 +625,21 @@ def chat(name: str, body: ChatRequest):
     _append_message(name, session, "user", body.message)
     history = session["messages"]
 
+    client = _client_for(kb)
+
+    # Rolling per-session memory: recent turns go in verbatim (token-budgeted window); older
+    # turns are summarized into this session's running memory and prepended to the prompt.
+    memory, window_start = _manage_session_memory(name, kb, session, client)
+
     system_prompt = _assemble_system_prompt(
         name, kb, body.message, body.focus_type, body.focus_name, body.use_references
     )
+    if memory:
+        system_prompt += (
+            "\n\n=== Earlier in this conversation (running memory of older turns) ===\n" + memory
+        )
 
-    conversation = _build_conversation(history)
-    client = _client_for(kb)
+    conversation = _build_conversation(history, window_start)
 
     def generate():
         chunks: list[str] = []
