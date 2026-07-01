@@ -24,12 +24,15 @@ from libriscribe.utils.file_utils import (
     is_nonempty_file,
     get_existing_chapter_numbers,
 )
+from libriscribe.utils.token_utils import estimate_tokens
 
 import json
+import logging
 from pathlib import Path
 from datetime import datetime, timezone
 
 router = APIRouter(prefix="/api/projects", tags=["projects"])
+logger = logging.getLogger(__name__)
 
 
 @router.get("", response_model=list[ProjectSummary])
@@ -201,8 +204,6 @@ def set_retrieval(name: str, body: UpdateRetrievalRequest):
     """Set the project's search mode and (re)build the index. Semantic/hybrid need an
     embedding source configured in Settings; without one they fall back to keyword."""
     from libriscribe.retrieval.models import RetrievalConfig
-    from libriscribe.retrieval.embedder import build_embedder
-    from libriscribe.settings import Settings
 
     kb = project_service.load_kb(name)
     if not kb:
@@ -214,19 +215,15 @@ def set_retrieval(name: str, body: UpdateRetrievalRequest):
 
     data = (kb.retrieval.model_dump() if kb.retrieval else RetrievalConfig().model_dump())
     data.update({"enabled": mode != "disabled", "mode": mode})
-    cfg = RetrievalConfig(**data)
-    kb.retrieval = cfg
+    kb.retrieval = RetrievalConfig(**data)
     project_service.save_kb(name, kb)
 
     # Rebuild the index so the chosen mode is immediately queryable.
-    project_dir = project_service.get_projects_dir() / name
-    embedder = build_embedder(Settings())
     try:
-        from libriscribe.retrieval.index_manager import IndexManager
-
-        IndexManager(kb, project_dir, cfg, embedder=embedder).rebuild_index()
+        from libriscribe.services.retrieval_service import rebuild_project_index
+        rebuild_project_index(kb, project_service.get_projects_dir() / name)
     except Exception:
-        pass  # keyword always works; semantic failures are handled internally
+        logger.warning("Retrieval reindex failed for %s", name, exc_info=True)
 
     return _retrieval_status(name, kb)
 
@@ -266,10 +263,8 @@ def preview_context(name: str, chapter_number: int):
 
     svc = None
     try:
-        from libriscribe.retrieval.search_service import SearchServiceImpl
-        from libriscribe.retrieval.models import RetrievalConfig
-        cfg = kb.retrieval if kb.retrieval and kb.retrieval.enabled else RetrievalConfig(enabled=True, mode="keyword")
-        svc = SearchServiceImpl(project_service.get_projects_dir() / name, cfg)
+        from libriscribe.services.retrieval_service import search_service_for
+        svc = search_service_for(project_service.get_projects_dir() / name, kb)
     except Exception:
         svc = None
 
@@ -278,7 +273,7 @@ def preview_context(name: str, chapter_number: int):
         "chapter_number": chapter_number,
         "scene_number": scene.scene_number,
         "context": context,
-        "token_estimate": int(len(context.split()) * 1.3),
+        "token_estimate": estimate_tokens(context),
     }
 
 

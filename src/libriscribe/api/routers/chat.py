@@ -11,6 +11,7 @@ existing lore models / KB save path.
 from __future__ import annotations
 
 import json
+import logging
 import uuid
 from datetime import datetime, timezone
 
@@ -19,10 +20,12 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 from libriscribe.knowledge_base import Character, Location, LoreEntry, StoryArc
-from libriscribe.services.project_service import get_projects_dir, load_kb, save_kb
-from libriscribe.utils.llm_client import LLMClient
+from libriscribe.services.project_service import get_projects_dir, load_kb, save_kb, create_llm_client
+from libriscribe.services.lore_intake import SMART_FIELDS
+from libriscribe.utils.token_utils import estimate_tokens
 
 router = APIRouter(prefix="/api/projects", tags=["chat"])
+logger = logging.getLogger(__name__)
 
 
 # ─── Persistence ──────────────────────────────────────────────────────────────
@@ -162,11 +165,9 @@ def _build_lore_context(name: str, kb, query: str, max_tokens: int = 1800) -> st
     project_dir = get_projects_dir() / name
 
     try:
-        from libriscribe.retrieval.search_service import SearchServiceImpl
-        from libriscribe.retrieval.models import RetrievalConfig
+        from libriscribe.services.retrieval_service import search_service_for
 
-        config = kb.retrieval if kb.retrieval and kb.retrieval.enabled else RetrievalConfig(enabled=True, mode="keyword")
-        svc = SearchServiceImpl(project_dir, config)
+        svc = search_service_for(project_dir, kb)
         for r in svc.search(query, mode="keyword", top_k=6):
             text = (getattr(r, "text", "") or "").strip()
             if not text:
@@ -177,7 +178,7 @@ def _build_lore_context(name: str, kb, query: str, max_tokens: int = 1800) -> st
             if budget.exhausted():
                 break
     except Exception:
-        pass
+        logger.debug("Lore retrieval failed; falling back to KB dump", exc_info=True)
 
     # Supplement / fallback with KB entities.
     def add(label: str, value: str):
@@ -224,11 +225,8 @@ def _build_conversation(history: list[dict], limit: int = 12) -> str:
     return convo
 
 
-def _client_for(kb) -> LLMClient:
-    client = LLMClient(kb.llm_provider)
-    if kb.model:
-        client.set_model(kb.model)
-    return client
+def _client_for(kb):
+    return create_llm_client(kb)
 
 
 # ─── Endpoints ────────────────────────────────────────────────────────────────
@@ -252,11 +250,9 @@ def _reference_context(name: str, kb, query: str, max_tokens: int = 800) -> str:
     parts: list[str] = []
     project_dir = get_projects_dir() / name
     try:
-        from libriscribe.retrieval.search_service import SearchServiceImpl
-        from libriscribe.retrieval.models import RetrievalConfig
+        from libriscribe.services.retrieval_service import search_service_for
 
-        config = kb.retrieval if kb.retrieval and kb.retrieval.enabled else RetrievalConfig(enabled=True, mode="keyword")
-        svc = SearchServiceImpl(project_dir, config)
+        svc = search_service_for(project_dir, kb)
         for r in svc.search(query, mode="keyword", top_k=5, filters={"source_type": "reference"}):
             text = (getattr(r, "text", "") or "").strip()
             if not text:
@@ -267,6 +263,7 @@ def _reference_context(name: str, kb, query: str, max_tokens: int = 800) -> str:
             if budget.exhausted():
                 break
     except Exception:
+        logger.debug("Reference retrieval failed", exc_info=True)
         return ""
     if not parts:
         return ""
@@ -352,12 +349,10 @@ def _focus_context(kb, name: str, focus_type: str, focus_name: str, message: str
 
     svc = None
     try:
-        from libriscribe.retrieval.search_service import SearchServiceImpl
-        from libriscribe.retrieval.models import RetrievalConfig
+        from libriscribe.services.retrieval_service import search_service_for
 
         project_dir = get_projects_dir() / name
-        config = kb.retrieval if kb.retrieval and kb.retrieval.enabled else RetrievalConfig(enabled=True, mode="keyword")
-        svc = SearchServiceImpl(project_dir, config)
+        svc = search_service_for(project_dir, kb)
     except Exception:
         svc = None
 
@@ -555,7 +550,7 @@ def chat_preview(name: str, body: PreviewRequest):
     system_prompt = _assemble_system_prompt(
         name, kb, body.message or "(no message yet)", body.focus_type, body.focus_name, body.use_references
     )
-    return {"system_prompt": system_prompt, "token_estimate": int(len(system_prompt.split()) * 1.3)}
+    return {"system_prompt": system_prompt, "token_estimate": estimate_tokens(system_prompt)}
 
 
 @router.post("/{name}/chat")
@@ -601,17 +596,9 @@ class ApplyRequest(BaseModel):
     smart: bool = False
 
 
-_SMART_FIELDS = {
-    "character": ["role", "physical_description", "personality_traits", "background", "motivations", "character_arc"],
-    "location": ["description", "significance"],
-    "lore": ["entry_type", "description", "significance"],
-    "arc": ["arc_type", "description", "resolution_notes"],
-}
-
-
 def _extract_fields(kb, target_type: str, text: str) -> dict:
     """Use the LLM to parse an idea into typed fields for a lore entity."""
-    fields = _SMART_FIELDS.get(target_type, ["description"])
+    fields = SMART_FIELDS.get(target_type, ["description"])
     prompt = (
         f"Extract a {target_type} for a {kb.genre} book from the idea below. "
         f"Return ONLY a JSON object with these string keys: {', '.join(fields)}. "
@@ -665,7 +652,7 @@ def apply_to_lore(name: str, body: ApplyRequest):
     entity_name = body.entity_name.strip()
     if not entity_name:
         raise HTTPException(status_code=400, detail="entity_name is required")
-    if target not in _SMART_FIELDS:
+    if target not in SMART_FIELDS:
         raise HTTPException(status_code=400, detail="unsupported target_type")
 
     fields = _extract_fields(kb, target, body.text) if body.smart else {}

@@ -10,16 +10,12 @@ if TYPE_CHECKING:
     from libriscribe.knowledge_base import ProjectKnowledgeBase
 
 from libriscribe.retrieval.config import get_retrieval_dir
-from libriscribe.retrieval.models import RetrievalDocument, RetrievalChunk, RetrievalConfig, RetrievalMode
+from libriscribe.retrieval.models import RetrievalDocument, RetrievalChunk, RetrievalConfig, RetrievalMode, mode_str
 from libriscribe.retrieval.document_builder import DocumentBuilder, compute_sha256
 from libriscribe.retrieval.chunking import chunk_document
 from libriscribe.retrieval.keyword_index import KeywordIndex
 from libriscribe.retrieval.cross_reference import CrossReferenceIndex
 from libriscribe.retrieval.semantic_index import SemanticIndex
-
-
-def _mode_str(mode) -> str:
-    return getattr(mode, "value", str(mode)).lower()
 
 
 class IndexManager:
@@ -46,7 +42,7 @@ class IndexManager:
         self.semantic_index = SemanticIndex()
 
     def _semantic_needed(self) -> bool:
-        return _mode_str(self.config.mode) in ("semantic", "hybrid")
+        return mode_str(self.config.mode) in ("semantic", "hybrid")
 
     def _all_documents(self) -> List[RetrievalDocument]:
         """KB-derived documents plus any imported reference material (B19)."""

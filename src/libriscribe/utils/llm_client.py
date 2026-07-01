@@ -11,6 +11,7 @@ from openai import OpenAI
 from libriscribe.settings import Settings
 from libriscribe.utils.cost_tracker import CostTracker
 from libriscribe.utils.file_utils import extract_json_from_markdown
+from libriscribe.utils.token_utils import estimate_tokens
 from libriscribe.utils.model_routing import (
     ModelRoute,
     build_fallback_route_chain,
@@ -177,8 +178,8 @@ class LLMClient:
         }
 
     def _log_usage(self, provider: str, model: str, prompt: str, response_text: str):
-        input_tokens = len(prompt.split()) * 1.3
-        output_tokens = len(response_text.split()) * 1.3 if response_text else 0
+        input_tokens = estimate_tokens(prompt)
+        output_tokens = estimate_tokens(response_text)
         cost = self.cost_tracker.calculate_cost(
             f"{provider}/{model}",
             int(input_tokens),

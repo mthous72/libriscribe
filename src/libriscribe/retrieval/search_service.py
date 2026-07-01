@@ -2,7 +2,7 @@
 
 from pathlib import Path
 from typing import Any, Protocol, runtime_checkable
-from libriscribe.retrieval.models import SearchResult, CrossReferenceEntry, RetrievalConfig
+from libriscribe.retrieval.models import SearchResult, CrossReferenceEntry, RetrievalConfig, mode_str
 
 
 @runtime_checkable
@@ -52,10 +52,6 @@ class NullSearchService:
         return None
 
 
-def _mode_str(mode) -> str:
-    return getattr(mode, "value", str(mode)).lower()
-
-
 def _merge_hybrid(keyword_results, semantic_results, top_k: int) -> list[SearchResult]:
     """Combine keyword + semantic hits: min-max normalize each list's scores to [0,1],
     sum per chunk (keeping the richer result object), and re-rank."""
@@ -102,7 +98,7 @@ class SearchServiceImpl:
 
         # Best-effort embedder (only used for semantic/hybrid modes); None -> keyword only.
         self.embedder = None
-        if _mode_str(config.mode) in ("semantic", "hybrid"):
+        if mode_str(config.mode) in ("semantic", "hybrid"):
             try:
                 from libriscribe.settings import Settings
                 self.embedder = build_embedder(Settings())
@@ -115,7 +111,7 @@ class SearchServiceImpl:
     def _effective_mode(self, requested: str | None) -> str:
         """The project's configured mode wins for semantic/hybrid; otherwise honor the
         requested mode (callers historically pass 'keyword')."""
-        cfg = _mode_str(self.config.mode)
+        cfg = mode_str(self.config.mode)
         if cfg in ("semantic", "hybrid"):
             return cfg
         return (requested or cfg or "keyword").lower()

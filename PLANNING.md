@@ -7,6 +7,32 @@ Last updated: 2026-06-29
 
 ---
 
+## Refactoring (from codebase review, 2026-07-01)
+
+A 4-agent maintainability review produced a tiered plan. **Tier 1 (glue dedup + logging)
+DONE:** extracted shared helpers — `utils/token_utils.estimate_tokens`,
+`utils/file_utils.resolve_chapter_path`, `retrieval/models.{mode_str,matches_filters,
+chunk_to_result}`, `services/retrieval_service.{get_retrieval_config,search_service_for,
+rebuild_project_index}`, and `project_service.create_llm_client` — and rewired ~20 duplicated
+call-sites across chat/lorebook/projects/references/generation + the two indexes; deduped the
+`SettingsResponse` builder and `_SMART_FIELDS`; added operational logging to index-rebuild
+failures. `tests/test_shared_helpers.py` added; full suite 155 passed.
+
+**Remaining (deferred):**
+- **Tier 1 tail:** broad `print()` → `logging` sweep in `utils/file_utils.py`,
+  `knowledge_base.py`, and several agents (matters for the windowed build where stdout is None).
+- **Tier 2 (structural splits):** split `chat.py`/`lorebook.py` into services + routers;
+  frontend — extract oversized pages (ProjectDashboard/LorebookPage), shared `Modal`/`Input`/
+  `Button`, domain `types.ts`, and add a vitest setup (no frontend tests today).
+- **Tier 3 (bigger):** `llm_client` ProviderAdapter pattern; `Worldbuilding` god-object →
+  subclasses; human-review `threading.Event` → `asyncio.Event` + timeout (hang-risk fix).
+- **Tier 4 (cleanup):** delete legacy `_save_chat`/`_append`, dead vector-DB settings +
+  `RetrievalBackend` enum values, orphaned `editor_enhanced.py`/`formatting_optimized.py`
+  duplicates; migrate `configuration.py` `@validator` → `@field_validator`.
+- **Skip (over-engineering):** multi-backend retrieval abstraction, structlog, YAML config for defaults.
+
+---
+
 ## Build priority (pain-first — chosen 2026-06-29)
 
 1. **B1 + B2** — server overhaul: single-instance launch + tray/quit + dirty-flag

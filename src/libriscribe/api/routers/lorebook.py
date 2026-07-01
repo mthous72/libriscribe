@@ -33,7 +33,7 @@ from libriscribe.knowledge_base import (
     Worldbuilding,
     Scene,
 )
-from libriscribe.services.project_service import load_kb, save_kb, get_projects_dir
+from libriscribe.services.project_service import load_kb, save_kb, get_projects_dir, create_llm_client
 
 router = APIRouter(prefix="/api/projects", tags=["lorebook"])
 
@@ -318,10 +318,8 @@ def list_xref(name: str):
         raise HTTPException(status_code=404, detail="Project not found")
 
     try:
-        from libriscribe.retrieval.search_service import SearchServiceImpl
-        from libriscribe.retrieval.models import RetrievalConfig
-        config = kb.retrieval if kb.retrieval and kb.retrieval.enabled else RetrievalConfig(enabled=True)
-        svc = SearchServiceImpl(project_dir, config)
+        from libriscribe.services.retrieval_service import search_service_for
+        svc = search_service_for(project_dir, kb)
         entries = svc.index_manager.xref_index.get_all_entries()
         return [e.model_dump() for e in entries]
     except Exception:
@@ -336,10 +334,8 @@ def get_xref(name: str, entity_name: str):
         raise HTTPException(status_code=404, detail="Project not found")
 
     try:
-        from libriscribe.retrieval.search_service import SearchServiceImpl
-        from libriscribe.retrieval.models import RetrievalConfig
-        config = kb.retrieval if kb.retrieval and kb.retrieval.enabled else RetrievalConfig(enabled=True)
-        svc = SearchServiceImpl(project_dir, config)
+        from libriscribe.services.retrieval_service import search_service_for
+        svc = search_service_for(project_dir, kb)
         entry = svc.index_manager.xref_index.lookup(entity_name)
         if not entry:
             raise HTTPException(status_code=404, detail="Entity not found in cross-reference index")
@@ -360,10 +356,8 @@ def search_project(name: str, req: SearchRequest):
         raise HTTPException(status_code=404, detail="Project not found")
 
     try:
-        from libriscribe.retrieval.search_service import SearchServiceImpl
-        from libriscribe.retrieval.models import RetrievalConfig
-        config = kb.retrieval if kb.retrieval and kb.retrieval.enabled else RetrievalConfig(enabled=True, mode="keyword")
-        svc = SearchServiceImpl(project_dir, config)
+        from libriscribe.services.retrieval_service import search_service_for
+        svc = search_service_for(project_dir, kb)
         results = svc.search(
             req.query,
             mode="keyword",
@@ -430,8 +424,6 @@ def _coerce(obj: dict, model_cls, name: str):
 
 def _smart_normalize(kb, data) -> dict:
     """Use the project's LLM to map arbitrary JSON into our lore categories."""
-    from libriscribe.utils.llm_client import LLMClient
-
     raw = json.dumps(data)[:12000]
     prompt = (
         "Convert the JSON below into a JSON object with keys: characters, locations, "
@@ -440,10 +432,7 @@ def _smart_normalize(kb, data) -> dict:
         "background, significance, entry_type, arc_type). Return ONLY the JSON.\n\n" + raw
     )
     try:
-        client = LLMClient(kb.llm_provider)
-        if kb.model:
-            client.set_model(kb.model)
-        result = client.generate_content_with_json_repair(prompt, max_tokens=4000, temperature=0.2)
+        result = create_llm_client(kb).generate_content_with_json_repair(prompt, max_tokens=4000, temperature=0.2)
         parsed = json.loads(result)
         return parsed if isinstance(parsed, dict) else {}
     except Exception:
@@ -522,12 +511,8 @@ class ProposalApplyRequest(BaseModel):
 
 def _maybe_client(kb):
     """Best-effort LLM client for the project; None if it can't be built."""
-    from libriscribe.utils.llm_client import LLMClient
     try:
-        client = LLMClient(kb.llm_provider)
-        if kb.model:
-            client.set_model(kb.model)
-        return client
+        return create_llm_client(kb)
     except Exception:
         return None
 
@@ -686,20 +671,13 @@ def delete_scene(name: str, chapter_num: int, scene_num: int):
 def _get_lore_sync(name: str):
     """Helper to instantiate LoreSyncService for a project."""
     from libriscribe.services.lore_sync import LoreSyncService
-    from libriscribe.utils.llm_client import LLMClient
-    from libriscribe.settings import Settings
 
     kb = load_kb(name)
     if not kb:
         raise HTTPException(status_code=404, detail="Project not found")
 
-    settings = Settings()
     project_dir = get_projects_dir() / name
-    llm_client = LLMClient(kb.llm_provider)
-    if kb.model:
-        llm_client.set_model(kb.model)
-
-    return LoreSyncService(llm_client, kb, project_dir), kb
+    return LoreSyncService(create_llm_client(kb), kb, project_dir), kb
 
 
 def _parse_chapter_range(body: AnalyzeRequest | None) -> tuple[int, int] | None:

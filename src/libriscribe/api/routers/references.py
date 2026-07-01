@@ -7,6 +7,7 @@ chat router and context builder.
 """
 from __future__ import annotations
 
+import logging
 import threading
 
 from fastapi import APIRouter, HTTPException, UploadFile, File
@@ -14,21 +15,18 @@ from fastapi import APIRouter, HTTPException, UploadFile, File
 from libriscribe.services import project_service, reference_service
 
 router = APIRouter(prefix="/api/projects", tags=["references"])
+logger = logging.getLogger(__name__)
 
 
 def _reindex(name: str, kb) -> None:
     """Rebuild the retrieval index so reference changes take effect."""
-    from libriscribe.retrieval.models import RetrievalConfig
-    from libriscribe.retrieval.embedder import build_embedder
-    from libriscribe.retrieval.index_manager import IndexManager
-    from libriscribe.settings import Settings
+    from libriscribe.services.retrieval_service import rebuild_project_index
 
     project_dir = project_service.get_projects_dir() / name
-    cfg = kb.retrieval or RetrievalConfig()
     try:
-        IndexManager(kb, project_dir, cfg, embedder=build_embedder(Settings())).rebuild_index()
+        rebuild_project_index(kb, project_dir)
     except Exception:
-        pass  # keyword index always rebuilds; semantic failures handled internally
+        logger.warning("Reference reindex failed for %s", name, exc_info=True)
 
 
 def _process_and_reindex(name: str, project_dir, ref_id: str, filename: str, raw: bytes) -> None:

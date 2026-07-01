@@ -82,7 +82,7 @@ def compute_text_stats(text: str) -> dict:
 def project_stats(project_name: str) -> dict | None:
     """Per-chapter + whole-book stats. Returns None if the project is missing."""
     from libriscribe.services.project_service import get_projects_dir, load_kb, _strip_markdown
-    from libriscribe.utils.file_utils import get_existing_chapter_numbers
+    from libriscribe.utils.file_utils import get_existing_chapter_numbers, resolve_chapter_path
 
     project_dir = get_projects_dir() / project_name
     kb = load_kb(project_name)
@@ -92,9 +92,7 @@ def project_stats(project_name: str) -> dict | None:
     chapters: list[dict] = []
     all_prose: list[str] = []
     for n in sorted(get_existing_chapter_numbers(project_dir)):
-        revised = project_dir / f"chapter_{n}_revised.md"
-        base = project_dir / f"chapter_{n}.md"
-        path = revised if revised.exists() else base
+        path = resolve_chapter_path(project_dir, n)
         if not path.exists():
             continue
         prose = _strip_markdown(path.read_text(encoding="utf-8")).strip()

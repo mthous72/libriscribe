@@ -138,6 +138,18 @@ def get_existing_chapter_numbers(project_dir: Union[str, Path]) -> list[int]:
     return sorted(set(chapter_numbers))
 
 
+def resolve_chapter_path(project_dir: Union[str, Path], chapter_number: int) -> Path:
+    """The file to read for a chapter: the revised version if present, else the base draft.
+
+    Centralizes the `chapter_{n}_revised.md` vs `chapter_{n}.md` convention that was repeated
+    in export, stats, and the chapters endpoint.
+    """
+    root = Path(project_dir)
+    revised = root / f"chapter_{chapter_number}_revised.md"
+    base = root / f"chapter_{chapter_number}.md"
+    return revised if revised.exists() else base
+
+
 def get_chapter_files(project_dir: str) -> list[str]:
     """Gets a sorted list of original chapter files in the project directory."""
     project_path = Path(project_dir)

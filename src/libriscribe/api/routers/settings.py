@@ -60,6 +60,10 @@ def _mask_key(key: str) -> str:
 
 @router.get("", response_model=SettingsResponse)
 def get_settings():
+    return get_settings_response()
+
+
+def get_settings_response():
     from libriscribe.settings import Settings
     s = Settings()
     return SettingsResponse(
@@ -152,34 +156,6 @@ def update_settings(body: dict):
     get_settings.cache_clear()
 
     return get_settings_response()
-
-
-def get_settings_response():
-    from libriscribe.settings import Settings
-    s = Settings()
-    return SettingsResponse(
-        openai_api_key=_mask_key(s.openai_api_key),
-        openai_model=s.openai_model,
-        google_ai_studio_api_key=_mask_key(s.google_ai_studio_api_key),
-        google_ai_studio_model=s.google_ai_studio_model,
-        claude_api_key=_mask_key(s.claude_api_key),
-        claude_model=s.claude_model,
-        deepseek_api_key=_mask_key(s.deepseek_api_key),
-        deepseek_model=s.deepseek_model,
-        mistral_api_key=_mask_key(s.mistral_api_key),
-        mistral_model=s.mistral_model,
-        openrouter_api_key=_mask_key(s.openrouter_api_key),
-        openrouter_model=s.openrouter_model,
-        local_api_key=_mask_key(s.local_api_key),
-        local_base_url=s.local_base_url,
-        local_model=s.local_model,
-        default_llm=s.default_llm,
-        retrieval_enabled=s.retrieval_enabled,
-        retrieval_embedding_provider=s.retrieval_embedding_provider,
-        retrieval_embedding_model=s.retrieval_embedding_model,
-        openai_embedding_model=s.openai_embedding_model,
-        writing_system_prompt=s.writing_system_prompt,
-    )
 
 
 # ─── Model listing (B6) ──────────────────────────────────────────────────────

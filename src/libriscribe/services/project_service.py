@@ -11,7 +11,7 @@ from typing import Any
 from libriscribe.knowledge_base import ProjectKnowledgeBase, Location
 from libriscribe.settings import Settings
 from libriscribe.workflow_state import inspect_project_progress
-from libriscribe.utils.file_utils import get_existing_chapter_numbers
+from libriscribe.utils.file_utils import get_existing_chapter_numbers, resolve_chapter_path
 
 EXPORT_SCHEMA_VERSION = 1
 
@@ -19,6 +19,17 @@ EXPORT_SCHEMA_VERSION = 1
 def get_projects_dir() -> Path:
     settings = Settings()
     return Path(settings.projects_dir)
+
+
+def create_llm_client(kb):
+    """Build an LLMClient configured for a project (provider + optional model). Single home
+    for the provider/model construction previously repeated across routers."""
+    from libriscribe.utils.llm_client import LLMClient
+
+    client = LLMClient(kb.llm_provider)
+    if kb.model:
+        client.set_model(kb.model)
+    return client
 
 
 def list_projects() -> list[dict[str, Any]]:
@@ -265,9 +276,7 @@ def export_story_text(project_name: str) -> str | None:
 
     parts = [kb.title or project_name, ""]
     for n in sorted(get_existing_chapter_numbers(project_dir)):
-        revised = project_dir / f"chapter_{n}_revised.md"
-        base = project_dir / f"chapter_{n}.md"
-        path = revised if revised.exists() else base
+        path = resolve_chapter_path(project_dir, n)
         if not path.exists():
             continue
         prose = _strip_markdown(path.read_text(encoding="utf-8")).strip()

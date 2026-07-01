@@ -6,6 +6,8 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING
 
+from libriscribe.utils.token_utils import estimate_tokens
+
 if TYPE_CHECKING:
     from libriscribe.knowledge_base import (
         Chapter,
@@ -28,7 +30,7 @@ class TokenBudget:
 
     def consume(self, text: str) -> str:
         """Returns text truncated to fit budget, updates used count."""
-        est_tokens = int(len(text.split()) * 1.3)
+        est_tokens = estimate_tokens(text)
         if est_tokens <= self.remaining():
             self.used += est_tokens
             return text

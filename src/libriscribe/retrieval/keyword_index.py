@@ -5,7 +5,7 @@ import math
 import re
 from pathlib import Path
 from typing import Any, Dict, List, Tuple
-from libriscribe.retrieval.models import RetrievalChunk, SearchResult
+from libriscribe.retrieval.models import RetrievalChunk, SearchResult, matches_filters, chunk_to_result
 
 # Optional rank-bm25 import
 try:
@@ -143,70 +143,15 @@ class KeywordIndex:
         results = []
         for i, (chunk_id, _) in enumerate(self.corpus):
             chunk = self.chunks_map.get(chunk_id)
-            if not chunk:
+            if not chunk or not matches_filters(chunk, filters):
                 continue
-
-            # Apply metadata filters
-            if filters:
-                match = True
-                # Match source_type
-                if "source_type" in filters:
-                    allowed_types = filters["source_type"]
-                    if isinstance(allowed_types, list):
-                        if chunk.source_type not in allowed_types:
-                            match = False
-                    elif chunk.source_type != allowed_types:
-                        match = False
-
-                # Exclude source_type (e.g. keep reference material out of canon retrieval)
-                if "exclude_source_type" in filters:
-                    excluded = filters["exclude_source_type"]
-                    if isinstance(excluded, list):
-                        if chunk.source_type in excluded:
-                            match = False
-                    elif chunk.source_type == excluded:
-                        match = False
-
-                # Match chapter_number
-                if "chapter_number" in filters:
-                    if chunk.chapter_number != filters["chapter_number"]:
-                        match = False
-
-                # Match characters
-                if "characters" in filters:
-                    req_chars = filters["characters"]
-                    if isinstance(req_chars, list):
-                        if not any(rc in chunk.characters for req_char in req_chars for rc in [req_char]):
-                            match = False
-                    elif req_chars not in chunk.characters:
-                        match = False
-
-                if not match:
-                    continue
 
             score = float(scores[i])
             if score > 0.0 or query.lower() in chunk.text.lower():
                 # Add a tiny exact substring bonus to score if query text is present
                 if query.lower() in chunk.text.lower():
                     score += 0.5
-
-                results.append(
-                    SearchResult(
-                        chunk_id=chunk.chunk_id,
-                        document_id=chunk.document_id,
-                        text=chunk.text,
-                        source_type=chunk.source_type,
-                        score=score,
-                        score_breakdown={"keyword_score": score},
-                        chapter_number=chunk.chapter_number,
-                        scene_number=chunk.scene_number,
-                        entity_name=chunk.entity_name,
-                        tags=chunk.tags,
-                        characters=chunk.characters,
-                        locations=chunk.locations,
-                        themes=chunk.themes,
-                    )
-                )
+                results.append(chunk_to_result(chunk, score, "keyword"))
 
         # Sort descending by score
         results.sort(key=lambda x: x.score, reverse=True)

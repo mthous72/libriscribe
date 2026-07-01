@@ -58,8 +58,7 @@ def get_current_job(name: str):
 @router.post("/{name}/regenerate-outline")
 def regenerate_outline(name: str, req: RegenerateOutlineRequest):
     """Regenerates specific chapters' outlines while keeping others locked."""
-    from libriscribe.services.project_service import load_kb, save_kb
-    from libriscribe.utils.llm_client import LLMClient
+    from libriscribe.services.project_service import load_kb, save_kb, create_llm_client
     from libriscribe.agents.outliner import OutlinerAgent
 
     kb = load_kb(name)
@@ -69,9 +68,7 @@ def regenerate_outline(name: str, req: RegenerateOutlineRequest):
     if not req.regenerate_chapters:
         raise HTTPException(status_code=400, detail="No chapters specified for regeneration")
 
-    llm_client = LLMClient(kb.llm_provider)
-    if kb.model:
-        llm_client.set_model(kb.model)
+    llm_client = create_llm_client(kb)
 
     outliner = OutlinerAgent(llm_client)
     outliner.execute_partial(kb, req.locked_chapters, req.regenerate_chapters)

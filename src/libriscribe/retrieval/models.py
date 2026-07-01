@@ -114,3 +114,66 @@ class RetrievalContextPack(BaseModel):
     character_state_notes: list[str] = Field(default_factory=list)
     unresolved_threads: list[str] = Field(default_factory=list)
     token_estimate: int = 0
+
+
+# ─── Shared helpers (used by both the keyword and semantic indexes) ────────────
+
+def mode_str(mode: Any) -> str:
+    """Normalize a RetrievalMode (enum or string) to a lowercase string."""
+    return getattr(mode, "value", str(mode)).lower()
+
+
+def matches_filters(chunk: "RetrievalChunk", filters: dict[str, Any] | None) -> bool:
+    """Apply metadata filters to a chunk. Supported keys: source_type, exclude_source_type,
+    chapter_number, characters. Single value or list accepted where it makes sense."""
+    if not filters:
+        return True
+
+    if "source_type" in filters:
+        allowed = filters["source_type"]
+        if isinstance(allowed, list):
+            if chunk.source_type not in allowed:
+                return False
+        elif chunk.source_type != allowed:
+            return False
+
+    if "exclude_source_type" in filters:
+        excluded = filters["exclude_source_type"]
+        if isinstance(excluded, list):
+            if chunk.source_type in excluded:
+                return False
+        elif chunk.source_type == excluded:
+            return False
+
+    if "chapter_number" in filters:
+        if chunk.chapter_number != filters["chapter_number"]:
+            return False
+
+    if "characters" in filters:
+        req = filters["characters"]
+        if isinstance(req, list):
+            if not any(rc in chunk.characters for rc in req):
+                return False
+        elif req not in chunk.characters:
+            return False
+
+    return True
+
+
+def chunk_to_result(chunk: "RetrievalChunk", score: float, score_type: str = "keyword") -> SearchResult:
+    """Build a SearchResult from a chunk + score (shared by both index backends)."""
+    return SearchResult(
+        chunk_id=chunk.chunk_id,
+        document_id=chunk.document_id,
+        text=chunk.text,
+        source_type=chunk.source_type,
+        score=score,
+        score_breakdown={f"{score_type}_score": score},
+        chapter_number=chunk.chapter_number,
+        scene_number=chunk.scene_number,
+        entity_name=chunk.entity_name,
+        tags=chunk.tags,
+        characters=chunk.characters,
+        locations=chunk.locations,
+        themes=chunk.themes,
+    )

@@ -16,7 +16,7 @@ import math
 from pathlib import Path
 from typing import Any, Dict, List
 
-from libriscribe.retrieval.models import RetrievalChunk, SearchResult
+from libriscribe.retrieval.models import RetrievalChunk, SearchResult, matches_filters, chunk_to_result
 
 try:
     import numpy as _np
@@ -36,55 +36,6 @@ def _searchable_text(chunk: RetrievalChunk) -> str:
 def _normalize(vec: List[float]) -> List[float]:
     norm = math.sqrt(sum(x * x for x in vec)) or 1.0
     return [x / norm for x in vec]
-
-
-def _match_filters(chunk: RetrievalChunk, filters: Dict[str, Any] | None) -> bool:
-    """Mirror the keyword index's metadata filter semantics."""
-    if not filters:
-        return True
-    if "source_type" in filters:
-        allowed = filters["source_type"]
-        if isinstance(allowed, list):
-            if chunk.source_type not in allowed:
-                return False
-        elif chunk.source_type != allowed:
-            return False
-    if "exclude_source_type" in filters:
-        excluded = filters["exclude_source_type"]
-        if isinstance(excluded, list):
-            if chunk.source_type in excluded:
-                return False
-        elif chunk.source_type == excluded:
-            return False
-    if "chapter_number" in filters:
-        if chunk.chapter_number != filters["chapter_number"]:
-            return False
-    if "characters" in filters:
-        req = filters["characters"]
-        if isinstance(req, list):
-            if not any(rc in chunk.characters for rc in req):
-                return False
-        elif req not in chunk.characters:
-            return False
-    return True
-
-
-def _to_result(chunk: RetrievalChunk, score: float) -> SearchResult:
-    return SearchResult(
-        chunk_id=chunk.chunk_id,
-        document_id=chunk.document_id,
-        text=chunk.text,
-        source_type=chunk.source_type,
-        score=score,
-        score_breakdown={"semantic_score": score},
-        chapter_number=chunk.chapter_number,
-        scene_number=chunk.scene_number,
-        entity_name=chunk.entity_name,
-        tags=chunk.tags,
-        characters=chunk.characters,
-        locations=chunk.locations,
-        themes=chunk.themes,
-    )
 
 
 class SemanticIndex:
@@ -172,9 +123,9 @@ class SemanticIndex:
         results: List[SearchResult] = []
         for i in order:
             chunk = self.chunks_map.get(self.ids[i])
-            if not chunk or not _match_filters(chunk, filters):
+            if not chunk or not matches_filters(chunk, filters):
                 continue
-            results.append(_to_result(chunk, float(scores[i])))
+            results.append(chunk_to_result(chunk, float(scores[i]), "semantic"))
             if len(results) >= top_k:
                 break
         return results
