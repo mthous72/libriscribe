@@ -129,6 +129,21 @@ class EmbedderFactoryTests(unittest.TestCase):
         self.assertIsInstance(emb, OpenAICompatibleEmbedder)
         self.assertTrue(emb.base_url.endswith("/v1"))   # normalize_openai_base_url appended /v1
 
+    def test_local_embedding_never_falls_back_to_chat_model(self):
+        # Unset embedding model must NOT use the chat model (local_model) — that would send
+        # the loaded chat model to /v1/embeddings. It uses a real embedding default instead.
+        emb = build_embedder(SimpleNamespace(
+            retrieval_embedding_provider="local", local_base_url="http://localhost:1234",
+            local_api_key="", retrieval_embedding_model="", local_model="my-loaded-chat-model"))
+        self.assertNotEqual(emb.model, "my-loaded-chat-model")
+        self.assertEqual(emb.model, "nomic-embed-text")
+
+    def test_local_embedding_uses_configured_model_verbatim(self):
+        emb = build_embedder(SimpleNamespace(
+            retrieval_embedding_provider="local", local_base_url="http://localhost:1234",
+            local_api_key="", retrieval_embedding_model="bge-m3", local_model="my-chat-model"))
+        self.assertEqual(emb.model, "bge-m3")
+
 
 class IndexManagerSemanticWiringTests(unittest.TestCase):
     def _im(self, mode, embedder):

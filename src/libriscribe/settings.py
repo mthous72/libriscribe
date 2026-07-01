@@ -36,8 +36,8 @@ class Settings(BaseSettings):
     retrieval_enabled: bool = False
     retrieval_default_mode: str = "disabled"
     retrieval_backend: str = "local"
-    retrieval_embedding_provider: str = "sentence-transformers"
-    retrieval_embedding_model: str = "all-MiniLM-L6-v2"
+    retrieval_embedding_provider: str = "off"
+    retrieval_embedding_model: str = ""  # blank -> a real embedding default is chosen per source
     retrieval_chroma_path: str = ""
     openai_embedding_model: str = "text-embedding-3-small"
     mongodb_vector_uri: str = ""

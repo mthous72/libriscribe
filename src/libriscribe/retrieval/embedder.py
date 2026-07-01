@@ -100,8 +100,10 @@ def build_embedder(settings) -> Embedder | None:
         if not base:
             return None
         model = (getattr(settings, "retrieval_embedding_model", "") or "").strip()
+        # Fall back to a real embedding model name — never the chat model (local_model),
+        # which would send the loaded chat model to /v1/embeddings and produce wrong results.
         if not model or model.lower() == _LEGACY_ST_DEFAULT:
-            model = getattr(settings, "local_model", "") or _LOCAL_FALLBACK_MODEL
+            model = _LOCAL_FALLBACK_MODEL
         key = getattr(settings, "local_api_key", "") or "not-needed"
         return OpenAICompatibleEmbedder(key, base, model)
 
