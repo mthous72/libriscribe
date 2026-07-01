@@ -778,7 +778,23 @@ foundation that also makes B19 (external-reference RAG) actually good.
 - **Fallback:** if no embedder is configured/reachable, silently fall back to keyword — never
   break search.
 
-### B18. Multiple parallel brainstorm sessions — **effort: M** — *wanted (per user)*
+### B18. Multiple parallel brainstorm sessions — **effort: M** — ✅ **BUILT**
+
+**Status: BUILT.** Chat storage moved from one `chat_history.json` to per-session files under
+`<project>/chat_sessions/` (id, title, persistent `focus`, created/updated, messages); the
+legacy single history is auto-migrated into a default **"General"** session on first list.
+Endpoints (`chat.py`): `GET/POST /chat/sessions`, `GET/PATCH/DELETE /chat/sessions/{sid}`,
+`DELETE /chat/sessions/{sid}/messages`; `POST /chat` gained `session_id`; old `/chat`
+GET/DELETE kept as back-compat over the default session. UI: a **session switcher** in the
+Brainstorm drawer (new / rename / delete / switch), with **per-session Focus** (persisted via
+PATCH) and messages; Smart Apply / references / streaming unchanged. Tests:
+`tests/test_chat_sessions.py` (5, incl. migration). Full suite **144 passed**; frontend builds
+clean; e2e TestClient run confirms migrate → create(+focus) → rename → delete. **Completes the
+Writingway-derived set** (B17/B19/B20/B18); B14/B15 remain near-term, B16 parked.
+
+_Original spec below._
+
+### ~~B18.~~ Multiple parallel brainstorm sessions — **effort: M** — *wanted (per user)*
 **What:** today the Brainstorm co-writer is a **single** thread per project
 (`chat_history.json`). Add **named, parallel sessions** so an author can keep, e.g., a "plot"
 chat, a "villain" chat, and a "magic system" chat separate — each with its own history and

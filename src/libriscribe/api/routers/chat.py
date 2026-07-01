@@ -11,6 +11,7 @@ existing lore models / KB save path.
 from __future__ import annotations
 
 import json
+import uuid
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, HTTPException
@@ -51,6 +52,100 @@ def _append(name: str, role: str, content: str) -> list[dict]:
     messages.append({"role": role, "content": content, "ts": datetime.now(timezone.utc).isoformat()})
     _save_chat(name, messages)
     return messages
+
+
+# ─── Sessions (B18) — named, parallel brainstorm threads per project ───────────
+#
+# Each session is one JSON file in <project>/chat_sessions/ holding its own history and
+# optional persistent Focus. The legacy single chat_history.json is migrated into a default
+# "General" session the first time sessions are listed.
+
+def _sessions_dir(name: str):
+    return get_projects_dir() / name / "chat_sessions"
+
+
+def _session_path(name: str, sid: str):
+    return _sessions_dir(name) / f"{sid}.json"
+
+
+def _now() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
+def _new_session(title: str = "New chat", focus: dict | None = None) -> dict:
+    return {
+        "id": uuid.uuid4().hex[:8],
+        "title": (title or "New chat").strip() or "New chat",
+        "focus": focus,
+        "created_at": _now(),
+        "updated_at": _now(),
+        "messages": [],
+    }
+
+
+def _save_session(name: str, session: dict) -> None:
+    d = _sessions_dir(name)
+    d.mkdir(parents=True, exist_ok=True)
+    _session_path(name, session["id"]).write_text(json.dumps(session, indent=2), encoding="utf-8")
+
+
+def _load_session(name: str, sid: str) -> dict | None:
+    path = _session_path(name, sid)
+    if not path.exists():
+        return None
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return None
+
+
+def _list_sessions(name: str) -> list[dict]:
+    """All sessions, oldest first. Migrates the legacy history / seeds a default on first use."""
+    d = _sessions_dir(name)
+    sessions: list[dict] = []
+    if d.exists():
+        for f in d.glob("*.json"):
+            try:
+                sessions.append(json.loads(f.read_text(encoding="utf-8")))
+            except Exception:
+                pass
+    if not sessions:
+        seed = _new_session("General")
+        legacy = _load_chat(name)  # migrate old single-thread history if present
+        if legacy:
+            seed["messages"] = legacy
+        _save_session(name, seed)
+        sessions = [seed]
+    sessions.sort(key=lambda s: s.get("created_at", ""))
+    return sessions
+
+
+def _resolve_session(name: str, sid: str | None) -> dict:
+    """The requested session, or the default (oldest) one — migrating/seeding as needed."""
+    if sid:
+        s = _load_session(name, sid)
+        if s:
+            return s
+    return _list_sessions(name)[0]
+
+
+def _append_message(name: str, session: dict, role: str, content: str) -> None:
+    session.setdefault("messages", []).append(
+        {"role": role, "content": content, "ts": _now()}
+    )
+    session["updated_at"] = _now()
+    _save_session(name, session)
+
+
+def _session_meta(s: dict) -> dict:
+    return {
+        "id": s["id"],
+        "title": s.get("title", "Chat"),
+        "focus": s.get("focus"),
+        "created_at": s.get("created_at"),
+        "updated_at": s.get("updated_at"),
+        "message_count": len(s.get("messages", [])),
+    }
 
 
 # ─── RAG context ──────────────────────────────────────────────────────────────
@@ -143,6 +238,7 @@ class ChatRequest(BaseModel):
     focus_type: str | None = None  # character | location | lore | arc
     focus_name: str | None = None
     use_references: bool = True
+    session_id: str | None = None  # B18: which brainstorm session to append to
 
 
 def _reference_context(name: str, kb, query: str, max_tokens: int = 800) -> str:
@@ -331,16 +427,97 @@ def _focus_system_prompt(kb, focus_type: str, focus_name: str, record: str, surr
 
 @router.get("/{name}/chat")
 def get_chat(name: str):
+    """Back-compat: messages of the default session."""
     if not load_kb(name):
         raise HTTPException(status_code=404, detail="Project not found")
-    return _load_chat(name)
+    return _resolve_session(name, None).get("messages", [])
 
 
 @router.delete("/{name}/chat", status_code=204)
 def clear_chat(name: str):
     if not load_kb(name):
         raise HTTPException(status_code=404, detail="Project not found")
-    _save_chat(name, [])
+    session = _resolve_session(name, None)
+    session["messages"] = []
+    session["updated_at"] = _now()
+    _save_session(name, session)
+
+
+# ─── Session CRUD (B18) ───────────────────────────────────────────────────────
+
+class SessionCreate(BaseModel):
+    title: str | None = None
+    focus: dict | None = None
+
+
+class SessionUpdate(BaseModel):
+    title: str | None = None
+    focus: dict | None = None
+
+
+@router.get("/{name}/chat/sessions")
+def list_sessions(name: str):
+    if not load_kb(name):
+        raise HTTPException(status_code=404, detail="Project not found")
+    return [_session_meta(s) for s in _list_sessions(name)]
+
+
+@router.post("/{name}/chat/sessions")
+def create_session(name: str, body: SessionCreate):
+    if not load_kb(name):
+        raise HTTPException(status_code=404, detail="Project not found")
+    session = _new_session(body.title or "New chat", body.focus)
+    _save_session(name, session)
+    return _session_meta(session)
+
+
+@router.get("/{name}/chat/sessions/{sid}")
+def get_session(name: str, sid: str):
+    if not load_kb(name):
+        raise HTTPException(status_code=404, detail="Project not found")
+    session = _load_session(name, sid)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+    return session
+
+
+@router.patch("/{name}/chat/sessions/{sid}")
+def update_session(name: str, sid: str, body: SessionUpdate):
+    if not load_kb(name):
+        raise HTTPException(status_code=404, detail="Project not found")
+    session = _load_session(name, sid)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+    data = body.model_dump(exclude_unset=True)
+    if "title" in data and data["title"] and data["title"].strip():
+        session["title"] = data["title"].strip()
+    if "focus" in data:
+        session["focus"] = data["focus"]
+    session["updated_at"] = _now()
+    _save_session(name, session)
+    return _session_meta(session)
+
+
+@router.delete("/{name}/chat/sessions/{sid}", status_code=204)
+def delete_session(name: str, sid: str):
+    if not load_kb(name):
+        raise HTTPException(status_code=404, detail="Project not found")
+    path = _session_path(name, sid)
+    if not path.exists():
+        raise HTTPException(status_code=404, detail="Session not found")
+    path.unlink()  # if this was the last session, listing re-seeds a default "General"
+
+
+@router.delete("/{name}/chat/sessions/{sid}/messages", status_code=204)
+def clear_session(name: str, sid: str):
+    if not load_kb(name):
+        raise HTTPException(status_code=404, detail="Project not found")
+    session = _load_session(name, sid)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+    session["messages"] = []
+    session["updated_at"] = _now()
+    _save_session(name, session)
 
 
 @router.post("/{name}/chat")
@@ -349,7 +526,9 @@ def chat(name: str, body: ChatRequest):
     if not kb:
         raise HTTPException(status_code=404, detail="Project not found")
 
-    history = _append(name, "user", body.message)
+    session = _resolve_session(name, body.session_id)
+    _append_message(name, session, "user", body.message)
+    history = session["messages"]
 
     focus = None
     if body.focus_type and body.focus_name:
@@ -382,7 +561,7 @@ def chat(name: str, body: ChatRequest):
             msg = f"\n\n[Error: {exc}]"
             chunks.append(msg)
             yield msg
-        _append(name, "assistant", "".join(chunks))
+        _append_message(name, session, "assistant", "".join(chunks))
 
     return StreamingResponse(generate(), media_type="text/plain; charset=utf-8")
 

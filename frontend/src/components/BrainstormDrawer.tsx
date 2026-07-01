@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { getChat, clearChat, parseChat, streamChat, listCharacters, listLocations, listLoreEntries, listArcs } from '../api/client'
+import { parseChat, streamChat, listCharacters, listLocations, listLoreEntries, listArcs, listSessions, createSession, updateSession, deleteSession, getSession, clearSession } from '../api/client'
 import { useBrainstormStore } from '../store/brainstormSlice'
 import LoreProposalReview, { Proposal } from './LoreProposalReview'
-import { MessageSquarePlus, X, Send, Trash2, Loader2, Sparkles } from 'lucide-react'
+import { MessageSquarePlus, X, Send, Trash2, Loader2, Sparkles, Plus, Pencil } from 'lucide-react'
 
 interface Msg { role: string; content: string }
 
@@ -16,16 +16,17 @@ export default function BrainstormDrawer({ projectName }: { projectName: string 
   const [applyFor, setApplyFor] = useState<number | null>(null)
   const [useRefs, setUseRefs] = useState(true)
   const [ents, setEnts] = useState<{ character: string[], location: string[], lore: string[], arc: string[] }>({ character: [], location: [], lore: [], arc: [] })
+  const [sessions, setSessions] = useState<any[]>([])
+  const [activeId, setActiveId] = useState<string | null>(null)
   const endRef = useRef<HTMLDivElement>(null)
 
   const focusKey = focus ? `${focus.type}:${focus.name}` : ''
 
-  // The drawer is remounted per project (keyed on projectName); clear stale focus.
-  useEffect(() => { setFocus(null) }, [projectName])
+  const refreshSessions = () => listSessions(projectName).then(ss => setSessions(ss || [])).catch(() => {})
 
+  // On open: load entities + the session list, and pick an active session.
   useEffect(() => {
     if (!open || !projectName) return
-    getChat(projectName).then(h => setMessages(h || [])).catch(() => {})
     Promise.all([
       listCharacters(projectName).catch(() => []),
       listLocations(projectName).catch(() => []),
@@ -37,7 +38,21 @@ export default function BrainstormDrawer({ projectName }: { projectName: string 
       lore: (lo || []).map((x: any) => x.name).filter(Boolean),
       arc: (a || []).map((x: any) => x.name).filter(Boolean),
     })).catch(() => {})
+    listSessions(projectName).then((ss: any[]) => {
+      setSessions(ss || [])
+      setActiveId(prev => (prev && ss.some(s => s.id === prev)) ? prev : (ss[0]?.id || null))
+    }).catch(() => {})
   }, [open, projectName])
+
+  // Load the active session's messages + persisted focus.
+  useEffect(() => {
+    if (!open || !projectName || !activeId) { setMessages([]); return }
+    getSession(projectName, activeId).then((s: any) => {
+      setMessages(s.messages || [])
+      setFocus(s.focus || null)
+      setApplyFor(null)
+    }).catch(() => {})
+  }, [activeId, open, projectName])
 
   useEffect(() => { endRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [messages])
 
@@ -54,7 +69,7 @@ export default function BrainstormDrawer({ projectName }: { projectName: string 
           copy[copy.length - 1] = { role: 'assistant', content: copy[copy.length - 1].content + tok }
           return copy
         })
-      }, focus, useRefs)
+      }, focus, useRefs, activeId)
     } catch (e: any) {
       setMessages(m => {
         const copy = m.slice()
@@ -63,13 +78,50 @@ export default function BrainstormDrawer({ projectName }: { projectName: string 
       })
     } finally {
       setSending(false)
+      refreshSessions()
     }
   }
 
   const clear = async () => {
-    if (!confirm('Clear this brainstorm conversation?')) return
-    try { await clearChat(projectName) } catch {}
+    if (!activeId || !confirm("Clear this session's messages?")) return
+    try { await clearSession(projectName, activeId) } catch {}
     setMessages([])
+    refreshSessions()
+  }
+
+  const newSession = async () => {
+    const title = prompt('Name this session:', 'New chat')
+    if (title === null) return
+    try {
+      const s = await createSession(projectName, { title: title || 'New chat' })
+      await refreshSessions()
+      setActiveId(s.id)
+      setMessages([])
+    } catch {}
+  }
+
+  const renameSession = async () => {
+    if (!activeId) return
+    const cur = sessions.find(s => s.id === activeId)
+    const title = prompt('Rename session:', cur?.title || '')
+    if (!title) return
+    try { await updateSession(projectName, activeId, { title }); await refreshSessions() } catch {}
+  }
+
+  const removeSession = async () => {
+    if (!activeId || !confirm('Delete this session and its messages?')) return
+    try {
+      await deleteSession(projectName, activeId)
+      const ss = await listSessions(projectName)
+      setSessions(ss || [])
+      setActiveId(ss[0]?.id || null)
+    } catch {}
+  }
+
+  const changeFocus = (v: string) => {
+    const nf = v ? { type: v.slice(0, v.indexOf(':')), name: v.slice(v.indexOf(':') + 1) } : null
+    setFocus(nf)
+    if (activeId) updateSession(projectName, activeId, { focus: nf }).catch(() => {})
   }
 
   return (
@@ -97,10 +149,19 @@ export default function BrainstormDrawer({ projectName }: { projectName: string 
             </div>
           </div>
 
+          <div className="px-3 py-2 border-b border-gray-800 flex items-center gap-1.5">
+            <select value={activeId || ''} onChange={e => setActiveId(e.target.value)} title="Brainstorm session" className="flex-1 px-2 py-1 bg-gray-800 border border-gray-700 rounded text-xs">
+              {sessions.map(s => <option key={s.id} value={s.id}>{s.title}{s.message_count ? ` (${s.message_count})` : ''}</option>)}
+            </select>
+            <button onClick={newSession} title="New session" className="text-gray-400 hover:text-indigo-300 p-1"><Plus size={15} /></button>
+            <button onClick={renameSession} title="Rename session" className="text-gray-400 hover:text-gray-200 p-1"><Pencil size={13} /></button>
+            <button onClick={removeSession} title="Delete session" className="text-gray-500 hover:text-red-400 p-1"><Trash2 size={14} /></button>
+          </div>
+
           <div className="px-3 py-2 border-b border-gray-800">
             <label className="text-xs text-gray-500 flex items-center gap-2">
               Focus
-              <select value={focusKey} onChange={e => { const v = e.target.value; setFocus(v ? { type: v.slice(0, v.indexOf(':')), name: v.slice(v.indexOf(':') + 1) } : null) }} className="flex-1 px-2 py-1 bg-gray-800 border border-gray-700 rounded text-xs">
+              <select value={focusKey} onChange={e => changeFocus(e.target.value)} className="flex-1 px-2 py-1 bg-gray-800 border border-gray-700 rounded text-xs">
                 <option value="">Whole project</option>
                 {ents.character.length > 0 && <optgroup label="Characters">{ents.character.map(n => <option key={'character:' + n} value={'character:' + n}>{n}</option>)}</optgroup>}
                 {ents.location.length > 0 && <optgroup label="Locations">{ents.location.map(n => <option key={'location:' + n} value={'location:' + n}>{n}</option>)}</optgroup>}
