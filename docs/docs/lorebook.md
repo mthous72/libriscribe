@@ -28,10 +28,13 @@ Use **Import JSON** to bring in lore from a file. The importer is format-aware a
 - **LibriScribe bundles** and generic `{characters, locations, lore, arcs}` JSON,
 - **SillyTavern / TavernAI character cards** (V1 and V2, including the embedded
   `character_book`),
-- **KoboldAI / SillyTavern World Info** lorebooks (`entries` maps or lists).
+- **KoboldAI / SillyTavern World Info** lorebooks — `entries` maps/lists, and full **KoboldAI
+  save files** (lore under `worldinfo`; the rest of the game state is ignored).
 
-Toggle **AI-map** to have the LLM re-classify and enrich entries from unfamiliar formats
-(unknown shapes fall back to pure-LLM mapping automatically).
+Toggle **AI-map** to have the LLM re-classify and enrich entries from unfamiliar formats. It
+reasons about each entry one at a time before assigning it to a category, so a World-Info blob
+where everything is lumped together gets sorted properly (people to characters, places to
+locations, factions/items/concepts to lore). Unknown shapes fall back to pure-LLM mapping.
 
 ### Review before it's saved
 

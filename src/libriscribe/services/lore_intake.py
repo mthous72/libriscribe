@@ -228,10 +228,15 @@ def detect_and_adapt(data) -> tuple[dict, str] | None:
     if spec.startswith("chara_card") or "first_mes" in data or "first_mes" in nested or "mes_example" in data:
         return _adapt_card(data), "SillyTavern character card"
 
-    if _looks_like_worldinfo(data.get("entries")):
-        cats = _empty_cats()
-        cats["lore"] = _adapt_worldinfo_entries(data["entries"])
-        return cats, "World Info / lorebook"
+    # World Info / lorebook arrays. SillyTavern exports use "entries"; KoboldAI (Lite/Cpp)
+    # save files nest the array under "worldinfo" (with lots of unrelated game state around it,
+    # which we intentionally ignore — only the lore comes across).
+    for wi_key in ("entries", "worldinfo", "world_info", "worldInfo"):
+        if _looks_like_worldinfo(data.get(wi_key)):
+            cats = _empty_cats()
+            cats["lore"] = _adapt_worldinfo_entries(data[wi_key])
+            label = "KoboldAI save" if wi_key.lower() in ("worldinfo", "world_info") else "World Info / lorebook"
+            return cats, label
 
     native = _adapt_native(data)
     if native is not None:
@@ -259,23 +264,61 @@ def _normalize_cats(data) -> dict:
     return out
 
 
+def _entries_for_llm(data) -> str:
+    """Present the classifier with a clean JSON list of {name, content} entries.
+
+    When we already recognized the format, its records carry clean name+field text — flatten
+    those so the model sees only the lore (not a whole KoboldAI save's game state). Truly
+    unrecognized JSON is passed through (truncated) as a last resort.
+    """
+    _TEXT_FIELDS = ("description", "background", "personality_traits", "physical_description",
+                    "significance", "role", "motivations", "character_arc", "resolution_notes")
+    if isinstance(data, dict) and any(data.get(c) for c in ENTITY_CATEGORIES):
+        entries = []
+        for cat in ENTITY_CATEGORIES:
+            for rec in data.get(cat, []) or []:
+                fields = rec.get("fields", {}) or {}
+                parts = [str(fields[k]) for k in _TEXT_FIELDS if fields.get(k)]
+                if not parts:  # fall back to any scalar field text
+                    parts = [str(v) for v in fields.values() if v and not isinstance(v, (list, dict))]
+                content = "\n".join(parts).strip()
+                entries.append({"name": str(rec.get("name", "")), "content": content[:6000]})
+        return json.dumps(entries, ensure_ascii=False)[:14000]
+    return json.dumps(data, default=str, ensure_ascii=False)[:14000]
+
+
 def llm_map(client, genre: str, data) -> dict:
-    """Use the LLM to map arbitrary/foreign JSON into canonical categories."""
+    """Classify imported entries into the right lore categories, reasoning per entry.
+
+    The model receives clean {name, content} entries and is told to think through each one
+    before assigning a category — a portable form of "thinking" that works across providers
+    (including local models with no native reasoning API). The per-entry `reasoning` it emits
+    is discarded when the proposal is built (it isn't a lore field)."""
     if client is None:
         return _empty_cats()
-    raw = json.dumps(data, default=str)[:12000]
+    entries = _entries_for_llm(data)
     prompt = (
-        f"Convert the JSON below (a lore/character file for a {genre} book, possibly from "
-        "another tool like SillyTavern or KoboldAI) into a JSON object with keys: "
-        "characters, locations, lore, arcs (each a list of objects with a 'name' plus "
-        "relevant fields), and worldbuilding (an object). Classify each entry into the most "
-        "fitting category (a person -> characters, a place -> locations, a faction/item/"
-        "concept/event -> lore). Keep field names simple: name, role, physical_description, "
-        "personality_traits, background, motivations, description, significance, entry_type, "
-        "arc_type. Return ONLY the JSON.\n\n" + raw
+        f"You are organizing imported worldbuilding notes into a story lorebook for a {genre} "
+        "book. Below is a JSON list of entries, each with a name and content.\n\n"
+        "Work through them ONE AT A TIME. For each entry, first reason about what it actually "
+        "describes, then assign it to the single best category:\n"
+        "- characters: a person, being, creature, android, or any named individual\n"
+        "- locations: a place, building, region, or setting\n"
+        "- lore: a faction, organization, item, technology, concept, event, rule, or system\n"
+        "- arcs: a storyline, plot thread, or narrative arc\n\n"
+        "Then pull the relevant details from the content into typed fields:\n"
+        "- character: role, physical_description, personality_traits, background, motivations, character_arc\n"
+        "- location: description, significance\n"
+        "- lore: entry_type, description, significance\n"
+        "- arc: arc_type, description, resolution_notes\n\n"
+        "Return ONLY a JSON object with keys characters, locations, lore, arcs (each a list of "
+        "objects). Every object MUST include a 'name' and a short 'reasoning' field naming why it "
+        "belongs in that category. Keep the substance from the content (do not summarize away "
+        "detail), and do not invent entries that are not present.\n\n"
+        "ENTRIES:\n" + entries
     )
     try:
-        result = client.generate_content_with_json_repair(prompt, max_tokens=4000, temperature=0.2)
+        result = client.generate_content_with_json_repair(prompt, max_tokens=6000, temperature=0.2)
         return _normalize_cats(json.loads(result))
     except Exception:
         return _empty_cats()

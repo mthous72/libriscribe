@@ -4,6 +4,7 @@ Covers the deterministic foreign-format adapters (SillyTavern card, KoboldAI /
 SillyTavern World Info, native bundle), proposal annotation (new/update), and the
 smart-merge apply (preserve untouched fields, coerce typed fields).
 """
+import json
 import unittest
 
 from libriscribe.knowledge_base import ProjectKnowledgeBase, Character, Location
@@ -76,6 +77,63 @@ class AdapterTests(unittest.TestCase):
 
     def test_unrecognized_returns_none(self):
         self.assertIsNone(lore_intake.detect_and_adapt({"foo": "bar", "baz": 1}))
+
+    def test_koboldai_save_worldinfo_array(self):
+        # KoboldAI Lite/Cpp save: lore is under top-level "worldinfo", entry name in "key",
+        # surrounded by unrelated game state that must be ignored.
+        save = {
+            "gamestarted": True,
+            "prompt": "story prompt", "memory": "", "actions": ["chapter one text"],
+            "savedsettings": {"temperature": 0.7}, "worldinfo": [
+                {"key": "Maren", "keysecondary": "", "comment": "", "content": "Occupation: technician. Tall and lean."},
+                {"key": "Tya", "keysecondary": "", "comment": "", "content": "Occupation: broker. Sharp-eyed."},
+                {"key": "The Vault", "keysecondary": "", "comment": "", "content": "A hidden data vault beneath the city."},
+            ],
+        }
+        cats, label = lore_intake.detect_and_adapt(save)
+        self.assertIn("KoboldAI", label)
+        names = {r["name"] for r in cats["lore"]}
+        self.assertEqual(names, {"Maren", "Tya", "The Vault"})       # only lore, no game-state noise
+        self.assertEqual(cats["characters"], [])
+        self.assertIn("technician", cats["lore"][0]["fields"]["description"])
+
+
+class ReasoningClassifierTests(unittest.TestCase):
+    class _FakeClient:
+        def __init__(self, response):
+            self._r = response
+        def generate_content_with_json_repair(self, prompt, **kw):
+            return self._r
+
+    def test_entries_for_llm_flattens_cats(self):
+        cats = {"characters": [], "locations": [], "arcs": [],
+                "lore": [{"name": "Maren", "fields": {"description": "a technician", "tags": ["x"]}}]}
+        blob = lore_intake._entries_for_llm(cats)
+        self.assertIn("Maren", blob)
+        self.assertIn("a technician", blob)
+
+    def test_llm_map_reclassifies_and_reasoning_is_dropped(self):
+        # A World-Info-style import where everything landed in `lore`; the classifier routes
+        # people to characters and places to locations, and its `reasoning` never reaches the KB.
+        cats_in = {"characters": [], "locations": [], "arcs": [], "lore": [
+            {"name": "Maren", "fields": {"description": "Occupation: technician."}},
+            {"name": "The Vault", "fields": {"description": "A hidden vault."}},
+        ]}
+        response = json.dumps({
+            "characters": [{"name": "Maren", "reasoning": "a person", "role": "technician"}],
+            "locations": [{"name": "The Vault", "reasoning": "a place", "description": "A hidden vault."}],
+            "lore": [], "arcs": [],
+        })
+        out = lore_intake.llm_map(self._FakeClient(response), "Sci-Fi", cats_in)
+        self.assertEqual([r["name"] for r in out["characters"]], ["Maren"])
+        self.assertEqual([r["name"] for r in out["locations"]], ["The Vault"])
+
+        # Build the proposal against a KB — `reasoning` is not a lore field, so it's dropped.
+        prop = lore_intake.build_proposal(_kb(), out)
+        maren = prop["characters"][0]
+        self.assertEqual(maren["name"], "Maren")
+        self.assertNotIn("reasoning", maren["fields"])
+        self.assertEqual(maren["fields"].get("role"), "technician")
 
 
 class ProposalTests(unittest.TestCase):
