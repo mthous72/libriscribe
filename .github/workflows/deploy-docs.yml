@@ -36,14 +36,11 @@ jobs:
           cache: npm
           cache-dependency-path: docs/package-lock.json
 
-      # Enables GitHub Pages (Source: GitHub Actions) via the API on first run so the
-      # deploy job doesn't 404. If org/repo policy blocks API enablement, enable it once
-      # manually at Settings -> Pages (Source: GitHub Actions).
-      - name: Setup Pages
-        uses: actions/configure-pages@v5
-        with:
-          enablement: true
-
+      # ONE-TIME MANUAL STEP: enable GitHub Pages with Source "GitHub Actions" at
+      #   https://github.com/mthous72/libriscribe/settings/pages
+      # The default GITHUB_TOKEN cannot enable Pages via the API ("Resource not accessible
+      # by integration"), so this can't be automated. Once enabled, this workflow deploys
+      # on every push under docs/.
       - name: Install dependencies
         working-directory: docs
         run: npm ci
