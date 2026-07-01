@@ -647,7 +647,7 @@ End-to-end TestClient run confirms parse→apply merges without clobbering exist
 
 ---
 
-### Spec — B12. Smart Apply: multi-category lore extraction from brainstorm — APPROVED, building
+### Spec — B12. Smart Apply: multi-category lore extraction from brainstorm — ~~APPROVED, building~~ **SUPERSEDED** (see "B12 + B13. Smart lore intake — BUILT" above; this is the original single-door spec, kept for history)
 
 **Problem:** today's "Apply to lore" (chat.py `apply_to_lore`) targets ONE entity of ONE
 type with a curated field subset and OVERWRITES by name. A rich brainstorm reply has too
@@ -687,3 +687,68 @@ focus context engine. **Target:** next feature (post v0.8.0 staging).
 phased). Each is independently valuable; B9/B10 also de-risk B8 by proving the lore-aware
 context pipeline before the bigger data-model change. **Status: brainstorm — none specced
 or built yet.**
+
+---
+
+## Writingway comparison — features to incorporate (specced 2026-07-01)
+
+Compared LibriScribe against **Writingway** (fork `github.com/mthous72/Writingway`; upstream
+**`a-omukai/Writingway`**, MIT, PyQt5 desktop app on LangChain). On the core (multi-agent
+generation, lore-aware brainstorm, compendium, customizable prompts, local models) we're at
+parity or ahead — our smart lore intake, per-project provider switching, version snapshots,
+export/import bundle, single-instance packaging + CI have no Writingway equivalent.
+
+Three of Writingway's author-facing features are worth taking (below as B14–B16). Explicitly
+**skipping**: spaCy NER auto-entities (our LLM `lore_sync` already covers it, heavy dep),
+PyQtChart arc charts (different UI stack), LangChain (our `LLMClient` already does
+multi-provider + fallback). Deferred/optional: semantic/vector retrieval (rides the `mode`
+scaffold in `retrieval/models.py` but cuts against our deliberate no-external-vector-DB
+design — hold), and swapping the fragile Google-scrape in `agents/researcher.py` for the
+Wikipedia API (reliability win — revisit later).
+
+### B14. Readability & manuscript statistics — **effort: S** — *near-term*
+**What:** per-chapter and whole-book writing stats — Flesch reading-ease + grade level,
+word / sentence / paragraph counts, avg sentence length, adverb & dialogue ratio, estimated
+reading time, and a simple pacing view across chapters. Writingway uses `textstat`; we can
+add `textstat` (pure-Python, no network) or hand-roll the handful of formulas.
+- **Backend:** a stats service over chapter prose (reuse the markdown-strip from
+  `export_story_text`); endpoint `GET /{name}/stats` (+ optional per-chapter). No LLM, no
+  external calls — cheap and offline.
+- **Frontend:** a "Stats" panel on the Project dashboard / chapter editor; small bar view of
+  length/readability per chapter to spot pacing outliers.
+- **Why it wins:** highest-value author-polish feature Writingway has that we lack, and it
+  fits our stack cleanly. No new heavy deps.
+
+### B15. Assembled-prompt / injected-context preview — **effort: M** — *near-term*
+**What:** before (or alongside) a generation call, show the *fully assembled* prompt with the
+exact lore/context our `context_builder` + `TokenBudget` injected. Writingway has a
+`prompt_preview_dialog`; for us it's both a transparency feature and a real debugging aid for
+our RAG (which is more sophisticated than theirs).
+- **Backend:** a dry-run/preview path that runs context assembly for a given chapter/scene
+  (and for brainstorm focus) and returns the assembled system+user prompt and the list of
+  retrieved/injected lore chunks with their token costs — WITHOUT calling the LLM.
+- **Frontend:** a "Preview prompt" affordance in the chapter generate flow and the Brainstorm
+  drawer; a read-only view of prompt + injected-context chunks + token budget usage.
+- **Reuses:** `services/context_builder.py` (`TokenBudget`), the retrieval `search_service`,
+  and the chat `_build_lore_context` / `_focus_context` paths.
+
+### B16. Read-aloud (text-to-speech) — **effort: S** — *later (deprioritized per user)*
+**What:** a "▶ Read aloud" control in the chapter editor / brainstorm to hear prose and catch
+clunky phrasing. Writingway needs `pyttsx3` because it's native; **we get this free and
+dependency-free** via the browser `SpeechSynthesis` Web API — no backend, no new deps.
+- **Frontend only:** play/pause/stop over the current chapter text (or a selection), with a
+  voice/rate picker from `speechSynthesis.getVoices()`. Sentence-level highlight-follow is a
+  nice-to-have, not required for v1.
+- **Status:** specced, **scheduled after B14/B15** per user.
+
+### Deferred task — README attribution for Writingway (do NOT add until integrated)
+Once we ship the **first** feature derived from Writingway (likely B14), update `README.md`:
+- Add Writingway to the attribution/"sources" area as an additional inspiration for the code,
+  crediting original author **a-omukai** (upstream `github.com/a-omukai/Writingway`, MIT).
+- Add a **support pointer**: Writingway has **no donation link** today — support is via their
+  GitHub issues/discussions and **Discord (`https://discord.gg/xkkGaRFXNX`)**. If a
+  sponsor/Ko-fi/etc. link exists at integration time, use that instead; otherwise point to the
+  Discord/GitHub as their support channel (mirroring how we credit the original LibriScribe
+  author with a Buy-Me-a-Coffee pointer).
+- **Trigger:** first Writingway-derived feature merged. **Until then, keep it out of the
+  README.**
