@@ -33,6 +33,8 @@ export default function SettingsPage() {
   const [saved, setSaved] = useState(false)
   const [models, setModels] = useState<Record<string, any[]>>({})
   const [loadingModels, setLoadingModels] = useState<string | null>(null)
+  const [embModels, setEmbModels] = useState<any[]>([])
+  const [loadingEmb, setLoadingEmb] = useState(false)
 
   useEffect(() => {
     getSettings().then(setSettings).catch(() => {})
@@ -69,6 +71,30 @@ export default function SettingsPage() {
       alert(e?.response?.data?.detail || 'Failed to load models')
     } finally {
       setLoadingModels(null)
+    }
+  }
+
+  // Embedding models come from the same /models listing as chat models; we just surface
+  // the likely-embedding ones first (the endpoint returns everything the provider serves).
+  const isEmbeddingId = (id: string) => /embed|bge|e5|gte|minilm|nomic|instructor/i.test(id)
+
+  async function loadEmbeddingModels() {
+    const source = settings.retrieval_embedding_provider
+    if (source !== 'openai' && source !== 'local') return
+    const provider = source === 'openai' ? 'openai' : 'local'
+    const entered = provider === 'openai' ? settings.openai_api_key : settings.local_api_key
+    const api_key = entered && !entered.includes('...') ? entered : undefined
+    let base_url = provider === 'local' ? (settings.local_base_url || undefined) : undefined
+    if (provider === 'local' && base_url) base_url = normalizeBaseUrl(base_url)
+    setLoadingEmb(true)
+    try {
+      const list = await fetchProviderModels({ provider, api_key, base_url })
+      list.sort((a: any, b: any) => (isEmbeddingId(b.id) ? 1 : 0) - (isEmbeddingId(a.id) ? 1 : 0))
+      setEmbModels(list)
+    } catch (e: any) {
+      alert(e?.response?.data?.detail || 'Failed to load models')
+    } finally {
+      setLoadingEmb(false)
     }
   }
 
@@ -226,34 +252,50 @@ export default function SettingsPage() {
           </select>
         </label>
 
-        {settings.retrieval_embedding_provider === 'openai' && (
-          <label className="block">
-            <span className="text-xs text-gray-400">OpenAI embedding model</span>
-            <input
-              className="w-full mt-1 px-3 py-1.5 bg-gray-800 border border-gray-700 rounded-lg text-sm"
-              value={settings.openai_embedding_model || ''}
-              onChange={e => setSettings({ ...settings, openai_embedding_model: e.target.value })}
-              placeholder="text-embedding-3-small"
-            />
-            <span className="text-xs text-gray-500">Uses your OpenAI API key from above.</span>
-          </label>
-        )}
-
-        {settings.retrieval_embedding_provider === 'local' && (
-          <label className="block">
-            <span className="text-xs text-gray-400">Local embedding model</span>
-            <input
-              className="w-full mt-1 px-3 py-1.5 bg-gray-800 border border-gray-700 rounded-lg text-sm"
-              value={settings.retrieval_embedding_model || ''}
-              onChange={e => setSettings({ ...settings, retrieval_embedding_model: e.target.value })}
-              placeholder="nomic-embed-text"
-            />
-            <span className="text-xs text-emerald-400/80">
-              Uses the Local server Base URL configured above — fully offline. Load an embedding
-              model in LM Studio / Ollama (e.g. <span className="text-gray-300">nomic-embed-text</span>).
-            </span>
-          </label>
-        )}
+        {(settings.retrieval_embedding_provider === 'openai' || settings.retrieval_embedding_provider === 'local') && (() => {
+          const isLocal = settings.retrieval_embedding_provider === 'local'
+          const field = isLocal ? 'retrieval_embedding_model' : 'openai_embedding_model'
+          const embFree = embModels.filter((m: any) => isEmbeddingId(m.id)).length
+          return (
+            <label className="block">
+              <span className="text-xs text-gray-400">Embedding model</span>
+              <div className="flex gap-2 mt-1">
+                <input
+                  list="embedding-models"
+                  className="flex-1 px-3 py-1.5 bg-gray-800 border border-gray-700 rounded-lg text-sm"
+                  value={settings[field] || ''}
+                  onChange={e => setSettings({ ...settings, [field]: e.target.value })}
+                  placeholder={isLocal ? 'nomic-embed-text' : 'text-embedding-3-small'}
+                />
+                <button
+                  onClick={loadEmbeddingModels}
+                  disabled={loadingEmb}
+                  title={isLocal ? 'Fetch models from the local server' : 'Fetch models from OpenAI'}
+                  className="flex items-center gap-1 px-3 py-1.5 bg-gray-700 hover:bg-gray-600 rounded-lg text-sm disabled:opacity-50"
+                >
+                  {loadingEmb ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />} Load
+                </button>
+              </div>
+              <datalist id="embedding-models">
+                {embModels.map((m: any) => (
+                  <option key={m.id} value={m.id}>{m.label}{isEmbeddingId(m.id) ? ' — embedding' : ''}</option>
+                ))}
+              </datalist>
+              {embModels.length > 0 && (
+                <span className="text-xs text-gray-500">
+                  {embModels.length} models loaded{embFree > 0 ? ` · ${embFree} look like embedding models (listed first)` : ''}
+                </span>
+              )}
+              {isLocal
+                ? <p className="text-xs text-emerald-400/80">
+                    Uses the Local server Base URL above — fully offline. Load a dedicated embedding
+                    model in LM Studio / Ollama (e.g. <span className="text-gray-300">nomic-embed-text</span>),
+                    then <span className="text-gray-300">Load</span> to pick its exact id.
+                  </p>
+                : <p className="text-xs text-gray-500">Uses your OpenAI API key from above.</p>}
+            </label>
+          )
+        })()}
 
         <button
           onClick={handleSave}
