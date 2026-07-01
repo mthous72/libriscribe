@@ -48,14 +48,23 @@ class IndexManager:
     def _semantic_needed(self) -> bool:
         return _mode_str(self.config.mode) in ("semantic", "hybrid")
 
+    def _all_documents(self) -> List[RetrievalDocument]:
+        """KB-derived documents plus any imported reference material (B19)."""
+        docs = DocumentBuilder(self.kb, self.project_dir).build_all()
+        try:
+            from libriscribe.services.reference_service import build_reference_documents
+            docs = docs + build_reference_documents(self.project_dir)
+        except Exception:
+            pass
+        return docs
+
     def rebuild_index(self) -> None:
         """Forces a clean, complete rebuild of all local retrieval files and indexes."""
         self.retrieval_dir.mkdir(parents=True, exist_ok=True)
         self.manifest_file.parent.mkdir(parents=True, exist_ok=True)
 
-        # 1. Build documents
-        builder = DocumentBuilder(self.kb, self.project_dir)
-        docs = builder.build_all()
+        # 1. Build documents (KB entities/prose + imported reference material)
+        docs = self._all_documents()
 
         # 2. Chunk documents
         chunks: List[RetrievalChunk] = []
@@ -113,9 +122,9 @@ class IndexManager:
             self.rebuild_index()
             return True
 
-        # Check hashes
-        builder = DocumentBuilder(self.kb, self.project_dir)
-        current_docs = builder.build_all()
+        # Check hashes (include reference docs so ref changes are detected — and so the
+        # doc count matches the manifest, which now includes reference documents).
+        current_docs = self._all_documents()
 
         # Load manifest
         try:

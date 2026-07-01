@@ -19,6 +19,15 @@ export const getProjectStatus = (name: string) => api.get(`/projects/${name}/sta
 export const getRetrieval = (name: string) => api.get(`/projects/${name}/retrieval`).then(r => r.data)
 export const setRetrieval = (name: string, mode: string) => api.put(`/projects/${name}/retrieval`, { mode }).then(r => r.data)
 
+// Reference material (B19)
+export const listReferences = (name: string) => api.get(`/projects/${name}/references`).then(r => r.data)
+export const uploadReference = (name: string, file: File) => {
+  const fd = new FormData()
+  fd.append('file', file)
+  return api.post(`/projects/${name}/references`, fd).then(r => r.data)
+}
+export const deleteReference = (name: string, refId: string) => api.delete(`/projects/${name}/references/${refId}`)
+
 // ─── Generation ──────────────────────────────────────────────
 export const startGeneration = (name: string, body?: any) => api.post(`/projects/${name}/generate`, body || {}).then(r => r.data)
 export const cancelGeneration = (name: string) => api.post(`/projects/${name}/generate/cancel`).then(r => r.data)
@@ -108,11 +117,11 @@ export const getChat = (name: string) => api.get(`/projects/${name}/chat`).then(
 export const clearChat = (name: string) => api.delete(`/projects/${name}/chat`)
 export const applyChat = (name: string, body: { text: string, target_type: string, entity_name: string, smart?: boolean }) => api.post(`/projects/${name}/chat/apply`, body).then(r => r.data)
 // Streaming chat uses fetch (axios doesn't stream response bodies in the browser).
-export async function streamChat(name: string, message: string, onToken: (t: string) => void, focus?: { type: string, name: string } | null): Promise<void> {
+export async function streamChat(name: string, message: string, onToken: (t: string) => void, focus?: { type: string, name: string } | null, useReferences: boolean = true): Promise<void> {
   const res = await fetch(`/api/projects/${name}/chat`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ message, focus_type: focus?.type || null, focus_name: focus?.name || null }),
+    body: JSON.stringify({ message, focus_type: focus?.type || null, focus_name: focus?.name || null, use_references: useReferences }),
   })
   if (!res.ok || !res.body) throw new Error(`chat failed (${res.status})`)
   const reader = res.body.getReader()

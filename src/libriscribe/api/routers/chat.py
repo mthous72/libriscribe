@@ -142,6 +142,42 @@ class ChatRequest(BaseModel):
     message: str
     focus_type: str | None = None  # character | location | lore | arc
     focus_name: str | None = None
+    use_references: bool = True
+
+
+def _reference_context(name: str, kb, query: str, max_tokens: int = 800) -> str:
+    """A token-bounded block of imported reference material relevant to `query` (B19).
+
+    Clearly labelled as source material, NOT canon lore, so the model treats it as
+    background/citation rather than established fact."""
+    from libriscribe.services.context_builder import TokenBudget
+
+    budget = TokenBudget(max_tokens)
+    parts: list[str] = []
+    project_dir = get_projects_dir() / name
+    try:
+        from libriscribe.retrieval.search_service import SearchServiceImpl
+        from libriscribe.retrieval.models import RetrievalConfig
+
+        config = kb.retrieval if kb.retrieval and kb.retrieval.enabled else RetrievalConfig(enabled=True, mode="keyword")
+        svc = SearchServiceImpl(project_dir, config)
+        for r in svc.search(query, mode="keyword", top_k=5, filters={"source_type": "reference"}):
+            text = (getattr(r, "text", "") or "").strip()
+            if not text:
+                continue
+            clipped = budget.consume(text)
+            if clipped:
+                parts.append(f"- {clipped}")
+            if budget.exhausted():
+                break
+    except Exception:
+        return ""
+    if not parts:
+        return ""
+    return (
+        "=== Reference material (imported sources — use as background/citation, NOT canon "
+        "lore; do not treat as established fact) ===\n" + "\n".join(parts)
+    )
 
 
 _FOCUS_STORE = {
@@ -324,6 +360,12 @@ def chat(name: str, body: ChatRequest):
     else:
         context = _build_lore_context(name, kb, body.message)
         system_prompt = _system_prompt(kb, context)
+
+    # Ground in imported reference material (B19) when enabled.
+    if body.use_references:
+        refs = _reference_context(name, kb, body.message)
+        if refs:
+            system_prompt = system_prompt + "\n\n" + refs
 
     conversation = _build_conversation(history)
     client = _client_for(kb)

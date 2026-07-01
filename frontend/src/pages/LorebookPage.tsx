@@ -12,6 +12,7 @@ import {
   listContinuityNotes,
   listThreads, createThread, updateThread, deleteThread,
   parseLore,
+  listReferences, uploadReference, deleteReference,
 } from '../api/client'
 import { useBrainstormStore } from '../store/brainstormSlice'
 import LoreProposalReview, { Proposal } from '../components/LoreProposalReview'
@@ -20,7 +21,7 @@ import { Plus, Trash2, Search, Sparkles, Check, X, Edit3, AlertTriangle, Loader2
 const TAB_TO_FOCUS: Record<string, string> = { Characters: 'character', Locations: 'location', Lore: 'lore', Arcs: 'arc' }
 import { useUiStore } from '../store/uiSlice'
 
-const TABS = ['Characters', 'Locations', 'Lore', 'Arcs', 'Threads', 'World', 'Graph']
+const TABS = ['Characters', 'Locations', 'Lore', 'Arcs', 'Threads', 'World', 'Graph', 'References']
 
 function EntityList({ items, onSelect, onDelete, onAnalyze, labelKey = 'name', badgeKey }: any) {
   return (
@@ -257,6 +258,7 @@ export default function LorebookPage() {
             <button key={t} onClick={() => { setTab(t); setSelected(null) }} className={`px-3 py-1.5 rounded-lg text-sm ${tab === t ? 'bg-indigo-600' : 'bg-gray-800 hover:bg-gray-700'}`}>{t}</button>
           ))}
         </div>
+        {tab !== 'References' && (
         <div className="flex items-center gap-2">
           <label className="text-xs text-gray-400 flex items-center gap-1" title="Use the LLM to re-classify and enrich entries (helps with foreign formats). Recognized formats import without it.">
             <input type="checkbox" checked={smartImport} onChange={e => setSmartImport(e.target.checked)} /> AI-map
@@ -271,9 +273,12 @@ export default function LorebookPage() {
           </button>
           <input ref={fileRef} type="file" accept="application/json,.json" className="hidden" onChange={onImportFile} />
         </div>
+        )}
       </div>
 
-      <div className="grid grid-cols-3 gap-4">
+      {tab === 'References' && <ReferencesPanel name={name!} />}
+
+      <div className={`grid grid-cols-3 gap-4 ${tab === 'References' ? 'hidden' : ''}`}>
         {/* List */}
         <div className="col-span-1 space-y-2">
           <button onClick={handleCreate} className="w-full flex items-center justify-center gap-1 px-3 py-1.5 bg-gray-800 hover:bg-gray-700 rounded-lg text-sm"><Plus size={14} /> Add</button>
@@ -567,6 +572,83 @@ export default function LorebookPage() {
           )}
         </div>
       </div>
+    </div>
+  )
+}
+
+function ReferencesPanel({ name }: { name: string }) {
+  const [refs, setRefs] = useState<any[]>([])
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
+  const fileRef = useRef<HTMLInputElement>(null)
+
+  const reload = () => listReferences(name).then(setRefs).catch(() => {})
+  useEffect(() => { reload() }, [name])
+
+  const onFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setBusy(true); setError('')
+    try {
+      await uploadReference(name, file)
+      await reload()
+    } catch (err: any) {
+      setError(err?.response?.data?.detail || 'Upload failed')
+    } finally {
+      setBusy(false)
+      if (fileRef.current) fileRef.current.value = ''
+    }
+  }
+
+  const remove = async (id: string, title: string) => {
+    if (!confirm(`Remove reference "${title}"?`)) return
+    try { await deleteReference(name, id); await reload() } catch {}
+  }
+
+  return (
+    <div className="bg-gray-900 border border-gray-800 rounded-xl p-4 space-y-3">
+      <div className="flex items-start justify-between gap-3 flex-wrap">
+        <div>
+          <h3 className="text-sm font-medium text-gray-300">Reference material</h3>
+          <p className="text-xs text-gray-500 max-w-xl mt-1">
+            Import source documents (PDF, TXT, MD) — research, a style guide, a series bible.
+            LibriScribe grounds brainstorming and generation in these as <b>background source</b>,
+            never as canon lore, and they're excluded from exports. Turning on Semantic/Hybrid
+            search (project Dashboard) makes retrieval from them much stronger.
+          </p>
+        </div>
+        <button
+          onClick={() => fileRef.current?.click()}
+          disabled={busy}
+          className="flex items-center gap-1 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 rounded-lg text-sm disabled:opacity-50 whitespace-nowrap"
+        >
+          {busy ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />} Add reference
+        </button>
+        <input ref={fileRef} type="file" accept=".pdf,.txt,.md,.markdown,.text,application/pdf,text/plain" className="hidden" onChange={onFile} />
+      </div>
+
+      {error && <p className="text-xs text-red-400">{error}</p>}
+      {busy && <p className="text-xs text-gray-500">Extracting &amp; indexing… large PDFs take a moment.</p>}
+
+      {refs.length === 0 ? (
+        <p className="text-sm text-gray-500 py-6 text-center">No references yet. Add a PDF or text file to ground the AI in your source material.</p>
+      ) : (
+        <div className="space-y-1">
+          {refs.map((r: any) => (
+            <div key={r.id} className="flex items-center justify-between px-3 py-2 bg-gray-800 rounded-lg">
+              <div className="min-w-0">
+                <div className="text-sm truncate">{r.title || r.filename}</div>
+                <div className="text-xs text-gray-500">
+                  {(r.char_count || 0).toLocaleString()} chars · {Math.max(1, Math.round((r.bytes || 0) / 1024))} KB
+                </div>
+              </div>
+              <button onClick={() => remove(r.id, r.title || r.filename)} className="text-gray-600 hover:text-red-400" title="Remove reference">
+                <Trash2 size={15} />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   )
 }

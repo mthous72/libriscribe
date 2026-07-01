@@ -14,6 +14,7 @@ export default function BrainstormDrawer({ projectName }: { projectName: string 
   const [input, setInput] = useState('')
   const [sending, setSending] = useState(false)
   const [applyFor, setApplyFor] = useState<number | null>(null)
+  const [useRefs, setUseRefs] = useState(true)
   const [ents, setEnts] = useState<{ character: string[], location: string[], lore: string[], arc: string[] }>({ character: [], location: [], lore: [], arc: [] })
   const endRef = useRef<HTMLDivElement>(null)
 
@@ -53,7 +54,7 @@ export default function BrainstormDrawer({ projectName }: { projectName: string 
           copy[copy.length - 1] = { role: 'assistant', content: copy[copy.length - 1].content + tok }
           return copy
         })
-      }, focus)
+      }, focus, useRefs)
     } catch (e: any) {
       setMessages(m => {
         const copy = m.slice()
@@ -108,6 +109,10 @@ export default function BrainstormDrawer({ projectName }: { projectName: string 
               </select>
             </label>
             {focus && <p className="text-[11px] text-indigo-400/80 mt-1">Developing {focus.type} "{focus.name}" — draws on the world, arcs &amp; connected lore as context, but only develops this.</p>}
+            <label className="flex items-center gap-1.5 text-[11px] text-gray-400 mt-2" title="Include imported reference material (Lorebook → References) as background source">
+              <input type="checkbox" checked={useRefs} onChange={e => setUseRefs(e.target.checked)} />
+              Use reference material
+            </label>
           </div>
 
           <div className="flex-1 overflow-y-auto p-3 space-y-3">

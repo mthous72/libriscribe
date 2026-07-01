@@ -20,6 +20,7 @@ setup(
         "requests",
         "markdown",
         "fpdf",
+        "pypdf",
         "tenacity",
         "anthropic",
         "google-genai>=2.7.0",

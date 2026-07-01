@@ -792,7 +792,25 @@ optional persistent Focus.
   review → merge) is unchanged.
 - **Note:** purely additive to B9/B12; no change to the lore-merge engine.
 
-### B19. Bring-your-own-reference RAG — **effort: L** — *wanted (per user)*
+### B19. Bring-your-own-reference RAG — **effort: L** — ✅ **BUILT**
+
+**Status: BUILT.** `services/reference_service.py` stores imported PDFs/TXT/MD under
+`<project>/references/` (extract-once via `pypdf`, manifest, add/list/delete) and builds
+`reference`-typed RetrievalDocuments. `IndexManager._all_documents()` folds them into the
+keyword + semantic index; new `exclude_source_type` filter keeps references out of canon
+retrieval. Grounding: brainstorm chat gets a labelled reference band + a **"Use reference
+material"** toggle (`chat.py`), and chapter generation gets a bounded reference band in
+`context_builder` (canon retrieval now excludes references). API: `GET/POST/DELETE
+/projects/{name}/references` (multipart upload, auto-reindex). UI: a **References** tab in the
+Lorebook (upload/list/delete). References are **never treated as canon** and are **excluded
+from exports** (verified). Tests: `tests/test_references.py` (8). Full suite **135 passed**;
+end-to-end TestClient run confirms upload → reference-only retrieval, canon exclusion, and
+no export leakage. Best paired with B17 semantic (done). **Cluster complete** (B17 + B19); B18
+(multi-session) still open.
+
+_Original spec below._
+
+### ~~B19.~~ Bring-your-own-reference RAG — **effort: L** — *wanted (per user)*
 **What:** let the author **ingest external reference material** (PDF, plain text/markdown,
 maybe a URL) into a project and have the brainstorm/generation ground answers in it — a
 research folder, a style guide, or a prior-book "series bible." This is the biggest capability

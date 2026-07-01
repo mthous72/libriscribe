@@ -49,6 +49,13 @@ def _match_filters(chunk: RetrievalChunk, filters: Dict[str, Any] | None) -> boo
                 return False
         elif chunk.source_type != allowed:
             return False
+    if "exclude_source_type" in filters:
+        excluded = filters["exclude_source_type"]
+        if isinstance(excluded, list):
+            if chunk.source_type in excluded:
+                return False
+        elif chunk.source_type == excluded:
+            return False
     if "chapter_number" in filters:
         if chunk.chapter_number != filters["chapter_number"]:
             return False

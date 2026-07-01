@@ -56,6 +56,11 @@ class ContextBuilder:
         self, chapter_number: int, scene: Scene, chapter: Chapter
     ) -> str:
         budget = TokenBudget(self.MAX_CONTEXT_TOKENS)
+
+        # Reserve a bounded slice for imported reference material (B19) first, so it isn't
+        # crowded out by canon context; it is appended last (background source material).
+        reference_section = self._build_reference_context(scene, budget, max_ref_tokens=450)
+
         sections: list[str] = []
 
         # Priority order (highest first):
@@ -68,6 +73,7 @@ class ContextBuilder:
         sections.append(self._build_thread_context(scene.characters, chapter_number, budget))
         sections.append(self._build_character_states(scene.characters, chapter_number, budget))
         sections.append(self._build_retrieval_context(scene, chapter_number, budget))
+        sections.append(reference_section)
 
         return "\n\n".join(s for s in sections if s)
 
@@ -381,7 +387,7 @@ class ContextBuilder:
                 query,
                 mode="keyword",
                 top_k=4,
-                filters=None,
+                filters={"exclude_source_type": ["reference"]},  # keep refs out of canon band
             )
         except Exception:
             logger.debug("Retrieval search failed during context building", exc_info=True)
@@ -410,3 +416,60 @@ class ContextBuilder:
 
         section = "=== PREVIOUSLY ESTABLISHED ===\n" + "\n".join(snippets)
         return budget.consume(section)
+
+    def _build_reference_context(
+        self,
+        scene: Scene,
+        budget: TokenBudget,
+        max_ref_tokens: int = 450,
+    ) -> str:
+        """Imported reference material (B19), retrieved and clearly marked as source
+        material rather than canon. Bounded to `max_ref_tokens` of the shared budget."""
+        if budget.exhausted() or not self.search_service:
+            return ""
+
+        query_parts = []
+        if scene.summary:
+            query_parts.append(scene.summary)
+        if scene.setting:
+            query_parts.append(scene.setting)
+        if scene.characters:
+            query_parts.append(" ".join(scene.characters))
+        query = " ".join(query_parts).strip()
+        if not query:
+            return ""
+
+        try:
+            results = self.search_service.search(
+                query,
+                mode="keyword",
+                top_k=4,
+                filters={"source_type": "reference"},
+            )
+        except Exception:
+            logger.debug("Reference retrieval failed during context building", exc_info=True)
+            return ""
+
+        if not results:
+            return ""
+
+        used_before = budget.used
+        lines: list[str] = []
+        for r in results:
+            if budget.used - used_before >= max_ref_tokens or budget.exhausted():
+                break
+            text = r.text if hasattr(r, "text") else str(r)
+            words = text.split()
+            if len(words) > 60:
+                text = " ".join(words[:60]) + "..."
+            clipped = budget.consume(text)
+            if clipped:
+                lines.append(f"- {clipped}")
+
+        if not lines:
+            return ""
+
+        return (
+            "=== REFERENCE MATERIAL (imported source — use as background/citation, NOT canon) ===\n"
+            + "\n".join(lines)
+        )

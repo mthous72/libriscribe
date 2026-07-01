@@ -7,7 +7,7 @@ from fastapi.staticfiles import StaticFiles
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from libriscribe import __version__
-from libriscribe.api.routers import projects, generation, settings, lorebook, ws, system, chat
+from libriscribe.api.routers import projects, generation, settings, lorebook, ws, system, chat, references
 from libriscribe.utils.paths import get_frontend_dist
 
 
@@ -51,6 +51,7 @@ def create_app() -> FastAPI:
     app.include_router(generation.router)
     app.include_router(settings.router)
     app.include_router(lorebook.router)
+    app.include_router(references.router)
     app.include_router(ws.router)
 
     # Serve React build if it exists (with SPA fallback for client-side routes)

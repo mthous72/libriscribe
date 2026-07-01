@@ -158,6 +158,15 @@ class KeywordIndex:
                     elif chunk.source_type != allowed_types:
                         match = False
 
+                # Exclude source_type (e.g. keep reference material out of canon retrieval)
+                if "exclude_source_type" in filters:
+                    excluded = filters["exclude_source_type"]
+                    if isinstance(excluded, list):
+                        if chunk.source_type in excluded:
+                            match = False
+                    elif chunk.source_type == excluded:
+                        match = False
+
                 # Match chapter_number
                 if "chapter_number" in filters:
                     if chunk.chapter_number != filters["chapter_number"]:
