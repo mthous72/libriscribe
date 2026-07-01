@@ -732,14 +732,72 @@ our RAG (which is more sophisticated than theirs).
 - **Reuses:** `services/context_builder.py` (`TokenBudget`), the retrieval `search_service`,
   and the chat `_build_lore_context` / `_focus_context` paths.
 
-### B16. Read-aloud (text-to-speech) — **effort: S** — *later (deprioritized per user)*
+### B16. Read-aloud (text-to-speech) — **effort: S** — 🧊 **BACK BURNER (not required now, per user)**
 **What:** a "▶ Read aloud" control in the chapter editor / brainstorm to hear prose and catch
 clunky phrasing. Writingway needs `pyttsx3` because it's native; **we get this free and
 dependency-free** via the browser `SpeechSynthesis` Web API — no backend, no new deps.
 - **Frontend only:** play/pause/stop over the current chapter text (or a selection), with a
   voice/rate picker from `speechSynthesis.getVoices()`. Sentence-level highlight-follow is a
   nice-to-have, not required for v1.
-- **Status:** specced, **scheduled after B14/B15** per user.
+- **Status:** specced but **parked** — revisit only when the higher-value items below are done.
+
+### B17. Semantic / embeddings retrieval — **effort: M/L** — *wanted (per user)*
+**What:** add an optional **semantic** retrieval mode alongside today's keyword BM25 +
+cross-ref, so paraphrased/thematic queries recall the right lore and prose. This is the
+foundation that also makes B19 (external-reference RAG) actually good.
+- **Design (keep our "no external vector DB" promise):** embed chunks and persist vectors to
+  disk; do similarity in-process with a **pure-numpy cosine** index (project-scale corpora are
+  small — a book + a few refs — so FAISS is optional, not required). Ride the existing `mode`
+  field in `retrieval/models.py` and the `SearchServiceImpl` seam; keyword stays the default,
+  semantic is opt-in, hybrid (keyword ∪ semantic, re-ranked) is the stretch goal.
+- **Embedding source — decide at build (recommended: local-first):**
+  1. **Local OpenAI-compatible** embeddings (LM Studio / Ollama `/v1/embeddings`) — offline,
+     no heavy Python dep, fits our existing Local provider story. *(recommended default)*
+  2. **Provider embeddings** (OpenAI `text-embedding-3-small`, etc.) — best quality, costs
+     tokens, needs a key.
+  3. Bundled local model (`sentence-transformers`) — offline but a heavy dep + model download;
+     avoid unless (1)/(2) prove insufficient.
+- **Incremental:** reuse `index_manager`'s hash-based refresh so only changed chunks re-embed;
+  log embedding cost via `CostTracker` when a paid provider is used.
+- **Fallback:** if no embedder is configured/reachable, silently fall back to keyword — never
+  break search.
+
+### B18. Multiple parallel brainstorm sessions — **effort: M** — *wanted (per user)*
+**What:** today the Brainstorm co-writer is a **single** thread per project
+(`chat_history.json`). Add **named, parallel sessions** so an author can keep, e.g., a "plot"
+chat, a "villain" chat, and a "magic system" chat separate — each with its own history and
+optional persistent Focus.
+- **Backend:** move chat storage from one file to a `chat_sessions/` dir (one file per
+  session: id, title, created/updated, optional `focus`, messages). Endpoints: list / create /
+  rename / delete sessions; the existing `/chat`, `/chat/parse` gain a `session_id`. Migrate
+  the current single history into a default "General" session on first load.
+- **Frontend:** a session switcher in the Brainstorm drawer (list + new + rename + delete);
+  Focus and Smart Apply operate within the active session. Everything else (streaming, parse →
+  review → merge) is unchanged.
+- **Note:** purely additive to B9/B12; no change to the lore-merge engine.
+
+### B19. Bring-your-own-reference RAG — **effort: L** — *wanted (per user)*
+**What:** let the author **ingest external reference material** (PDF, plain text/markdown,
+maybe a URL) into a project and have the brainstorm/generation ground answers in it — a
+research folder, a style guide, or a prior-book "series bible." This is the biggest capability
+Writingway's workshop has that we lack (`rag_pdf`, `rag_smart_qa`, `rag_visual_explorer`).
+- **Ingest:** upload → extract text (PDFs via a light dep, e.g. `pypdf`) → chunk with the
+  existing `chunking.py` → index as a new **`reference` document source** distinct from lore/
+  prose (so refs inform but never pollute the lorebook). Store under the project dir.
+- **Retrieve:** references flow through the same `search_service`; **best paired with B17**
+  (semantic) but works on keyword too. Context builder gets a `references` band with its own
+  token sub-budget, clearly labelled so the model cites/uses them as source, not canon.
+- **Chat:** a "sources" toggle/picker in the brainstorm drawer to include/exclude refs;
+  optional "what did it retrieve" peek (mirrors Writingway's visual explorer, and dovetails
+  with B15's context preview).
+- **Manage:** list/remove reference docs; refs are excluded from Story/Project export by
+  default (they're not the author's prose) — confirm at build.
+- **Depends on:** B17 recommended first (semantic makes ref recall much better); reuses
+  `document_builder` / `chunking` / `index_manager`.
+
+**Suggested order for this cluster:** B17 (semantic retrieval) → B19 (reference RAG, which
+leans on it) with B18 (multi-session) sliding in anywhere since it's independent. B14/B15
+remain the immediate near-term items; B16 (TTS) is parked.
 
 ### Deferred task — README attribution for Writingway (do NOT add until integrated)
 Once we ship the **first** feature derived from Writingway (likely B14), update `README.md`:
