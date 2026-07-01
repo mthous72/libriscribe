@@ -2,11 +2,11 @@ import logging
 import re
 from typing import Dict, Optional
 
-import anthropic
 import requests
-from google import genai
-from google.genai import types as google_genai_types
-from openai import OpenAI
+
+# Provider SDKs (openai, anthropic, google.genai) are imported lazily inside the methods
+# that use them — importing all three at module load added ~1.5s to server startup
+# (google.genai alone ~0.7s), even when only one provider is used.
 
 from libriscribe.settings import Settings
 from libriscribe.utils.cost_tracker import CostTracker
@@ -52,6 +52,7 @@ class LLMClient:
         if provider == "openrouter":
             if not self.settings.openrouter_api_key:
                 raise ValueError("OpenRouter API key is not set.")
+            from openai import OpenAI
             client = OpenAI(
                 api_key=self.settings.openrouter_api_key,
                 base_url=self.settings.openrouter_base_url,
@@ -59,14 +60,17 @@ class LLMClient:
         elif provider == "openai":
             if not self.settings.openai_api_key:
                 raise ValueError("OpenAI API key is not set.")
+            from openai import OpenAI
             client = OpenAI(api_key=self.settings.openai_api_key)
         elif provider == "claude":
             if not self.settings.claude_api_key:
                 raise ValueError("Claude API key is not set.")
+            import anthropic
             client = anthropic.Anthropic(api_key=self.settings.claude_api_key)
         elif provider == "google_ai_studio":
             if not self.settings.google_ai_studio_api_key:
                 raise ValueError("Google AI Studio API key is not set.")
+            from google import genai
             client = genai.Client(api_key=self.settings.google_ai_studio_api_key)
         elif provider == "deepseek":
             if not self.settings.deepseek_api_key:
@@ -80,6 +84,7 @@ class LLMClient:
             # Local / OpenAI-compatible server (LM Studio, Ollama, llama.cpp, ...).
             # base_url points at localhost, so requests never leave the machine.
             from libriscribe.utils.model_routing import normalize_openai_base_url
+            from openai import OpenAI
 
             base_url = normalize_openai_base_url(self.settings.local_base_url)
             if not base_url:
@@ -350,6 +355,7 @@ class LLMClient:
             return text_content
 
         if provider == "google_ai_studio":
+            from google.genai import types as google_genai_types
             client = self._get_client_for_provider(provider)
             google_config_kwargs: dict = dict(
                 temperature=temperature,
@@ -501,6 +507,7 @@ class LLMClient:
             return
 
         if provider == "google_ai_studio":
+            from google.genai import types as google_genai_types
             client = self._get_client_for_provider(provider)
             stream_config_kwargs: dict = dict(
                 temperature=temperature,
