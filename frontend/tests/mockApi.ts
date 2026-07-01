@@ -64,6 +64,7 @@ function bodyFor(pathname: string): unknown {
   if (p === '/projects/demo/retrieval') return { mode: 'keyword', chunk_count: 128, embedder_configured: false, semantic_ready: false }
   if (p === '/projects/demo/chapters') return chapters
   if (p === '/projects/demo/chapters/1') return chapter1
+  if (p === '/projects/demo/preview-context/1') return { context: 'Mira — protagonist, cartographer whose maps reshape the world.\nSaltrow — a fishing village that vanished from the coast.\n'.repeat(20), token_estimate: 512 }
   if (p === '/projects/demo/cost') return { total_cost: 0.1234 }
   if (p === '/projects/demo/stats') return stats
   if (p === '/projects/demo/outline') return outline

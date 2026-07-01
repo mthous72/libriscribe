@@ -3,8 +3,9 @@ import { mockApi } from './mockApi'
 
 /**
  * Guards the mobile-responsive work: no page may overflow the viewport
- * horizontally at common phone widths, and the nav must collapse into a
- * hamburger below the `sm` breakpoint while showing inline links above it.
+ * horizontally at common phone widths (portrait AND landscape), and the nav
+ * must collapse into a hamburger below the `sm` breakpoint while showing
+ * inline links above it.
  */
 
 const ROUTES = [
@@ -17,15 +18,29 @@ const ROUTES = [
   '/projects/demo/chapters/1',
 ]
 
-// 320 = iPhone SE (1st gen), 375 = iPhone SE/12 mini, 414 = large phones.
-const WIDTHS = [320, 375, 414]
+// Portrait: 320 = iPhone SE (1st gen), 375 = iPhone SE/12 mini, 414 = large phones.
+const PORTRAIT = [320, 375, 414].map((width) => ({ width, height: 800 }))
 
-for (const width of WIDTHS) {
-  test.describe(`no horizontal overflow @ ${width}px`, () => {
+// Landscape: short viewports whose in-between widths cross the sm/lg breakpoints
+// that portrait phone widths never hit. 667 = iPhone SE/8, 812 = iPhone X/11 Pro,
+// 926 = iPhone 14 Pro Max — all rotated 90°.
+const LANDSCAPE = [
+  { width: 667, height: 375 },
+  { width: 812, height: 375 },
+  { width: 926, height: 428 },
+]
+
+const VIEWPORTS = [
+  ...PORTRAIT.map((v) => ({ ...v, label: `${v.width}px portrait` })),
+  ...LANDSCAPE.map((v) => ({ ...v, label: `${v.width}x${v.height} landscape` })),
+]
+
+for (const vp of VIEWPORTS) {
+  test.describe(`no horizontal overflow @ ${vp.label}`, () => {
     for (const route of ROUTES) {
       test(route, async ({ page }) => {
         await mockApi(page)
-        await page.setViewportSize({ width, height: 800 })
+        await page.setViewportSize({ width: vp.width, height: vp.height })
         await page.goto(route, { waitUntil: 'load' })
         // Let async data render and the layout settle.
         await expect(page.locator('h1, textarea').first()).toBeVisible()
@@ -34,12 +49,31 @@ for (const width of WIDTHS) {
         const scrollWidth = await page.evaluate(() => document.documentElement.scrollWidth)
         expect(
           scrollWidth,
-          `content is ${scrollWidth}px wide but the viewport is ${width}px — something overflows on ${route}`,
-        ).toBeLessThanOrEqual(width)
+          `content is ${scrollWidth}px wide but the viewport is ${vp.width}px — something overflows on ${route} (${vp.label})`,
+        ).toBeLessThanOrEqual(vp.width)
       })
     }
   })
 }
+
+test.describe('modals fit within a short landscape viewport', () => {
+  test('chapter AI-context modal stays inside 812x375', async ({ page }) => {
+    await mockApi(page)
+    await page.setViewportSize({ width: 812, height: 375 })
+    await page.goto('/projects/demo/chapters/1', { waitUntil: 'load' })
+
+    await page.getByRole('button', { name: 'Preview AI context' }).click()
+    const card = page.locator('.max-w-2xl').first()
+    await expect(card).toBeVisible()
+
+    const box = await card.boundingBox()
+    expect(box, 'modal card should have a layout box').not.toBeNull()
+    // The card must sit fully within the viewport height (1px tolerance),
+    // so it never clips off the top/bottom on a short landscape screen.
+    expect(box!.y).toBeGreaterThanOrEqual(-1)
+    expect(box!.y + box!.height).toBeLessThanOrEqual(375 + 1)
+  })
+})
 
 test.describe('navigation collapses responsively', () => {
   test('hamburger on mobile, inline links on desktop', async ({ page }) => {

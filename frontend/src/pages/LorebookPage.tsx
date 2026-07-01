@@ -235,8 +235,8 @@ export default function LorebookPage() {
   return (
     <div>
       {importProposal && (
-        <div className="fixed inset-0 z-50 bg-black/60 flex items-start justify-center overflow-y-auto p-4" onClick={() => setImportProposal(null)}>
-          <div className="bg-gray-950 border border-gray-800 rounded-lg shadow-2xl w-full max-w-2xl mt-10 p-4" onClick={e => e.stopPropagation()}>
+        <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center overflow-y-auto p-4" onClick={() => setImportProposal(null)}>
+          <div className="bg-gray-950 border border-gray-800 rounded-lg shadow-2xl w-full max-w-2xl max-h-[calc(100vh-2rem)] overflow-y-auto p-4" onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-2">
               <div>
                 <h2 className="text-sm font-semibold">Review import</h2>

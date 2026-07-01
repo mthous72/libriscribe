@@ -67,16 +67,16 @@ export default function ChapterEditorPage() {
       </div>
 
       {ctx !== null && (
-        <div className="fixed inset-0 z-50 bg-black/60 flex items-start justify-center overflow-y-auto p-4" onClick={() => setCtx(null)}>
-          <div className="bg-gray-950 border border-gray-800 rounded-lg shadow-2xl w-full max-w-2xl mt-10 p-4" onClick={e => e.stopPropagation()}>
-            <div className="flex items-center justify-between mb-2">
+        <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center overflow-y-auto p-4" onClick={() => setCtx(null)}>
+          <div className="bg-gray-950 border border-gray-800 rounded-lg shadow-2xl w-full max-w-2xl max-h-[calc(100vh-2rem)] flex flex-col p-4" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-2 shrink-0">
               <div>
                 <h2 className="text-sm font-semibold">AI context for Chapter {n}</h2>
                 <p className="text-[11px] text-gray-500">The lore/context injected into the chapter-writing prompt · ~{ctx.token_estimate} tokens · no LLM call</p>
               </div>
-              <button onClick={() => setCtx(null)} className="text-gray-500 hover:text-gray-200 p-1.5 -m-1" title="Close"><X size={18} /></button>
+              <button onClick={() => setCtx(null)} className="text-gray-500 hover:text-gray-200 p-1.5 -m-1 shrink-0" title="Close"><X size={18} /></button>
             </div>
-            <pre className="max-h-[65vh] overflow-auto text-[11px] text-gray-300 whitespace-pre-wrap bg-gray-900 border border-gray-800 rounded p-2">{ctx.context || '(no context assembled — add lore, or write earlier chapters)'}</pre>
+            <pre className="flex-1 min-h-0 overflow-auto text-[11px] text-gray-300 whitespace-pre-wrap bg-gray-900 border border-gray-800 rounded p-2">{ctx.context || '(no context assembled — add lore, or write earlier chapters)'}</pre>
           </div>
         </div>
       )}
