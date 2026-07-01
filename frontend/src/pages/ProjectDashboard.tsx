@@ -4,6 +4,7 @@ import { useProject } from '../hooks/useProject'
 import { useWebSocket } from '../hooks/useWebSocket'
 import { useGenerationStore } from '../store/generationSlice'
 import { startGeneration, cancelGeneration, resumeGeneration, listChapters, getCost, updateProjectSettings, fetchProviderModels, listVersions, saveVersion, restoreVersion, getRetrieval, setRetrieval, getStats } from '../api/client'
+import ModelPicker from '../components/ModelPicker'
 import { Play, Square, BookOpen, Map, FileText, Download, Save, RefreshCw, Loader2, RotateCcw } from 'lucide-react'
 
 const STAGES = ['concept', 'outline', 'characters', 'worldbuilding', 'chapters', 'formatting']
@@ -295,26 +296,14 @@ export default function ProjectDashboard() {
           </label>
           <label className="block">
             <span className="text-xs text-gray-400">Model</span>
-            <div className="flex gap-2 mt-1">
-              <input
-                list="project-llm-models"
-                className="flex-1 px-3 py-1.5 bg-gray-800 border border-gray-700 rounded-lg text-sm"
-                value={llmModel}
-                onChange={e => setLlmModel(e.target.value)}
-                placeholder="leave blank for the provider default"
-              />
-              <button
-                onClick={loadLlmModels}
-                disabled={loadingLlmModels}
-                title="Fetch available models from the provider"
-                className="flex items-center gap-1 px-3 py-1.5 bg-gray-700 hover:bg-gray-600 rounded-lg text-sm disabled:opacity-50"
-              >
-                {loadingLlmModels ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />} Load
-              </button>
-            </div>
-            <datalist id="project-llm-models">
-              {llmModels.map((m: any) => <option key={m.id} value={m.id}>{m.label}{m.free ? ' — free' : ''}</option>)}
-            </datalist>
+            <ModelPicker
+              value={llmModel}
+              onChange={setLlmModel}
+              models={llmModels}
+              loading={loadingLlmModels}
+              onLoad={loadLlmModels}
+              placeholder="leave blank for the provider default"
+            />
           </label>
         </div>
         <button

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { getSettings, updateSettings, getProviders, fetchProviderModels } from '../api/client'
+import ModelPicker from '../components/ModelPicker'
 import { Save, Check, X, Loader2, RefreshCw } from 'lucide-react'
 
 const PROVIDERS = [
@@ -177,34 +178,13 @@ export default function SettingsPage() {
 
               <label className="block">
                 <span className="text-xs text-gray-400">Model</span>
-                <div className="flex gap-2 mt-1">
-                  <input
-                    list={`${p.key}-models`}
-                    className="flex-1 px-3 py-1.5 bg-gray-800 border border-gray-700 rounded-lg text-sm"
-                    value={settings[`${p.key}_model`] || ''}
-                    onChange={e => setSettings({ ...settings, [`${p.key}_model`]: e.target.value })}
-                    placeholder="Type a model id, or Load to choose from a list"
-                  />
-                  <button
-                    onClick={() => loadModels(p.key)}
-                    disabled={loadingModels === p.key}
-                    title="Fetch available models from the provider"
-                    className="flex items-center gap-1 px-3 py-1.5 bg-gray-700 hover:bg-gray-600 rounded-lg text-sm disabled:opacity-50"
-                  >
-                    {loadingModels === p.key ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
-                    Load
-                  </button>
-                </div>
-                <datalist id={`${p.key}-models`}>
-                  {(loaded || []).map((m: any) => (
-                    <option key={m.id} value={m.id}>{m.label}{m.free ? ' — free' : ''}</option>
-                  ))}
-                </datalist>
-                {loaded && (
-                  <span className="text-xs text-gray-500">
-                    {loaded.length} models loaded{freeCount > 0 ? ` · ${freeCount} free` : ''}
-                  </span>
-                )}
+                <ModelPicker
+                  value={settings[`${p.key}_model`] || ''}
+                  onChange={v => setSettings({ ...settings, [`${p.key}_model`]: v })}
+                  models={loaded || []}
+                  loading={loadingModels === p.key}
+                  onLoad={() => loadModels(p.key)}
+                />
               </label>
             </div>
           )
@@ -259,33 +239,14 @@ export default function SettingsPage() {
           return (
             <label className="block">
               <span className="text-xs text-gray-400">Embedding model</span>
-              <div className="flex gap-2 mt-1">
-                <input
-                  list="embedding-models"
-                  className="flex-1 px-3 py-1.5 bg-gray-800 border border-gray-700 rounded-lg text-sm"
-                  value={settings[field] || ''}
-                  onChange={e => setSettings({ ...settings, [field]: e.target.value })}
-                  placeholder={isLocal ? 'nomic-embed-text' : 'text-embedding-3-small'}
-                />
-                <button
-                  onClick={loadEmbeddingModels}
-                  disabled={loadingEmb}
-                  title={isLocal ? 'Fetch models from the local server' : 'Fetch models from OpenAI'}
-                  className="flex items-center gap-1 px-3 py-1.5 bg-gray-700 hover:bg-gray-600 rounded-lg text-sm disabled:opacity-50"
-                >
-                  {loadingEmb ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />} Load
-                </button>
-              </div>
-              <datalist id="embedding-models">
-                {embModels.map((m: any) => (
-                  <option key={m.id} value={m.id}>{m.label}{isEmbeddingId(m.id) ? ' — embedding' : ''}</option>
-                ))}
-              </datalist>
-              {embModels.length > 0 && (
-                <span className="text-xs text-gray-500">
-                  {embModels.length} models loaded{embFree > 0 ? ` · ${embFree} look like embedding models (listed first)` : ''}
-                </span>
-              )}
+              <ModelPicker
+                value={settings[field] || ''}
+                onChange={v => setSettings({ ...settings, [field]: v })}
+                models={embModels.map((m: any) => ({ id: m.id, label: (m.label || m.id) + (isEmbeddingId(m.id) ? ' — embedding' : ''), free: m.free }))}
+                loading={loadingEmb}
+                onLoad={loadEmbeddingModels}
+                placeholder={isLocal ? 'nomic-embed-text' : 'text-embedding-3-small'}
+              />
               {isLocal
                 ? <p className="text-xs text-emerald-400/80">
                     Uses the Local server Base URL above — fully offline. Load a dedicated embedding
