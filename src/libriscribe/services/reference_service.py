@@ -86,14 +86,24 @@ def _slug(text: str) -> str:
 
 def _configure_tesseract() -> None:
     """Point pytesseract at the Tesseract binary: $TESSERACT_CMD, a bundled copy next to
-    the app (installer places one there), or rely on PATH."""
+    the app (the installer places one at {app}\\tesseract\\), or rely on PATH. Also sets
+    TESSDATA_PREFIX to the bundled tessdata when present."""
     try:
         import pytesseract
     except Exception:
         return
+
+    def _apply(path: Path) -> bool:
+        if not path.exists():
+            return False
+        pytesseract.pytesseract.tesseract_cmd = str(path)
+        tessdata = path.parent / "tessdata"
+        if tessdata.is_dir() and not os.environ.get("TESSDATA_PREFIX"):
+            os.environ["TESSDATA_PREFIX"] = str(path.parent)
+        return True
+
     cmd = os.environ.get("TESSERACT_CMD")
-    if cmd and Path(cmd).exists():
-        pytesseract.pytesseract.tesseract_cmd = cmd
+    if cmd and _apply(Path(cmd)):
         return
     exe_dir = Path(getattr(sys, "_MEIPASS", Path(sys.executable).parent))
     for cand in (
@@ -101,8 +111,7 @@ def _configure_tesseract() -> None:
         exe_dir / "tesseract.exe",
         Path(sys.executable).parent / "tesseract" / "tesseract.exe",
     ):
-        if cand.exists():
-            pytesseract.pytesseract.tesseract_cmd = str(cand)
+        if _apply(cand):
             return
 
 

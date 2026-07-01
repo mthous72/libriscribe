@@ -853,12 +853,12 @@ Deps: `pymupdf`, `pytesseract` added to `setup.py`. Tests: `tests/test_reference
 skip when the binary is absent). Full suite **139 passed**; frontend builds clean. Works today
 anywhere the Tesseract binary is installed/on PATH.
 
-**Remaining (packaging — external, can't verify from here):** bundle the **Tesseract binary +
-`tessdata`** into the Windows installer so OCR works out-of-the-box. Approach: CI fetches
-Tesseract, Inno Setup `[Files]` ships it to `{app}\tesseract\`, and the app auto-discovers it
-via the bundled-path logic already in `_configure_tesseract()` (or set `TESSERACT_CMD`). Verify
-with a `workflow_dispatch` installer build. Until then the shipped installer needs Tesseract
-installed separately for scanned/image OCR.
+**Installer bundling — WIRED (verify via CI build):** the build workflow now installs Tesseract
+via Chocolatey and stages it to `dist\tesseract`; the Inno script ships it to `{app}\tesseract\`
+(guarded with `#if FileExists` so local builds without it still compile), and
+`_configure_tesseract()` auto-discovers `{app}\tesseract\tesseract.exe` and sets
+`TESSDATA_PREFIX`. Confirm with a `workflow_dispatch` run of *Build Windows Installer* (installer
+grows by the Tesseract footprint). Local `iscc` builds without the staged folder simply omit OCR.
 
 ## Docs refresh (Docusaurus, **not a wiki**) — low-priority parallel track
 

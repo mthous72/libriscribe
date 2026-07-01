@@ -40,6 +40,13 @@ Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{
 ; generated projects live there (user-writable); Program Files stays read-only.
 Source: "..\dist\LibriScribeGUI\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 
+; Bundled Tesseract OCR (scanned-PDF / image references, B20). CI stages it into
+; dist\tesseract; the app auto-discovers {app}\tesseract\tesseract.exe. Guarded so a
+; local build without the staged folder still compiles (OCR just won't be bundled).
+#if FileExists("..\dist\tesseract\tesseract.exe")
+Source: "..\dist\tesseract\*"; DestDir: "{app}\tesseract"; Flags: ignoreversion recursesubdirs createallsubdirs
+#endif
+
 [Icons]
 Name: "{group}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"
 Name: "{group}\{cm:UninstallProgram,{#MyAppName}}"; Filename: "{uninstallexe}"

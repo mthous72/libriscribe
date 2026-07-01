@@ -81,6 +81,21 @@ jobs:
       - name: Install Inno Setup
         run: choco install innosetup -y --no-progress
 
+      - name: Bundle Tesseract OCR
+        run: |
+          choco install tesseract -y --no-progress
+          $src = "C:\Program Files\Tesseract-OCR"
+          if (!(Test-Path "$src\tesseract.exe")) {
+            $cmd = (Get-Command tesseract -ErrorAction SilentlyContinue).Source
+            if ($cmd) { $src = Split-Path $cmd }
+          }
+          if (!(Test-Path "$src\tesseract.exe")) { Write-Error "Tesseract not found after install"; exit 1 }
+          New-Item -ItemType Directory -Force -Path "dist\tesseract" | Out-Null
+          Copy-Item "$src\*" -Destination "dist\tesseract" -Recurse -Force
+          if (!(Test-Path "dist\tesseract\tesseract.exe")) { Write-Error "Tesseract staging failed"; exit 1 }
+          Write-Host "Bundled Tesseract from $src"
+        shell: pwsh
+
       - name: Build installer
         run: |
           $env:PATH = "C:\Program Files (x86)\Inno Setup 6;$env:PATH"
