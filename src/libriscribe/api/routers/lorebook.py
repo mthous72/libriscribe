@@ -564,6 +564,28 @@ def parse_lore(name: str, body: LoreParseRequest):
     return {"proposal": lore_intake.build_proposal(kb, cats), "format": fmt, "used_llm": used_llm}
 
 
+class ExtractFieldsRequest(BaseModel):
+    name: str = ""
+    content: str = ""
+    category: str  # characters | locations | lore | arcs
+
+
+@router.post("/{name}/lore/extract-fields")
+def extract_fields(name: str, body: ExtractFieldsRequest):
+    """Re-parse an entry's content into the typed sub-fields for a chosen category. Used when
+    the user manually re-files an entry in the import/brainstorm review panel."""
+    from libriscribe.services import lore_intake
+
+    kb = load_kb(name)
+    if not kb:
+        raise HTTPException(status_code=404, detail="Project not found")
+    client = _maybe_client(kb)
+    if client is None:
+        raise HTTPException(status_code=400, detail="No LLM is configured for this project.")
+    fields = lore_intake.llm_extract_for_type(client, kb.genre, body.name, body.content, body.category)
+    return {"fields": fields}
+
+
 @router.post("/{name}/lore/apply-parsed")
 def apply_parsed(name: str, body: ProposalApplyRequest):
     """Merge confirmed proposal records into the KB (smart merge — preserves untouched

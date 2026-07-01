@@ -404,6 +404,32 @@ def llm_classify_all(client, genre: str, cats: dict) -> dict:
     return out
 
 
+def llm_extract_for_type(client, genre: str, name: str, content: str, category: str) -> dict:
+    """Extract typed sub-fields for a KNOWN category from an entry's content.
+
+    Used when the user manually re-files an entry in the review panel (e.g. a World Info entry
+    that's really a character) — re-parse its content into that type's fields (role,
+    physical_description, ...). One small, focused call."""
+    if client is None:
+        return {}
+    type_key = CATEGORY_TO_TYPE.get(category, category if category in SMART_FIELDS else "lore")
+    fields_list = SMART_FIELDS.get(type_key, ["description"])
+    prompt = (
+        f"From the content below, extract the details for the {type_key} named '{name}' in a "
+        f"{genre} book.\n\nCONTENT:\n{(content or '')[:6000]}\n\n"
+        f"Return ONLY a JSON object with these string fields: {', '.join(fields_list)}. Fill each "
+        "field from the content; use an empty string if it isn't stated. Keep the real detail and "
+        "do not invent anything."
+    )
+    try:
+        data = json.loads(client.generate_content_with_json_repair(prompt, max_tokens=1500, temperature=0.2))
+    except Exception:
+        return {}
+    if not isinstance(data, dict):
+        return {}
+    return {k: str(v) for k, v in data.items() if k in fields_list and v not in (None, "")}
+
+
 def extract_from_text(client, genre: str, text: str) -> dict:
     """Parse a free-text brainstorm note into canonical categories, reasoning per entity (B12).
 

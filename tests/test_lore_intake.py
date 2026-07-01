@@ -186,6 +186,26 @@ class PerEntryClassifierTests(unittest.TestCase):
         self.assertEqual(out["lore"][0]["fields"]["description"], "some content")
 
 
+class ExtractForTypeTests(unittest.TestCase):
+    class _FakeClient:
+        def __init__(self, response):
+            self._r = response
+        def generate_content_with_json_repair(self, prompt, **kw):
+            return self._r
+
+    def test_extracts_only_the_types_fields(self):
+        resp = json.dumps({"role": "technician", "physical_description": "tall",
+                           "bogus": "x", "personality_traits": ""})
+        out = lore_intake.llm_extract_for_type(self._FakeClient(resp), "Sci-Fi", "Maren", "content", "characters")
+        self.assertEqual(out.get("role"), "technician")
+        self.assertEqual(out.get("physical_description"), "tall")
+        self.assertNotIn("bogus", out)               # not a character field -> dropped
+        self.assertNotIn("personality_traits", out)  # empty -> dropped
+
+    def test_none_client_returns_empty(self):
+        self.assertEqual(lore_intake.llm_extract_for_type(None, "Sci-Fi", "X", "c", "characters"), {})
+
+
 class ProposalTests(unittest.TestCase):
     def test_status_new_vs_update_case_insensitive(self):
         kb = _kb()

@@ -36,6 +36,15 @@ export default function SettingsPage() {
   const [loadingModels, setLoadingModels] = useState<string | null>(null)
   const [embModels, setEmbModels] = useState<any[]>([])
   const [loadingEmb, setLoadingEmb] = useState(false)
+  const [hiddenProviders, setHiddenProviders] = useState<Set<string>>(() => {
+    try { return new Set(JSON.parse(localStorage.getItem('libriscribe:hidden-providers') || '[]')) } catch { return new Set() }
+  })
+  const toggleProvider = (key: string) => setHiddenProviders(prev => {
+    const next = new Set(prev)
+    if (next.has(key)) next.delete(key); else next.add(key)
+    localStorage.setItem('libriscribe:hidden-providers', JSON.stringify([...next]))
+    return next
+  })
 
   useEffect(() => {
     getSettings().then(setSettings).catch(() => {})
@@ -105,13 +114,17 @@ export default function SettingsPage() {
 
       {/* Provider Status */}
       <div className="bg-gray-900 border border-gray-800 rounded-xl p-4">
-        <h2 className="text-sm font-medium text-gray-400 mb-3">Provider Status</h2>
+        <div className="flex items-center justify-between mb-3">
+          <h2 className="text-sm font-medium text-gray-400">Provider Status</h2>
+          <span className="text-[11px] text-gray-600">Uncheck a provider to hide its section below</span>
+        </div>
         <div className="grid grid-cols-3 gap-2">
           {providers.map((p: any) => (
-            <div key={p.name} className="flex items-center gap-2 px-3 py-2 bg-gray-800 rounded-lg text-sm">
+            <label key={p.name} className="flex items-center gap-2 px-3 py-2 bg-gray-800 rounded-lg text-sm cursor-pointer" title="Show this provider in API Configuration">
+              <input type="checkbox" checked={!hiddenProviders.has(p.name)} onChange={() => toggleProvider(p.name)} />
               {p.configured ? <Check size={14} className="text-green-400" /> : <X size={14} className="text-gray-600" />}
               <span className={p.configured ? 'text-gray-200' : 'text-gray-500'}>{p.name}</span>
-            </div>
+            </label>
           ))}
         </div>
       </div>
@@ -125,7 +138,7 @@ export default function SettingsPage() {
           before saving).
         </p>
 
-        {PROVIDERS.map(p => {
+        {PROVIDERS.filter(p => !hiddenProviders.has(p.key)).map(p => {
           const loaded = models[p.key]
           const freeCount = loaded ? loaded.filter((m: any) => m.free).length : 0
           return (

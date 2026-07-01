@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { applyParsed } from '../api/client'
+import { applyParsed, extractFields } from '../api/client'
 import { Loader2, Check } from 'lucide-react'
 
 // A reviewable lore proposal: records grouped by category, each with a new/update status
@@ -13,7 +13,7 @@ export interface Proposal {
   worldbuilding?: { status: 'new' | 'update'; fields: Record<string, string> }
 }
 
-interface RecState { include: boolean; name: string; status: string; fields: Record<string, string> }
+interface RecState { _id: string; include: boolean; name: string; status: string; fields: Record<string, string>; reparsing?: boolean }
 
 const CATS: [keyof Proposal, string][] = [
   ['characters', 'Characters'],
@@ -25,12 +25,12 @@ const CATS: [keyof Proposal, string][] = [
 function initState(p: Proposal) {
   const s: Record<string, RecState[]> & { worldbuilding?: RecState } = {} as any
   for (const [key] of CATS) {
-    s[key as string] = ((p[key] as ProposalRecord[]) || []).map(r => ({
-      include: true, name: r.name, status: r.status, fields: { ...r.fields },
+    s[key as string] = ((p[key] as ProposalRecord[]) || []).map((r, i) => ({
+      _id: `${key as string}-${i}`, include: true, name: r.name, status: r.status, fields: { ...r.fields },
     }))
   }
   if (p.worldbuilding) {
-    s.worldbuilding = { include: true, name: 'Worldbuilding', status: p.worldbuilding.status, fields: { ...p.worldbuilding.fields } }
+    s.worldbuilding = { _id: 'wb', include: true, name: 'Worldbuilding', status: p.worldbuilding.status, fields: { ...p.worldbuilding.fields } }
   }
   return s
 }
@@ -66,21 +66,46 @@ export default function LoreProposalReview({
   const setWb = (patch: Partial<RecState>) => setState(prev => { const c = clone(prev); Object.assign(c.worldbuilding!, patch); return c })
   const setWbField = (field: string, value: string) => setState(prev => { const c = clone(prev); c.worldbuilding!.fields[field] = value; return c })
 
-  // Reassign an entry's type (e.g. a World Info entry that's really a character). Preserve the
-  // main text across the move — characters store it as `background`, others as `description`.
-  const moveRecord = (fromCat: string, idx: number, toCat: string) => {
+  const findAndUpdate = (id: string, mut: (r: RecState) => void) => setState(prev => {
+    const c = clone(prev)
+    for (const [k] of CATS) {
+      const arr = (c as any)[k] as RecState[] | undefined
+      const i = (arr || []).findIndex(r => r._id === id)
+      if (arr && i >= 0) { mut(arr[i]); break }
+    }
+    return c
+  })
+
+  // Reassign an entry's type (e.g. a World Info entry that's really a character), then re-parse
+  // its content into that type's sub-fields via the LLM. The move preserves content
+  // (description <-> background) so it survives even if the re-parse is skipped or fails.
+  const changeType = async (fromCat: string, idx: number, toCat: string) => {
     if (fromCat === toCat) return
+    const rec = (state as any)[fromCat]?.[idx] as RecState | undefined
+    if (!rec) return
+    const id = rec._id
+    const content = Object.values(rec.fields || {}).filter(Boolean).join('\n')
+
     setState(prev => {
       const c = clone(prev)
-      const [rec] = (c as any)[fromCat].splice(idx, 1)
-      if (rec) {
-        const f = rec.fields || (rec.fields = {})
+      const [moved] = (c as any)[fromCat].splice(idx, 1)
+      if (moved) {
+        const f = moved.fields || (moved.fields = {})
         if (toCat === 'characters' && f.description && !f.background) { f.background = f.description; delete f.description }
         else if (toCat !== 'characters' && f.background && !f.description) { f.description = f.background; delete f.background }
-        ;(c as any)[toCat].push(rec)
+        ;(c as any)[toCat].push(moved)
       }
       return c
     })
+
+    findAndUpdate(id, r => { r.reparsing = true })
+    try {
+      const res = await extractFields(projectName, { name: rec.name, content, category: toCat })
+      if (res?.fields && Object.keys(res.fields).length) {
+        findAndUpdate(id, r => { r.fields = res.fields })
+      }
+    } catch { /* keep the moved record as-is (content preserved above) */ }
+    finally { findAndUpdate(id, r => { r.reparsing = false }) }
   }
 
   const selectedCount = useMemo(() => {
@@ -157,12 +182,14 @@ export default function LoreProposalReview({
                       />
                       <select
                         value={key as string}
-                        onChange={e => moveRecord(key as string, idx, e.target.value)}
-                        title="Change this entry's type"
-                        className="px-1.5 py-1 bg-gray-800 border border-gray-700 rounded text-[11px] text-gray-300"
+                        onChange={e => changeType(key as string, idx, e.target.value)}
+                        disabled={r.reparsing}
+                        title="Change this entry's type — its fields are re-parsed for the new type"
+                        className="px-1.5 py-1 bg-gray-800 border border-gray-700 rounded text-[11px] text-gray-300 disabled:opacity-50"
                       >
                         {CATS.map(([k, lbl]) => <option key={k as string} value={k as string}>{lbl}</option>)}
                       </select>
+                      {r.reparsing && <Loader2 size={12} className="animate-spin text-indigo-400" />}
                       <Badge status={r.status} />
                     </div>
                     {r.include && Object.keys(r.fields).length > 0 && (
