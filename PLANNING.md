@@ -607,6 +607,46 @@ wasn't needed — the focused drawer covers it.)
 "Resumed your in-progress draft — Start fresh" banner); the draft is cleared on
 successful create.
 
+### B12 + B13. Smart lore intake (Apply + Import) — **BUILT** (staged, post v0.8.0)
+
+B12 (smart brainstorm Apply) and B13 (smart JSON import for foreign formats) turned out to
+be the **same engine** — parse arbitrary input → reviewable proposal → smart-merge — with
+two front doors. Built together as one shared module.
+
+**Decisions (resolved):** Smart merge (fill empty / revise changed / preserve untouched,
+case-insensitive name match) + Review & confirm (nothing writes until "Apply selected") for
+**both** doors. Foreign formats handled **hybrid**: deterministic adapters first, LLM to
+re-classify/enrich + a pure-LLM fallback for unknown shapes.
+
+**Shared engine** — `services/lore_intake.py`:
+- `detect_and_adapt(data)` — deterministic adapters: SillyTavern/TavernAI character cards
+  (V1 flat + V2 nested, incl. embedded `character_book`), KoboldAI / SillyTavern **World
+  Info** (`entries` as dict-by-uid or list; keys/comment/content), and our own bundle / a
+  lenient `{characters:[],…}` shape. Returns canonical categories + a format label, or None.
+- `llm_map()` / `extract_from_text()` — LLM mapping (foreign JSON enrich/fallback; brainstorm
+  prose) into the same canonical `{name, fields}` categories.
+- `build_proposal(kb, cats)` — annotates each record `new`/`update` (case-insensitive KB
+  match), stringifies field values for editing. **No writes.**
+- `merge_apply(kb, records)` — upsert with smart merge: start from existing `model_dump()`,
+  overlay only non-empty fields (typed-field coercion: str↔list/int/dict), preserve the rest;
+  never wipes untouched data. Worldbuilding merged field-by-field.
+
+**Endpoints:** `POST /{name}/chat/parse` (prose→proposal), `POST /{name}/lore/parse`
+(JSON→proposal, `smart` toggles LLM enrich), shared `POST /{name}/lore/apply-parsed`
+(merge). Old `/chat/apply` + `/lore/import` kept for back-compat.
+
+**Frontend:** shared `LoreProposalReview` component (records grouped by category, New/Update
+badges, per-record checkboxes default-checked, editable fields, Apply-selected with counts).
+Wired into the Brainstorm drawer ("Apply to lore" → `ParseApply`) and the Lorebook **Import
+JSON** flow (file → parse → review modal; "AI-map" toggles LLM enrich; detected-format note).
+
+**Tests:** `tests/test_lore_intake.py` (14) — adapters (ST card + book, V1 card, WI dict/list,
+native, unrecognized), proposal status/stringify, merge (preserve untouched, no-wipe-on-empty,
+create, str→list coercion, case-insensitive key, worldbuilding). Full suite **113 passed**.
+End-to-end TestClient run confirms parse→apply merges without clobbering existing fields.
+
+---
+
 ### Spec — B12. Smart Apply: multi-category lore extraction from brainstorm — APPROVED, building
 
 **Problem:** today's "Apply to lore" (chat.py `apply_to_lore`) targets ONE entity of ONE

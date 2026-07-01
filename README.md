@@ -66,6 +66,11 @@ This fork extends the original CLI tool into a **web application** (FastAPI + Re
 - **"Brainstorm this"** button on each lore entry; new-project wizard **draft persistence**
 - Backend **test suite** run automatically by CI
 
+**Smart lore intake (v0.8.0)**
+- **Smart Apply** — a brainstorm reply is parsed into multiple lore records across categories (characters, locations, lore, arcs) with the right fields, shown in a **review panel** (New/Update badges, editable, per-record checkboxes) before anything is saved
+- **Smart import** of lore JSON from other tools — **SillyTavern** character cards & World Info, **KoboldAI** World Info, or our own bundle — auto-detected and mapped into your lorebook (with an optional AI-map pass for unknown formats), also via the same review panel
+- **Smart merge** on apply: existing entries are updated field-by-field — empty fields filled, revised fields updated, and **anything not mentioned is preserved** (never overwrites untouched data)
+
 ### Inherited from Original
 - Multi-provider LLM support (OpenAI, Claude, Gemini, DeepSeek, Mistral, OpenRouter)
 - Configurable fallback chain for provider resilience

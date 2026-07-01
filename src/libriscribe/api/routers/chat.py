@@ -378,6 +378,36 @@ def _extract_fields(kb, target_type: str, text: str) -> dict:
         return {}
 
 
+class ParseRequest(BaseModel):
+    text: str
+
+
+@router.post("/{name}/chat/parse")
+def parse_to_proposal(name: str, body: ParseRequest):
+    """Parse a brainstorm reply into a reviewable, multi-category lore proposal (B12).
+
+    Extracts characters / locations / lore / arcs with typed fields, annotates each with
+    new/update status against the KB, and returns the proposal WITHOUT writing anything.
+    """
+    kb = load_kb(name)
+    if not kb:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    text = (body.text or "").strip()
+    if not text:
+        raise HTTPException(status_code=400, detail="Nothing to parse")
+
+    from libriscribe.services import lore_intake
+
+    cats = lore_intake.extract_from_text(_client_for(kb), kb.genre, text)
+    if lore_intake.cats_count(cats) == 0:
+        raise HTTPException(
+            status_code=422,
+            detail="Couldn't extract any lore from this reply. Try a more concrete idea, or use the manual editor.",
+        )
+    return {"proposal": lore_intake.build_proposal(kb, cats)}
+
+
 @router.post("/{name}/chat/apply")
 def apply_to_lore(name: str, body: ApplyRequest):
     kb = load_kb(name)

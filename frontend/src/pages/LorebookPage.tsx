@@ -11,9 +11,10 @@ import {
   listSuggestions, acceptSuggestion, rejectSuggestion, editSuggestion,
   listContinuityNotes,
   listThreads, createThread, updateThread, deleteThread,
-  importLore,
+  parseLore,
 } from '../api/client'
 import { useBrainstormStore } from '../store/brainstormSlice'
+import LoreProposalReview, { Proposal } from '../components/LoreProposalReview'
 import { Plus, Trash2, Search, Sparkles, Check, X, Edit3, AlertTriangle, Loader2, ChevronDown, ChevronRight, Upload } from 'lucide-react'
 
 const TAB_TO_FOCUS: Record<string, string> = { Characters: 'character', Locations: 'location', Lore: 'lore', Arcs: 'arc' }
@@ -81,6 +82,8 @@ export default function LorebookPage() {
   const [editValue, setEditValue] = useState('')
   const [smartImport, setSmartImport] = useState(false)
   const [importing, setImporting] = useState(false)
+  const [importProposal, setImportProposal] = useState<Proposal | null>(null)
+  const [importFormat, setImportFormat] = useState('')
   const fileRef = useRef<HTMLInputElement>(null)
   const openBrainstorm = useBrainstormStore(s => s.openBrainstorm)
 
@@ -90,9 +93,9 @@ export default function LorebookPage() {
     setImporting(true)
     try {
       const data = JSON.parse(await file.text())
-      const s = await importLore(name, { data, smart: smartImport })
-      alert(`Imported — characters: ${s.characters}, locations: ${s.locations}, lore: ${s.lore}, arcs: ${s.arcs}, worldbuilding: ${s.worldbuilding}`)
-      reload()
+      const r = await parseLore(name, { data, smart: smartImport })
+      setImportProposal(r.proposal)
+      setImportFormat(r.format + (r.used_llm && !String(r.format).includes('AI') ? ' (AI-mapped)' : ''))
     } catch (err: any) {
       if (err instanceof SyntaxError) alert('That file is not valid JSON.')
       else alert(err?.response?.data?.detail || 'Import failed')
@@ -228,6 +231,25 @@ export default function LorebookPage() {
 
   return (
     <div>
+      {importProposal && (
+        <div className="fixed inset-0 z-50 bg-black/60 flex items-start justify-center overflow-y-auto p-4" onClick={() => setImportProposal(null)}>
+          <div className="bg-gray-950 border border-gray-800 rounded-lg shadow-2xl w-full max-w-2xl mt-10 p-4" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-2">
+              <div>
+                <h2 className="text-sm font-semibold">Review import</h2>
+                {importFormat && <p className="text-[11px] text-gray-500">Detected: {importFormat}</p>}
+              </div>
+              <button onClick={() => setImportProposal(null)} className="text-gray-500 hover:text-gray-200"><X size={18} /></button>
+            </div>
+            <LoreProposalReview
+              projectName={name!}
+              proposal={importProposal}
+              onApplied={() => reload()}
+              onCancel={() => setImportProposal(null)}
+            />
+          </div>
+        </div>
+      )}
       <h1 className="text-2xl font-bold mb-4">Lorebook</h1>
       <div className="flex items-center justify-between mb-4 gap-2 flex-wrap">
         <div className="flex gap-1">
@@ -236,13 +258,13 @@ export default function LorebookPage() {
           ))}
         </div>
         <div className="flex items-center gap-2">
-          <label className="text-xs text-gray-400 flex items-center gap-1" title="Use the LLM to map non-standard JSON into lore categories">
+          <label className="text-xs text-gray-400 flex items-center gap-1" title="Use the LLM to re-classify and enrich entries (helps with foreign formats). Recognized formats import without it.">
             <input type="checkbox" checked={smartImport} onChange={e => setSmartImport(e.target.checked)} /> AI-map
           </label>
           <button
             onClick={() => fileRef.current?.click()}
             disabled={importing}
-            title="Import lore from a JSON file (characters, locations, lore, arcs, worldbuilding)"
+            title="Import lore from JSON — our bundle, SillyTavern character cards, or KoboldAI / SillyTavern World Info. You'll review before anything is saved."
             className="flex items-center gap-1 px-3 py-1.5 bg-gray-800 hover:bg-gray-700 rounded-lg text-sm disabled:opacity-50"
           >
             {importing ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />} Import JSON

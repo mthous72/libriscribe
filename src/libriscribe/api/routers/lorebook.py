@@ -509,6 +509,83 @@ def import_lore(name: str, body: LoreImportRequest):
     return summary
 
 
+# ─── Smart lore intake: parse → review → merge (B12 + B13) ────────
+
+class LoreParseRequest(BaseModel):
+    data: dict | list
+    smart: bool = False
+
+
+class ProposalApplyRequest(BaseModel):
+    records: dict
+
+
+def _maybe_client(kb):
+    """Best-effort LLM client for the project; None if it can't be built."""
+    from libriscribe.utils.llm_client import LLMClient
+    try:
+        client = LLMClient(kb.llm_provider)
+        if kb.model:
+            client.set_model(kb.model)
+        return client
+    except Exception:
+        return None
+
+
+@router.post("/{name}/lore/parse")
+def parse_lore(name: str, body: LoreParseRequest):
+    """Parse a (possibly foreign) lore JSON file into a reviewable proposal — no writes.
+
+    Recognized shapes (SillyTavern character cards, KoboldAI / SillyTavern World Info, our
+    own bundle) are adapted deterministically. `smart` adds an LLM pass to re-classify and
+    enrich them; unrecognized shapes fall back to pure-LLM mapping automatically."""
+    from libriscribe.services import lore_intake
+
+    kb = load_kb(name)
+    if not kb:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    detected = lore_intake.detect_and_adapt(body.data)
+    cats = detected[0] if detected else lore_intake._empty_cats()
+    fmt = detected[1] if detected else "unrecognized"
+    used_llm = False
+
+    # Hybrid: enrich recognized formats when asked; always LLM-map unrecognized shapes.
+    if body.smart or detected is None:
+        source = body.data if detected is None else {**cats}
+        llm_cats = lore_intake.llm_map(_maybe_client(kb), kb.genre, source)
+        if lore_intake.cats_count(llm_cats) > 0:
+            cats = llm_cats
+            used_llm = True
+            fmt = f"{fmt} + AI" if detected else "AI-mapped"
+
+    if lore_intake.cats_count(cats) == 0:
+        raise HTTPException(
+            status_code=422,
+            detail="No recognizable lore found. Supported: our bundle, SillyTavern cards, "
+                   "KoboldAI / SillyTavern World Info. Enable AI-map for other formats.",
+        )
+
+    return {"proposal": lore_intake.build_proposal(kb, cats), "format": fmt, "used_llm": used_llm}
+
+
+@router.post("/{name}/lore/apply-parsed")
+def apply_parsed(name: str, body: ProposalApplyRequest):
+    """Merge confirmed proposal records into the KB (smart merge — preserves untouched
+    fields). Shared by brainstorm Smart Apply and JSON import review."""
+    from libriscribe.services import lore_intake
+
+    kb = load_kb(name)
+    if not kb:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    summary = lore_intake.merge_apply(kb, body.records or {})
+    if sum(summary.values()) == 0:
+        raise HTTPException(status_code=400, detail="Nothing was applied.")
+    save_kb(name, kb)
+    return summary
+
+
 # ─── Outline ──────────────────────────────────────────────────────
 
 @router.get("/{name}/outline")
