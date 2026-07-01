@@ -66,6 +66,23 @@ export default function LoreProposalReview({
   const setWb = (patch: Partial<RecState>) => setState(prev => { const c = clone(prev); Object.assign(c.worldbuilding!, patch); return c })
   const setWbField = (field: string, value: string) => setState(prev => { const c = clone(prev); c.worldbuilding!.fields[field] = value; return c })
 
+  // Reassign an entry's type (e.g. a World Info entry that's really a character). Preserve the
+  // main text across the move — characters store it as `background`, others as `description`.
+  const moveRecord = (fromCat: string, idx: number, toCat: string) => {
+    if (fromCat === toCat) return
+    setState(prev => {
+      const c = clone(prev)
+      const [rec] = (c as any)[fromCat].splice(idx, 1)
+      if (rec) {
+        const f = rec.fields || (rec.fields = {})
+        if (toCat === 'characters' && f.description && !f.background) { f.background = f.description; delete f.description }
+        else if (toCat !== 'characters' && f.background && !f.description) { f.description = f.background; delete f.background }
+        ;(c as any)[toCat].push(rec)
+      }
+      return c
+    })
+  }
+
   const selectedCount = useMemo(() => {
     let n = 0
     for (const [key] of CATS) n += (state[key as string] || []).filter(r => r.include && r.name.trim()).length
@@ -115,7 +132,8 @@ export default function LoreProposalReview({
       <p className="text-xs text-gray-400">
         Review what will be saved. <b className="text-green-300">New</b> entries are created;{' '}
         <b className="text-amber-300">Update</b> entries fill empty fields and revise changed ones —
-        anything not shown here is preserved. Uncheck or edit anything before applying.
+        anything not shown here is preserved. Use the type dropdown to re-file an entry
+        (e.g. a World Info entry that's really a character); uncheck or edit anything before applying.
       </p>
 
       {!hasAny && <p className="text-xs text-gray-500 italic">Nothing to review.</p>}
@@ -137,6 +155,14 @@ export default function LoreProposalReview({
                         onChange={e => setRec(key as string, idx, { name: e.target.value })}
                         className="flex-1 px-2 py-1 bg-gray-800 border border-gray-700 rounded text-xs font-medium"
                       />
+                      <select
+                        value={key as string}
+                        onChange={e => moveRecord(key as string, idx, e.target.value)}
+                        title="Change this entry's type"
+                        className="px-1.5 py-1 bg-gray-800 border border-gray-700 rounded text-[11px] text-gray-300"
+                      >
+                        {CATS.map(([k, lbl]) => <option key={k as string} value={k as string}>{lbl}</option>)}
+                      </select>
                       <Badge status={r.status} />
                     </div>
                     {r.include && Object.keys(r.fields).length > 0 && (
