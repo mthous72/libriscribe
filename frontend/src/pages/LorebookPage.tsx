@@ -578,12 +578,27 @@ export default function LorebookPage() {
 
 function ReferencesPanel({ name }: { name: string }) {
   const [refs, setRefs] = useState<any[]>([])
+  const [ocrAvailable, setOcrAvailable] = useState(true)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const fileRef = useRef<HTMLInputElement>(null)
 
-  const reload = () => listReferences(name).then(setRefs).catch(() => {})
+  const reload = async () => {
+    try {
+      const data = await listReferences(name)
+      setRefs(data.references || [])
+      setOcrAvailable(data.ocr_available !== false)
+    } catch { /* ignore */ }
+  }
   useEffect(() => { reload() }, [name])
+
+  // Poll while any reference is still being processed (OCR can take a while).
+  const processing = refs.some((r: any) => r.status === 'processing')
+  useEffect(() => {
+    if (!processing) return
+    const t = setInterval(reload, 2000)
+    return () => clearInterval(t)
+  }, [processing, name])
 
   const onFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
@@ -611,11 +626,18 @@ function ReferencesPanel({ name }: { name: string }) {
         <div>
           <h3 className="text-sm font-medium text-gray-300">Reference material</h3>
           <p className="text-xs text-gray-500 max-w-xl mt-1">
-            Import source documents (PDF, TXT, MD) — research, a style guide, a series bible.
-            LibriScribe grounds brainstorming and generation in these as <b>background source</b>,
-            never as canon lore, and they're excluded from exports. Turning on Semantic/Hybrid
-            search (project Dashboard) makes retrieval from them much stronger.
+            Import source documents (PDF, TXT, MD — and scanned PDFs or images via OCR) —
+            research, a style guide, a series bible. LibriScribe grounds brainstorming and
+            generation in these as <b>background source</b>, never as canon lore, and they're
+            excluded from exports. Turning on Semantic/Hybrid search (project Dashboard) makes
+            retrieval from them much stronger.
           </p>
+          {!ocrAvailable && (
+            <p className="text-[11px] text-amber-400/80 mt-1">
+              OCR is unavailable (Tesseract not found) — text PDFs and text files still work, but
+              scanned PDFs / images can't be read.
+            </p>
+          )}
         </div>
         <button
           onClick={() => fileRef.current?.click()}
@@ -624,23 +646,31 @@ function ReferencesPanel({ name }: { name: string }) {
         >
           {busy ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />} Add reference
         </button>
-        <input ref={fileRef} type="file" accept=".pdf,.txt,.md,.markdown,.text,application/pdf,text/plain" className="hidden" onChange={onFile} />
+        <input ref={fileRef} type="file" accept=".pdf,.txt,.md,.markdown,.text,.png,.jpg,.jpeg,.tif,.tiff,.bmp,.webp,application/pdf,text/plain,image/*" className="hidden" onChange={onFile} />
       </div>
 
       {error && <p className="text-xs text-red-400">{error}</p>}
-      {busy && <p className="text-xs text-gray-500">Extracting &amp; indexing… large PDFs take a moment.</p>}
 
       {refs.length === 0 ? (
-        <p className="text-sm text-gray-500 py-6 text-center">No references yet. Add a PDF or text file to ground the AI in your source material.</p>
+        <p className="text-sm text-gray-500 py-6 text-center">No references yet. Add a PDF, text file, or scanned document to ground the AI in your source material.</p>
       ) : (
         <div className="space-y-1">
           {refs.map((r: any) => (
             <div key={r.id} className="flex items-center justify-between px-3 py-2 bg-gray-800 rounded-lg">
               <div className="min-w-0">
-                <div className="text-sm truncate">{r.title || r.filename}</div>
-                <div className="text-xs text-gray-500">
-                  {(r.char_count || 0).toLocaleString()} chars · {Math.max(1, Math.round((r.bytes || 0) / 1024))} KB
+                <div className="text-sm truncate flex items-center gap-2">
+                  {r.title || r.filename}
+                  {r.ocr && <span className="text-[10px] px-1 py-0.5 bg-indigo-900/50 border border-indigo-800 rounded text-indigo-300">OCR</span>}
                 </div>
+                {r.status === 'processing' ? (
+                  <div className="text-xs text-gray-400 flex items-center gap-1"><Loader2 size={11} className="animate-spin" /> Extracting &amp; indexing…</div>
+                ) : r.status === 'error' ? (
+                  <div className="text-xs text-red-400">Failed: {r.error || 'could not extract text'}</div>
+                ) : (
+                  <div className="text-xs text-gray-500">
+                    {(r.char_count || 0).toLocaleString()} chars · {Math.max(1, Math.round((r.bytes || 0) / 1024))} KB
+                  </div>
+                )}
               </div>
               <button onClick={() => remove(r.id, r.title || r.filename)} className="text-gray-600 hover:text-red-400" title="Remove reference">
                 <Trash2 size={15} />

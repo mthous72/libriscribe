@@ -7,6 +7,8 @@ chat router and context builder.
 """
 from __future__ import annotations
 
+import threading
+
 from fastapi import APIRouter, HTTPException, UploadFile, File
 
 from libriscribe.services import project_service, reference_service
@@ -29,12 +31,21 @@ def _reindex(name: str, kb) -> None:
         pass  # keyword index always rebuilds; semantic failures handled internally
 
 
+def _process_and_reindex(name: str, project_dir, ref_id: str, filename: str, raw: bytes) -> None:
+    """Background worker: extract text (with OCR) then rebuild the index if it succeeded."""
+    if reference_service.finalize(project_dir, ref_id, filename, raw):
+        kb = project_service.load_kb(name)
+        if kb:
+            _reindex(name, kb)
+
+
 @router.get("/{name}/references")
 def list_refs(name: str):
     kb = project_service.load_kb(name)
     if not kb:
         raise HTTPException(status_code=404, detail="Project not found")
-    return reference_service.list_references(project_service.get_projects_dir() / name)
+    status = {"ocr_available": reference_service.ocr_available()}
+    return {"references": reference_service.list_references(project_service.get_projects_dir() / name), **status}
 
 
 @router.post("/{name}/references")
@@ -48,11 +59,15 @@ async def upload_ref(name: str, file: UploadFile = File(...)):
         raise HTTPException(status_code=400, detail="Empty file")
 
     project_dir = project_service.get_projects_dir() / name
-    try:
-        entry = reference_service.add_reference(project_dir, file.filename or "reference.txt", raw)
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc))
-    _reindex(name, kb)
+    filename = file.filename or "reference.txt"
+    # Register immediately, then extract (possibly slow OCR) in the background so the upload
+    # request returns right away. The References tab polls until status flips to ready/error.
+    entry = reference_service.register_pending(project_dir, filename, raw)
+    threading.Thread(
+        target=_process_and_reindex,
+        args=(name, project_dir, entry["id"], filename, raw),
+        daemon=True,
+    ).start()
     return entry
 
 

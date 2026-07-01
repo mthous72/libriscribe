@@ -21,6 +21,8 @@ setup(
         "markdown",
         "fpdf",
         "pypdf",
+        "pymupdf",       # rasterize scanned PDF pages for OCR (B20)
+        "pytesseract",   # OCR via the Tesseract binary (B20)
         "tenacity",
         "anthropic",
         "google-genai>=2.7.0",

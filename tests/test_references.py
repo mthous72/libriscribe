@@ -79,5 +79,42 @@ class ExcludeSourceTypeFilterTests(unittest.TestCase):
         self.assertTrue(all(r.source_type == "reference" for r in results))
 
 
+class OcrTests(unittest.TestCase):
+    def setUp(self):
+        self.dir = Path(tempfile.mkdtemp())
+
+    def test_ocr_available_returns_bool(self):
+        self.assertIsInstance(reference_service.ocr_available(), bool)
+
+    def test_register_pending_then_finalize_ready(self):
+        entry = reference_service.register_pending(self.dir, "guide.txt", b"Write with restraint.")
+        self.assertEqual(entry["status"], "processing")
+        self.assertEqual(entry["char_count"], 0)
+        # A pending reference is not indexed until finalized.
+        self.assertEqual(reference_service.build_reference_documents(self.dir), [])
+
+        ok = reference_service.finalize(self.dir, entry["id"], "guide.txt", b"Write with restraint.")
+        self.assertTrue(ok)
+        refreshed = reference_service.list_references(self.dir)[0]
+        self.assertEqual(refreshed["status"], "ready")
+        self.assertFalse(refreshed["ocr"])
+        self.assertEqual(len(reference_service.build_reference_documents(self.dir)), 1)
+
+    @unittest.skipIf(reference_service.ocr_available(), "Tesseract present; testing the unavailable path")
+    def test_image_without_ocr_errors_clearly(self):
+        with self.assertRaises(ValueError) as ctx:
+            reference_service.extract_text_with_ocr("scan.png", b"not-a-real-image")
+        self.assertIn("OCR", str(ctx.exception))
+
+    @unittest.skipIf(reference_service.ocr_available(), "Tesseract present; testing the unavailable path")
+    def test_finalize_image_without_ocr_sets_error_status(self):
+        entry = reference_service.register_pending(self.dir, "scan.png", b"xx")
+        ok = reference_service.finalize(self.dir, entry["id"], "scan.png", b"xx")
+        self.assertFalse(ok)
+        e = reference_service.list_references(self.dir)[0]
+        self.assertEqual(e["status"], "error")
+        self.assertTrue(e.get("error"))
+
+
 if __name__ == "__main__":
     unittest.main()

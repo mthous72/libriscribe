@@ -835,6 +835,31 @@ remain the immediate near-term items; B16 (TTS) is parked.
 
 ---
 
+### B20. OCR for references (scanned PDFs & images) — ✅ **BUILT** (code) / installer step pending
+
+**Decision:** maximize accuracy with **Tesseract** (per user), rasterizing scanned PDF pages
+with **PyMuPDF**.
+
+**Status: BUILT (code).** `reference_service.extract_text_with_ocr()` is text-first: it uses
+the pypdf text layer, and for pages with little/no text (scanned) it rasterizes via PyMuPDF
+(`fitz`, 300 dpi) and OCRs with Tesseract (`pytesseract`); image files (`png/jpg/tiff/…`) OCR
+directly. OCR is **auto-detected** (`ocr_available()`, Tesseract binary via `$TESSERACT_CMD`, a
+bundled `…/tesseract/tesseract.exe`, or PATH) and **degrades gracefully** — text/text-PDF still
+import when OCR is absent; scanned/image imports return a clear "install Tesseract" error.
+Uploads are **processed in a background thread** (`register_pending` → `finalize` → reindex) so
+slow OCR doesn't block the request; references carry `status` (processing/ready/error) + `ocr`
+flags, and the References tab **polls** while processing and shows an **OCR** badge / errors.
+Deps: `pymupdf`, `pytesseract` added to `setup.py`. Tests: `tests/test_references.py` (OCR paths
+skip when the binary is absent). Full suite **139 passed**; frontend builds clean. Works today
+anywhere the Tesseract binary is installed/on PATH.
+
+**Remaining (packaging — external, can't verify from here):** bundle the **Tesseract binary +
+`tessdata`** into the Windows installer so OCR works out-of-the-box. Approach: CI fetches
+Tesseract, Inno Setup `[Files]` ships it to `{app}\tesseract\`, and the app auto-discovers it
+via the bundled-path logic already in `_configure_tesseract()` (or set `TESSERACT_CMD`). Verify
+with a `workflow_dispatch` installer build. Until then the shipped installer needs Tesseract
+installed separately for scanned/image OCR.
+
 ## Docs refresh (Docusaurus, **not a wiki**) — low-priority parallel track
 
 Decision (2026-07-01): we already have a **Docusaurus** site in `docs/` wired for GitHub
