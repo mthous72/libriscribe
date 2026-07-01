@@ -799,6 +799,41 @@ Writingway's workshop has that we lack (`rag_pdf`, `rag_smart_qa`, `rag_visual_e
 leans on it) with B18 (multi-session) sliding in anywhere since it's independent. B14/B15
 remain the immediate near-term items; B16 (TTS) is parked.
 
+---
+
+## Docs refresh (Docusaurus, **not a wiki**) — low-priority parallel track
+
+Decision (2026-07-01): we already have a **Docusaurus** site in `docs/` wired for GitHub
+Pages — so we do **not** start a separate GitHub wiki (it would fragment/duplicate the
+in-repo, versioned docs). Instead, revive and refresh the existing site. This is a background
+track, not a blocker for feature work.
+
+**Done so far:**
+- Retargeted `docs/docusaurus.config.ts` to the fork (`mthous72`, url/org/editUrl, credit line
+  keeps Fernando Guerra & Lenxys). Set `onBrokenLinks: 'warn'` temporarily so stale-content
+  links don't fail the build.
+- Added `.github/workflows/deploy-docs.yml` (build `docs/` → publish to Pages on push to
+  `docs/**`). Verified the site builds locally.
+
+**Remaining:**
+1. **Manual, one-time:** enable GitHub Pages for the repo with **Source: GitHub Actions**
+   (Settings → Pages). Until then the workflow builds but has nothing to publish to.
+2. **Content pass** — the current docs are upstream/CLI-era: the blog is still the default
+   Docusaurus template ("2019-…first-blog-post"), agent pages describe the old CLI, and none
+   of the fork's work is covered. Rewrite intro / getting-started / usage for the **web app**,
+   and add feature pages as we ship: providers & model dropdowns, local LLM, Brainstorm
+   co-writer + Focus, **smart lore intake** (incl. importing SillyTavern/KoboldAI), export/
+   import & version snapshots, and (when built) B14/B15/B17–B19. Fold the **deferred Writingway
+   attribution** in here too.
+3. After the content pass, restore `onBrokenLinks: 'throw'`.
+4. **Internal docs hygiene:** PLANNING.md is ~800 lines doing spec + backlog + history; when it
+   gets unwieldy, split shipped specs into a `PLANNING-history.md` / CHANGELOG and keep this file
+   to the live backlog.
+
+**Out of scope (separate item if wanted):** an *in-app* help system for authors (a "how do I
+use the lorebook / brainstorm" panel inside LibriScribe itself) — distinct from this public
+docs site. Not planned yet; raise as its own B-item if desired.
+
 ### Deferred task — README attribution for Writingway (do NOT add until integrated)
 Once we ship the **first** feature derived from Writingway (likely B14), update `README.md`:
 - Add Writingway to the attribution/"sources" area as an additional inspiration for the code,

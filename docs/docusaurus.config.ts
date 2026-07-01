@@ -10,17 +10,20 @@ const config: Config = {
   favicon: 'img/favicon.ico',
 
   // Set the production url of your site here
-  url: 'https://guerra2fernando.github.io',
+  url: 'https://mthous72.github.io',
   // Set the /<baseUrl>/ pathname under which your site is served
   // For GitHub pages deployment, it is often '/<projectName>/'
   baseUrl: '/libriscribe/',
 
   // GitHub pages deployment config.
   // If you aren't using GitHub pages, you don't need these.
-  organizationName: 'guerra2fernando', // Usually your GitHub org/user name.
+  organizationName: 'mthous72', // Usually your GitHub org/user name.
   projectName: 'libriscribe', // Usually your repo name.
 
-  onBrokenLinks: 'throw',
+  // NOTE: set to 'warn' so a stale-content link doesn't fail the whole build/deploy
+  // while the fork's docs are being refreshed (see the "Docs refresh" track in PLANNING.md).
+  // Restore to 'throw' once the content pass is done.
+  onBrokenLinks: 'warn',
   onBrokenMarkdownLinks: 'warn',
 
   // Even if you don't use internationalization, you can use this field to set
@@ -40,7 +43,7 @@ const config: Config = {
           // Please change this to your repo.
           // Remove this to remove the "edit this page" links.
           editUrl:
-            'https://github.com/guerra2fernando/libriscribe/tree/main/docs/',
+            'https://github.com/mthous72/libriscribe/tree/main/docs/',
         },
         blog: {
           showReadingTime: true,
@@ -51,7 +54,7 @@ const config: Config = {
           // Please change this to your repo.
           // Remove this to remove the "edit this page" links.
           editUrl:
-            'https://github.com/guerra2fernando/libriscribe/tree/main/docs/',
+            'https://github.com/mthous72/libriscribe/tree/main/docs/',
           // Useful options to enforce blogging best practices
           onInlineTags: 'warn',
           onInlineAuthors: 'warn',
@@ -87,7 +90,7 @@ const config: Config = {
           ],
         },
       ],
-      copyright: `Copyright © ${new Date().getFullYear()} Lenxys, Inc. Built with Docusaurus.`,
+      copyright: `Copyright © ${new Date().getFullYear()} LibriScribe (fork by mthous72). Originally created by Fernando Guerra & Lenxys. Built with Docusaurus.`,
     },
     prism: {
       theme: prismThemes.github,
