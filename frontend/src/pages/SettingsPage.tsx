@@ -118,7 +118,7 @@ export default function SettingsPage() {
           <h2 className="text-sm font-medium text-gray-400">Provider Status</h2>
           <span className="text-[11px] text-gray-600">Uncheck a provider to hide its section below</span>
         </div>
-        <div className="grid grid-cols-3 gap-2">
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
           {providers.map((p: any) => (
             <label key={p.name} className="flex items-center gap-2 px-3 py-2 bg-gray-800 rounded-lg text-sm cursor-pointer" title="Show this provider in API Configuration">
               <input type="checkbox" checked={!hiddenProviders.has(p.name)} onChange={() => toggleProvider(p.name)} />

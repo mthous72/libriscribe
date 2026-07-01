@@ -47,14 +47,14 @@ export default function ChapterEditorPage() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <button onClick={() => navigate(`/projects/${name}`)} className="text-gray-400 hover:text-gray-200">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+        <div className="flex items-center gap-3 min-w-0">
+          <button onClick={() => navigate(`/projects/${name}`)} className="text-gray-400 hover:text-gray-200 shrink-0">
             <ArrowLeft size={20} />
           </button>
-          <h1 className="text-xl font-bold">Chapter {n}: {title}</h1>
+          <h1 className="text-xl font-bold truncate">Chapter {n}: {title}</h1>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 flex-wrap">
           <span className="text-xs text-gray-500">{content.split(/\s+/).length} words</span>
           {dirty && <span className="text-xs text-yellow-500">Unsaved</span>}
           <button onClick={previewCtx} disabled={loadingCtx} title="See the lore/context the AI would receive to write this chapter (no LLM call)" className="flex items-center gap-1 px-3 py-1.5 bg-gray-800 hover:bg-gray-700 rounded-lg text-sm disabled:opacity-50">

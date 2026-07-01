@@ -69,9 +69,9 @@ export default function OutlinePage() {
         <h1 className="text-2xl font-bold">Outline</h1>
       </div>
 
-      <div className="grid grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         {/* Outline markdown editor */}
-        <div className="col-span-2 space-y-2">
+        <div className="lg:col-span-2 space-y-2 order-2 lg:order-1">
           <div className="flex justify-between items-center">
             <h2 className="text-sm font-medium text-gray-400">Outline Markdown</h2>
             <button onClick={saveOutline} className="flex items-center gap-1 px-3 py-1 bg-indigo-600 rounded text-xs"><Save size={12} /> Save</button>
@@ -137,7 +137,7 @@ export default function OutlinePage() {
         </div>
 
         {/* Chapter list */}
-        <div className="col-span-1">
+        <div className="lg:col-span-1 order-1 lg:order-2">
           <div className="flex justify-between items-center mb-2">
             <h2 className="text-sm font-medium text-gray-400">Chapters</h2>
             <button

@@ -2,7 +2,29 @@
 @tailwind components;
 @tailwind utilities;
 
+html {
+  /* Keep text from being auto-inflated on mobile after orientation changes. */
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
 body {
   @apply bg-gray-950 text-gray-100;
   font-family: system-ui, -apple-system, sans-serif;
+  /* Prevent stray horizontal scroll from wide children on small screens. */
+  overflow-x: hidden;
+}
+
+/*
+ * On small (touch) screens, force form controls to a >=16px font size so iOS
+ * Safari doesn't auto-zoom the viewport when a field gains focus. The utility
+ * classes still control padding/appearance; only the effective font-size on
+ * focusable inputs is bumped.
+ */
+@media (max-width: 640px) {
+  input:not([type='checkbox']):not([type='radio']),
+  textarea,
+  select {
+    font-size: 16px;
+  }
 }

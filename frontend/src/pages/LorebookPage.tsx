@@ -255,7 +255,7 @@ export default function LorebookPage() {
       )}
       <h1 className="text-2xl font-bold mb-4">Lorebook</h1>
       <div className="flex items-center justify-between mb-4 gap-2 flex-wrap">
-        <div className="flex gap-1">
+        <div className="flex gap-1 flex-wrap">
           {TABS.map(t => (
             <button key={t} onClick={() => { setTab(t); setSelected(null) }} className={`px-3 py-1.5 rounded-lg text-sm ${tab === t ? 'bg-indigo-600' : 'bg-gray-800 hover:bg-gray-700'}`}>{TAB_LABELS[t] || t}</button>
           ))}
@@ -280,9 +280,9 @@ export default function LorebookPage() {
 
       {tab === 'References' && <ReferencesPanel name={name!} />}
 
-      <div className={`grid grid-cols-3 gap-4 ${tab === 'References' ? 'hidden' : ''}`}>
+      <div className={`grid grid-cols-1 lg:grid-cols-3 gap-4 ${tab === 'References' ? 'hidden' : ''}`}>
         {/* List */}
-        <div className="col-span-1 space-y-2">
+        <div className="lg:col-span-1 space-y-2">
           <button onClick={handleCreate} className="w-full flex items-center justify-center gap-1 px-3 py-1.5 bg-gray-800 hover:bg-gray-700 rounded-lg text-sm"><Plus size={14} /> Add</button>
           {tab === 'Characters' && <EntityList items={characters} onSelect={(c: any) => { setSelected({ ...c, _origName: c.name }); setShowSuggestions(false) }} onDelete={handleDelete} onAnalyze={handleAnalyze} badgeKey="role" />}
           {tab === 'Locations' && <EntityList items={locations} onSelect={(l: any) => { setSelected({ ...l, _origName: l.name }); setShowSuggestions(false) }} onDelete={handleDelete} onAnalyze={handleAnalyze} />}
@@ -331,7 +331,7 @@ export default function LorebookPage() {
         </div>
 
         {/* Detail / Editor */}
-        <div className="col-span-2 bg-gray-900 border border-gray-800 rounded-xl p-4">
+        <div className="lg:col-span-2 bg-gray-900 border border-gray-800 rounded-xl p-4">
           {tab === 'Characters' && selected && (
             <div>
               <FieldEditor fields={charFields} data={selected} onChange={(k, v) => setSelected({ ...selected, [k]: v })} />
@@ -526,9 +526,9 @@ export default function LorebookPage() {
           )}
           {tab === 'Graph' && (
             <div className="space-y-3">
-              <div className="flex gap-2">
+              <div className="flex gap-2 flex-wrap">
                 <input
-                  className="flex-1 px-2 py-1.5 bg-gray-800 border border-gray-700 rounded text-sm"
+                  className="flex-1 min-w-[10rem] px-2 py-1.5 bg-gray-800 border border-gray-700 rounded text-sm"
                   placeholder="Search across all content..."
                   value={searchQuery}
                   onChange={e => setSearchQuery(e.target.value)}

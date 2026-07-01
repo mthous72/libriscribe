@@ -171,20 +171,20 @@ export default function ProjectDashboard() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-start justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold">{project.title}</h1>
           <p className="text-gray-400 text-sm">{project.genre} &middot; {project.category} &middot; {project.language}</p>
           {project.logline && <p className="text-gray-500 text-sm mt-1 italic">{project.logline}</p>}
         </div>
-        <div className="flex gap-2">
+        <div className="flex gap-2 shrink-0">
           <button onClick={() => navigate(`/projects/${name}/lorebook`)} className="px-3 py-1.5 bg-gray-800 hover:bg-gray-700 rounded-lg text-sm flex items-center gap-1"><BookOpen size={14} /> Lorebook</button>
           <button onClick={() => navigate(`/projects/${name}/outline`)} className="px-3 py-1.5 bg-gray-800 hover:bg-gray-700 rounded-lg text-sm flex items-center gap-1"><Map size={14} /> Outline</button>
         </div>
       </div>
 
       {/* Pipeline Stages */}
-      <div className="grid grid-cols-6 gap-2">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">
         {STAGES.map(stage => {
           const status = stageStatuses[stage] || progress?.stage_statuses?.[stage] || 'pending'
           const colors: Record<string, string> = {
@@ -204,7 +204,7 @@ export default function ProjectDashboard() {
       </div>
 
       {/* Controls */}
-      <div className="flex items-center gap-3">
+      <div className="flex items-center gap-3 flex-wrap">
         {!isRunning && !isPaused && (
           <button onClick={handleStart} className="flex items-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-500 rounded-lg text-sm font-medium">
             <Play size={16} /> Start Generation
@@ -283,7 +283,7 @@ export default function ProjectDashboard() {
           Switch the provider or model for this project — e.g. when a model is no longer
           available or useful. API keys / local base URL come from Settings.
         </p>
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <label className="block">
             <span className="text-xs text-gray-400">Provider</span>
             <select
@@ -418,12 +418,12 @@ export default function ProjectDashboard() {
       <div className="bg-gray-900 border border-gray-800 rounded-xl p-4 space-y-3">
         <div className="flex items-center justify-between gap-2 flex-wrap">
           <h3 className="text-sm font-medium text-gray-400">Versions</h3>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             <input
               value={versionLabel}
               onChange={e => setVersionLabel(e.target.value)}
               placeholder="optional label (e.g. before Act 2 rewrite)"
-              className="px-2 py-1 bg-gray-800 border border-gray-700 rounded text-xs w-64"
+              className="px-2 py-1 bg-gray-800 border border-gray-700 rounded text-xs w-full sm:w-64"
             />
             <button onClick={doSaveVersion} disabled={savingVersion} className="flex items-center gap-1 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 rounded-lg text-sm disabled:opacity-50">
               {savingVersion ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />} Save Version
