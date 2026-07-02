@@ -1037,6 +1037,31 @@ provider/model; readout shows both ("Writing: X · Utility: Y (or same as writin
 **Later (not v1):** route the pipeline's structured agents (outliner, character/worldbuilding JSON,
 fact-check) to Utility too; allow a different provider for Utility.
 
+### B23. Brainstorm response verbosity switch (Low / Medium / High) — **effort: S** — *backlog (raised 2026-07-02)*
+
+**Motivation.** Brainstorming sometimes wants terse, direct answers and sometimes wants expansive,
+conversational exploration. A quick switch lets the author dial it without re-prompting. Applies to
+**all brainstorming** (per request).
+
+**Levels:**
+- **Low** — succinct, direct answers; minimal elaboration; get to the point.
+- **Medium** — moderate context and some elaboration/freedom (default).
+- **High** — verbose, conversational; explores freely.
+
+**Design:**
+- **UI:** a Low/Medium/High control in `BrainstormDrawer` (near the composer or session header).
+  Persist **per session** (sessions already carry state) so switching sessions keeps its setting;
+  default Medium.
+- **Backend:** inject a short verbosity directive into the assembled system prompt at
+  `chat._assemble_system_prompt` (`chat.py:584`) — one line per level. Keep it **prompt-driven**
+  (works across local models). Optionally also nudge `max_tokens` (Low smaller cap, High larger)
+  and a touch of `temperature` for the Medium/High "freedom", but instruction-first.
+- Thread the level from the chat request → `_assemble_system_prompt`; store it on the session so
+  it persists.
+
+**Open decisions:** per-session vs per-project vs global default; instruction-only vs also
+tuning max_tokens/temperature; exact wording of the three directives.
+
 ## Docs refresh (Docusaurus, **not a wiki**) — low-priority parallel track
 
 Decision (2026-07-01): we already have a **Docusaurus** site in `docs/` wired for GitHub
