@@ -17,5 +17,7 @@ frontend/playwright-report/
 frontend/playwright/.cache/
 libriscribe.log
 llm_usage.jsonl
+writing_system_prompt.txt
+.vscode/
 *.spec.bak
 installer/splash.png
