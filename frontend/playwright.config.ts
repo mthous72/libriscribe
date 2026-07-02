@@ -23,9 +23,13 @@ export default defineConfig({
     trace: 'off',
   },
   webServer: {
-    command: 'npm run build && npm run preview -- --port 4174 --strictPort',
+    // Bind IPv4 explicitly: `vite preview` defaults to `localhost`, which on CI runners resolves
+    // to IPv6 (::1) first, so Playwright polling http://127.0.0.1 never connects and times out.
+    command: 'npm run build && npm run preview -- --port 4174 --strictPort --host 127.0.0.1',
     url: 'http://127.0.0.1:4174',
     reuseExistingServer: !process.env.CI,
     timeout: 120_000,
+    stdout: 'pipe',
+    stderr: 'pipe',
   },
 })
