@@ -1,0 +1,13 @@
+# Android / Gradle build output
+.gradle/
+build/
+app/build/
+local.properties
+*.apk
+*.aab
+*.keystore
+*.jks
+
+# Assets staged from ../frontend/dist and ../prompts by the stageAssets task
+app/src/main/assets/webdist/
+app/src/main/assets/prompts/

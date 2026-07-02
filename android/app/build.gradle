@@ -1,0 +1,93 @@
+plugins {
+    id 'com.android.application'
+    id 'org.jetbrains.kotlin.android'
+    id 'com.chaquo.python'
+}
+
+android {
+    namespace 'com.libriscribe.app'
+    compileSdk 34
+
+    defaultConfig {
+        applicationId "com.libriscribe.app"
+        minSdk 26            // WebView + foreground service + notification channels
+        targetSdk 34
+        versionCode 1
+        versionName "0.9.0"
+
+        // pydantic-core (Rust) ships per-ABI. arm64-v8a = real phones,
+        // x86_64 = emulator. Keep this list in sync with the wheels you have.
+        ndk { abiFilters "arm64-v8a", "x86_64" }
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            // TODO: replace with a real release signingConfig before distributing.
+            signingConfig signingConfigs.debug
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+    kotlinOptions { jvmTarget = '17' }
+
+    sourceSets {
+        main {
+            // Put LibriScribe's Python package on the path directly, so it is
+            // NOT pip-installed from setup.py (which would drag in the desktop
+            // native extras: pymupdf, pytesseract, pystray, Pillow...).
+            python.srcDir "../../src"
+        }
+    }
+}
+
+chaquopy {
+    defaultConfig {
+        version "3.11"
+        pip {
+            // Lean, embed-friendly runtime deps. Everything here is pure-Python
+            // EXCEPT pydantic-core, which must be available for each ABI above
+            // (see docs/android-apk.md → "The one native gate").
+            install "fastapi"
+            install "uvicorn"          // plain: no uvloop/httptools (native)
+            install "websockets"
+            install "python-multipart"
+            install "openai"           // covers LM Studio + OpenRouter (OpenAI-compatible)
+            install "anthropic"
+            install "python-dotenv"
+            install "pydantic"
+            install "pydantic-settings"
+            install "pyyaml"
+            install "beautifulsoup4"
+            install "requests"
+            install "markdown"
+            install "fpdf"
+            install "pypdf"
+            install "tenacity"
+            install "rank-bm25"        // pure-Python keyword search
+            // Intentionally omitted (native / unavailable on Android):
+            //   pymupdf, pytesseract, Pillow  -> OCR/reference import disabled
+            //   pystray                        -> desktop tray, N/A
+            //   numpy                          -> semantic search disabled (keyword still works)
+            //   google-genai                   -> add back if you need Gemini
+        }
+    }
+}
+
+dependencies {
+    implementation "androidx.core:core-ktx:1.13.1"
+    implementation "androidx.appcompat:appcompat:1.7.0"
+    implementation "org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1"
+}
+
+// Stage the built web UI and prompt templates into the APK's assets. Run
+// `cd frontend && npm run build` first so frontend/dist exists.
+tasks.register('stageAssets', Copy) {
+    from("../../frontend/dist") { into "webdist" }
+    from("../../prompts") { into "prompts" }
+    into layout.projectDirectory.dir("src/main/assets")
+}
+tasks.named('preBuild').configure { dependsOn 'stageAssets' }

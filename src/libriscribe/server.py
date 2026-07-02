@@ -257,6 +257,36 @@ def _start_shutdown_watcher(server: "uvicorn.Server", icon) -> None:
     threading.Thread(target=_watch, daemon=True).start()
 
 
+def serve_embedded(host: str = "127.0.0.1", port: int = 8000) -> None:
+    """Run the ASGI app in-process for an embedded host (e.g. Android/Chaquopy).
+
+    This is the mobile/embedded counterpart to ``main()``: no system tray, no
+    browser launch, no single-instance port probing, and it pins uvicorn to the
+    pure-Python asyncio loop + h11/websockets so it doesn't need uvloop/httptools
+    (which aren't available on all embedded platforms). It blocks the calling
+    thread until the process is torn down, so callers run it on a worker thread.
+
+    The host is expected to have already set ``LIBRISCRIBE_BASE_DIR`` (bundled
+    assets: frontend/dist, prompts) and ``LIBRISCRIBE_DATA_DIR`` (writable
+    projects/.env) — see ``libriscribe.utils.paths``.
+    """
+    _redirect_std_streams_if_needed()
+    _seed_env_if_needed()
+
+    config = uvicorn.Config(
+        "libriscribe.api.app:create_app",
+        factory=True,
+        host=host,
+        port=port,
+        reload=False,
+        log_config=None,
+        loop="asyncio",
+        http="h11",
+        ws="websockets",
+    )
+    uvicorn.Server(config).run()
+
+
 def main() -> None:
     _redirect_std_streams_if_needed()
     _seed_env_if_needed()

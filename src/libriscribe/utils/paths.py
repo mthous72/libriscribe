@@ -8,11 +8,18 @@ from pathlib import Path
 
 
 def get_base_dir() -> Path:
-    """Return the application base directory.
+    """Return the application base directory (bundled read-only assets:
+    frontend/dist, prompts, .env.example).
 
-    In development: the repo root (two levels up from this file).
-    In a PyInstaller bundle: sys._MEIPASS (the temp extraction dir).
+    Resolution order:
+    - ``LIBRISCRIBE_BASE_DIR`` env override — embedded hosts (e.g. Android via
+      Chaquopy) point this at the directory their bundled assets were unpacked to.
+    - PyInstaller bundle: ``sys._MEIPASS`` (the temp extraction dir).
+    - Development: the repo root (three levels up from this file).
     """
+    override = os.environ.get("LIBRISCRIBE_BASE_DIR")
+    if override:
+        return Path(override)
     if getattr(sys, "frozen", False):
         return Path(sys._MEIPASS)
     # src/libriscribe/utils/paths.py -> repo root
@@ -22,12 +29,20 @@ def get_base_dir() -> Path:
 def get_app_data_dir() -> Path:
     """User-writable directory for runtime data (.env, projects).
 
-    Frozen builds install under Program Files, which is read-only for standard
-    users, so writable data must live elsewhere: %LOCALAPPDATA%\\LibriScribe
-    (falling back to a temp dir). In development this is the repo root, matching
-    the historical layout. The directory is created if missing.
+    Resolution order:
+    - ``LIBRISCRIBE_DATA_DIR`` env override — embedded hosts (e.g. Android) point
+      this at their per-app writable storage (``Context.getFilesDir()``).
+    - Frozen builds install under Program Files, which is read-only for standard
+      users, so writable data lives in ``%LOCALAPPDATA%\\LibriScribe`` (falling
+      back to a temp dir).
+    - Development: the repo root, matching the historical layout.
+
+    The directory is created if missing.
     """
-    if getattr(sys, "frozen", False):
+    override = os.environ.get("LIBRISCRIBE_DATA_DIR")
+    if override:
+        path = Path(override)
+    elif getattr(sys, "frozen", False):
         base = os.environ.get("LOCALAPPDATA") or tempfile.gettempdir()
         path = Path(base) / "LibriScribe"
     else:
