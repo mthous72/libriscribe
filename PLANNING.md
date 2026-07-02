@@ -1125,6 +1125,96 @@ answering blind. Better, cleaner responses and a more useful back-and-forth. Com
 **Open decisions:** single global preamble vs per-focus variants; question frequency/threshold;
 user-editable now or later.
 
+## Epic: "Claude-like" brainstorming — **DESIGN (specced 2026-07-02, background planning; no code yet)**
+
+**Goal.** Make brainstorming feel like a sharp collaborator: it *knows the intent* when you focus an
+entity, it *proactively surfaces what you haven't considered* via targeted questions you can turn on
+and off by dimension, it's controllable along independent axes (length, questioning, depth), and it
+spends LLM calls and context freely — because the user runs locally and *more calls / more context is
+better than fewer*. Absorbs **B23** (verbosity) and **B26** (collaborator preamble); pairs with
+**B24** (focus-aware apply). Everything is **prompt-driven** so it works on local models.
+
+### Where it plugs in (from the code map)
+- One LLM call per turn today: `chat.chat` streams `generate_content_streaming(..., max_tokens=700,
+  temperature=0.8, system_prompt=...)`. Budgets are deliberately SMALL (700 out, 3000-token history
+  window, ~2600-token focus context, ~1800 lore).
+- Prompts: `chat._system_prompt` (general) and `chat._focus_system_prompt` (one-entity focus; both
+  already say "BE CONCISE"). Focus context assembled by `chat._focus_context` (record + cross-refs +
+  involved arcs + world lore + keyword search).
+- Session is a flat dict (`_new_session`): `{id,title,focus,messages,summary,summarized_upto}` —
+  **no prefs field yet**. Threading model already proven for `focus`/`use_references`:
+  BrainstormDrawer → `streamChat` → `ChatRequest` → `_assemble_system_prompt`, persisted per session.
+- Multi-call precedents to reuse: `generation_service` (sequential stages), `lore_intake.llm_classify_all`
+  (per-entry loop), `context_builder` (token-budget cascading retrieval), `retrieval` +
+  `cross_reference` (co-occurrence).
+
+### Design
+
+**1. Per-session `prefs` (foundation).** Add `prefs` to the session dict + `SessionCreate/Update`;
+accept on `ChatRequest` (or read from the resolved session); thread to `_assemble_system_prompt`.
+Persist in `chat_sessions/{id}.json` like `focus`. Global defaults in Settings (.env) seed new
+sessions. Shape:
+```
+prefs = { "verbosity": "medium",              # low | medium | high  (B23)
+          "questioning": {"motive": true, "detail": false, "connectivity": true},
+          "depth": "single" }                 # single | multi (agentic enrichment)
+```
+
+**2. Focus-aware intent lenses (extends B26).** Per-focus-type framing so the model knows the job:
+character → motivation / voice / contradictions / relationships / arc; location → atmosphere / role
+in plot; arc → stakes / causality / consequences; lore → internal consistency; worldbuilding →
+coherence. One "intent lens" block appended to `_focus_system_prompt`; keep the one-entity-focus rule.
+
+**3. Verbosity axis (B23).** Low/Medium/High → a prompt directive **and** `max_tokens`
+(~250 / ~700 / ~1500+) and a slight temperature nudge. Instruction-first.
+
+**4. Questioning switches — surface the unthought-of.** Master on/off + independent **dimension**
+toggles, each a lens:
+- **Motive** — why: drives, goals, fears, stakes, what they want vs. need.
+- **Detail** — concrete specifics: sensory texture, mechanics, habits, contradictions in the record.
+- **Connectivity** — links: to other characters / arcs / lore, consistency checks, unexploited ties
+  (seed from `cross_reference` co-occurrence + retrieval).
+Two operating modes (gated by **depth**):
+- *Inline* (single call): append "then ask 1–3 targeted <enabled-dimension> questions" to the system
+  prompt. Cheap.
+- *Dedicated passes* (agentic, when depth=multi): after the main answer, one LLM call **per enabled
+  dimension** generating grounded questions; render as a distinct "Questions to consider" block.
+
+**5. Multi-pass enrichment (agentic; "more calls > fewer").** A turn expands into a pipeline:
+(1) main response → (2) per-enabled-dimension question pass(es) → optional (3) a connectivity
+"gaps / inconsistencies" critic that checks the focus record against established lore → optional
+(4) synthesis. **Stream the main response first** (fast), then append enrichment as each pass
+returns (progressive) so latency is hidden. Reuse the sequential-stage + token-budget patterns.
+
+**6. Generous context usage.** Raise the focus/lore/window budgets (e.g. focus 2600 → 6–8k) and make
+them **model-aware** (scale to the loaded context window). Front-load the full focus record +
+cross-referenced companions + involved arcs + world lore + **semantic/hybrid** retrieval of relevant
+prose (brainstorm currently defaults to keyword) + the rolling summary. Local large-context models
+have the room — use it.
+
+**7. Quality contract (absorbs B26).** Collaborator preamble: specific, non-sycophantic, builds on
+the idea, no filler; a few strong options not everything; flag novel vs. established; ask ONE
+clarifying question when genuinely ambiguous (this baseline is separate from the proactive
+Questioning switches).
+
+### UI (BrainstormDrawer prefs panel, below Focus/References)
+Verbosity (Low/Med/High) · Questioning (master toggle + Motive/Detail/Connectivity checkboxes) ·
+Depth (single vs multi-pass). Persisted per session via `updateSession`; global defaults in Settings.
+
+### Suggested build order (each shippable)
+1. Per-session `prefs` model + threading (foundation).
+2. B23 verbosity + B26 preamble/intent lenses (prompt-only, small, immediate win).
+3. Questioning dimensions — inline mode first.
+4. Multi-pass enrichment + progressive streaming; questioning dedicated passes.
+5. Context-budget expansion + semantic retrieval in brainstorm.
+
+### Open decisions
+- Inline vs dedicated-pass questioning, or both gated by Depth (leaning: both, Depth switches).
+- Questions per dimension (1–3) and how they're surfaced (appended block vs. clickable follow-ups).
+- Context budgets: fixed-larger vs. model-aware scaling (leaning: model-aware).
+- Global defaults home (.env keys vs. a `brainstorm_prefs` file).
+- Latency/cost of multi-pass — mitigated by local-only default + progressive streaming.
+
 ## Docs refresh (Docusaurus, **not a wiki**) — low-priority parallel track
 
 Decision (2026-07-01): we already have a **Docusaurus** site in `docs/` wired for GitHub
