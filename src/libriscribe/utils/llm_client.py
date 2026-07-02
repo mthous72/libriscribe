@@ -503,6 +503,7 @@ class LLMClient:
         temperature: float = 0.7,
         language: str = "English",
         system_prompt: Optional[str] = None,
+        json_schema: Optional[dict] = None,
     ) -> str:
         return self._request_with_fallback(
             prompt=prompt,
@@ -511,6 +512,7 @@ class LLMClient:
             language=language,
             require_valid_json=False,
             system_prompt=system_prompt,
+            json_schema=json_schema,
         )
 
     def generate_content_with_json_repair(

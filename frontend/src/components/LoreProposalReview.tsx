@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
-import { applyParsed, extractFields, listCharacters, listLocations, listLoreEntries, listArcs } from '../api/client'
-import { Loader2, Check, RefreshCw } from 'lucide-react'
+import { applyParsed, extractFields, extractFieldsDebug, listCharacters, listLocations, listLoreEntries, listArcs } from '../api/client'
+import { Loader2, Check, RefreshCw, Bug } from 'lucide-react'
 
 // A reviewable lore proposal: records grouped by category, each with a new/update status
 // and editable typed fields. Shared by the brainstorm Smart Apply and JSON import flows.
@@ -159,6 +159,23 @@ export default function LoreProposalReview({
     runExtract(rec._id, rec.name, currentContent(rec), cat)
   }
 
+  // Diagnostic: fetch the full extraction round-trip (model, prompt, raw responses, parsed) for
+  // one record and show it so we can see exactly where extraction breaks. Also logged to console.
+  const [debug, setDebug] = useState<Record<string, any>>({})
+  const runDebug = async (cat: string, idx: number) => {
+    const rec = (state as any)[cat]?.[idx] as RecState | undefined
+    if (!rec) return
+    setDebug(d => ({ ...d, [rec._id]: { loading: true } }))
+    try {
+      const res = await extractFieldsDebug(projectName, { name: rec.name, content: currentContent(rec), category: cat })
+      // eslint-disable-next-line no-console
+      console.log('[lore extract debug]', res)
+      setDebug(d => ({ ...d, [rec._id]: res }))
+    } catch (e: any) {
+      setDebug(d => ({ ...d, [rec._id]: { error: e?.response?.data?.detail || String(e) } }))
+    }
+  }
+
   const selectedCount = useMemo(() => {
     let n = 0
     for (const [key] of CATS) n += (state[key as string] || []).filter(r => r.include && r.name.trim()).length
@@ -261,8 +278,20 @@ export default function LoreProposalReview({
                       >
                         {r.reparsing ? <Loader2 size={12} className="animate-spin text-indigo-400" /> : <RefreshCw size={12} />}
                       </button>
+                      <button
+                        onClick={() => runDebug(key as string, idx)}
+                        title="Diagnose: show the model, prompt, and raw LLM response for this entry"
+                        className="p-1 text-gray-500 hover:text-amber-300"
+                      >
+                        <Bug size={12} />
+                      </button>
                       <Badge status={statusFor(key as string, r.name, r.status)} />
                     </div>
+                    {debug[r._id] && (
+                      <pre className="mt-1 ml-6 max-h-64 overflow-auto rounded bg-black/60 border border-gray-700 p-2 text-[10px] text-gray-300 whitespace-pre-wrap break-words">
+                        {debug[r._id].loading ? 'Running diagnostic…' : JSON.stringify(debug[r._id], null, 2)}
+                      </pre>
+                    )}
                     {r.note === 'empty' && (
                       <p className="mt-1 pl-6 text-[10px] text-amber-400/90">
                         Couldn't auto-parse into fields — content kept in {key === 'characters' ? 'Background' : 'Description'}. Edit below or re-parse.

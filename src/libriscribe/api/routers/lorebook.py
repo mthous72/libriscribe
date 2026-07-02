@@ -616,6 +616,63 @@ def extract_fields(name: str, body: ExtractFieldsRequest):
     return {"fields": fields}
 
 
+@router.post("/{name}/lore/extract-fields/debug")
+def extract_fields_debug(name: str, body: ExtractFieldsRequest):
+    """Diagnostic: show the FULL round-trip for a field extraction — the model used, the exact
+    prompt, the RAW model responses (with and without the JSON schema), how each parses, and the
+    final field result. Lets us see where extraction breaks instead of guessing."""
+    from libriscribe.services import lore_intake, lore_prompts
+    from libriscribe.utils import structured_output
+    from libriscribe.utils.file_utils import parse_llm_json
+
+    kb = load_kb(name)
+    if not kb:
+        raise HTTPException(status_code=404, detail="Project not found")
+    client = _maybe_client(kb)
+    if client is None:
+        raise HTTPException(status_code=400, detail="No LLM is configured for this project.")
+
+    type_key = lore_intake.CATEGORY_TO_TYPE.get(
+        body.category, body.category if body.category in lore_intake.SMART_FIELDS else "lore"
+    )
+    fields_list = lore_intake.SMART_FIELDS.get(type_key, ["description"])
+    schema = structured_output.json_schema_for_fields(fields_list)
+    prompt = lore_prompts.build_extract_prompt(
+        kb.genre, kb.title, body.name, body.content, type_key,
+        entry_type_hint=body.entry_type or None,
+        existing_fields=_existing_fields_for(kb, body.category, body.name),
+    )
+
+    def _raw(use_schema: bool):
+        try:
+            return client.generate_content(
+                prompt, max_tokens=1500, temperature=0.2,
+                system_prompt=lore_prompts.BASE_SYSTEM_PROMPT,
+                json_schema=schema if use_schema else None,
+            )
+        except Exception as exc:  # noqa: BLE001 — surface the error text for diagnosis
+            return f"<<EXCEPTION: {type(exc).__name__}: {exc}>>"
+
+    raw_schema = _raw(True)
+    raw_plain = _raw(False)
+    return {
+        "provider": kb.llm_provider,
+        "model": getattr(client, "model", None),
+        "type_key": type_key,
+        "fields_list": fields_list,
+        "prompt": prompt,
+        "raw_with_schema": raw_schema,
+        "parsed_with_schema": parse_llm_json(raw_schema),
+        "raw_without_schema": raw_plain,
+        "parsed_without_schema": parse_llm_json(raw_plain),
+        "final_fields": lore_intake.llm_extract_for_type(
+            client, kb.genre, body.name, body.content, body.category,
+            book_title=kb.title, entry_type_hint=body.entry_type or None,
+            existing_fields=_existing_fields_for(kb, body.category, body.name),
+        ),
+    }
+
+
 @router.post("/{name}/lore/apply-parsed")
 def apply_parsed(name: str, body: ProposalApplyRequest):
     """Merge confirmed proposal records into the KB (smart merge — preserves untouched
