@@ -1062,6 +1062,45 @@ conversational exploration. A quick switch lets the author dial it without re-pr
 **Open decisions:** per-session vs per-project vs global default; instruction-only vs also
 tuning max_tokens/temperature; exact wording of the three directives.
 
+### B24. Focus-aware "Apply to lore" — don't re-classify the selected entity — **effort: S/M** — *backlog (raised 2026-07-02)*
+
+**Motivation.** In a focused brainstorm session (a specific character selected), "Apply to lore"
+currently runs full multi-entity discovery (`extract_from_text`), which re-classifies the
+already-known character from scratch — wasteful and a source of mis-classification. If you've
+already selected the character, its info should apply straight to that record; only *new* Codex /
+other items in the reply need discovery.
+
+**Design:**
+- The session carries `focus` (type, name). Thread it into the apply flow (`chat.parse_to_proposal`
+  — add focus to the request, or a focus-aware branch).
+- When a focus is present: extract the focused entity's fields with the robust single-entity path
+  `lore_intake.llm_extract_for_type(focus.type, reply)` → pre-assigned to that known record
+  (status = update). Separately run `extract_from_text` for OTHER entities and drop any that
+  duplicate the focus.
+- Review panel pre-selects the focused entity's type/name (already merge-able via the name pulldown).
+- Reuses: `llm_extract_for_type` (robust), session focus, the merge/name pulldown.
+
+### B25. Interconnect entities — link Characters ↔ Arcs / threads / Codex — **effort: M** — *backlog (raised 2026-07-02)*
+
+**Motivation.** Arcs, plot threads, and codex entries should be tied to the characters they involve
+so the lorebook is navigable and internally consistent.
+
+**Current state (partial infra already exists, as free-form strings):** `Character.relationships`
+(`knowledge_base.py:27`), `Location.associated_characters` (`:100`), `LoreEntry.related_entities`
+(`:110`), `StoryArc.characters_involved` (`:129`); plus `retrieval/cross_reference.py` maps entity
+co-occurrence across chapters.
+
+**Design direction:**
+- Formalize these into **pickable, navigable links**: choose real record names from a dropdown
+  (reuse the review-panel name-pulldown pattern), validated against existing records; store by name
+  (matches the merge-by-name model).
+- **Bidirectional / navigable in the UI:** a character's page shows their arcs / threads / codex
+  entries; click to jump. Same for the reverse.
+- Optionally **auto-suggest** links from `cross_reference` co-occurrence.
+
+**Open decisions:** enforce referential integrity vs. keep free-form; how aggressively to
+auto-suggest; scope of the relationships panel per entity.
+
 ## Docs refresh (Docusaurus, **not a wiki**) — low-priority parallel track
 
 Decision (2026-07-01): we already have a **Docusaurus** site in `docs/` wired for GitHub
