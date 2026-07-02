@@ -960,6 +960,49 @@ via Chocolatey and stages it to `dist\tesseract`; the Inno script ships it to `{
 `TESSDATA_PREFIX`. Confirm with a `workflow_dispatch` run of *Build Windows Installer* (installer
 grows by the Tesseract footprint). Local `iscc` builds without the staged folder simply omit OCR.
 
+### B21. Model warm-up / keep-alive on project select (+ opportunistic index build) — **effort: S/M** — *backlog (raised 2026-07-02)*
+
+**Motivation.** Local servers (LM Studio, Ollama, llama.cpp) lazily JIT-load a model into VRAM on
+the *first* request, so the first real brainstorm/generation call eats the whole load latency
+(seconds). Warming the model when a project is opened hides that; a periodic keep-alive when idle
+keeps it resident so later calls stay fast. Cloud providers have nothing to load, so this is a
+**local-provider optimization** — gate on provider (skip for openai/claude/etc.).
+
+**The warm request must be inconsequential (per user):** tiny prompt, `max_tokens=1`,
+`temperature=0`, fire-and-forget; it must **not** touch any brainstorm/session history or "recent
+calls" context, and should be excluded from (or tagged separately in) cost tracking so it doesn't
+pollute `llm_usage.jsonl` or the cost report.
+
+**Design sketch (build later, not now):**
+- **Backend:** `POST /projects/{name}/warm-model` → if the project's provider is local/warmable,
+  spawn a background thread that runs a throwaway 1-token `generate_content("ok", max_tokens=1)` on
+  a standalone `LLMClient` (never via chat/session code). Swallow errors; return immediately.
+  Consider a `warmup=True` flag on the call so `CostTracker` can skip/label it.
+- **Frontend:** call it once when a project is opened, then a `setInterval` (~4 min) keep-alive that
+  fires **only if** the tab is visible (`document.visibilityState === 'visible'`) **and** no real
+  LLM call has happened in the last ~5 min (track a `lastLlmActivity` timestamp). Clear the interval
+  on unmount / project switch. Never ping a hidden tab or a cloud provider.
+- **Native keep-alive where available:** Ollama supports a `keep_alive` request param (e.g. `"10m"`,
+  or `-1` to pin) — prefer passing that over polling when the provider is Ollama; LM Studio uses an
+  idle-TTL auto-evict, so for it the periodic tiny request is the right mechanism (resets the timer).
+- **Setting:** a toggle to disable background warming (some users won't want the extra local churn).
+
+**Embedding index at project-open — yes, good fit, as a *separate* background task.** Project-open
+is a natural trigger to (a) warm a **local embedding** model the same way (its first embed also JIT-
+loads), and (b) run an **incremental** semantic/hybrid index refresh so retrieval is ready before
+the first brainstorm. Keep it distinct from the lightweight chat-warm because it can be heavier:
+- Only when the project's retrieval mode is **semantic/hybrid** AND an embedding source is configured
+  (else no-op — keyword needs no index).
+- Reuse the existing incremental machinery — `services/retrieval_service.rebuild_project_index` +
+  `retrieval/index_manager` **hash-based refresh** — so if nothing changed since last time it's
+  ~free (no re-embedding). Run in a background thread; never block project load.
+- Surface state via the existing retrieval status readout (ProjectDashboard already shows
+  "semantic index ready" / warnings), so a rebuild-in-progress is visible.
+
+**Open decisions to confirm when specced:** warm prompt/token budget; keep-alive interval + idle
+threshold (default ~4 min ping / ~5 min idle); whether to expose the enable/disable setting per
+project or global; whether index refresh on open is automatic or gated behind the same setting.
+
 ## Docs refresh (Docusaurus, **not a wiki**) — low-priority parallel track
 
 Decision (2026-07-01): we already have a **Docusaurus** site in `docs/` wired for GitHub
