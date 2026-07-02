@@ -1,3 +1,4 @@
+import json
 import logging
 import re
 from typing import Dict, Optional
@@ -11,7 +12,7 @@ import requests
 from libriscribe.settings import Settings
 from libriscribe.utils import structured_output
 from libriscribe.utils.cost_tracker import CostTracker
-from libriscribe.utils.file_utils import extract_json_from_markdown
+from libriscribe.utils.file_utils import extract_json_from_markdown, parse_llm_json
 from libriscribe.utils.token_utils import estimate_tokens
 from libriscribe.utils.model_routing import (
     ModelRoute,
@@ -265,7 +266,11 @@ class LLMClient:
                         )
 
                     if require_valid_json:
-                        json_data = extract_json_from_markdown(response_text)
+                        # Validate with the tolerant parser (fenced ```json, plain fences, BARE
+                        # JSON, or a reasoning preamble). Structured output and clean instruct
+                        # models return BARE JSON — the old fence-only check rejected that and sent
+                        # it to "repair", which then failed to an empty string.
+                        json_data = parse_llm_json(response_text)
                         if json_data is None:
                             repair_prompt = (
                                 "You are a helpful AI that only returns valid JSON. "
@@ -278,17 +283,16 @@ class LLMClient:
                                 max_tokens=max_tokens,
                                 temperature=0.2,
                             )
-                            if (
-                                repaired_response
-                                and extract_json_from_markdown(repaired_response)
-                                is not None
-                            ):
-                                response_text = repaired_response
-                            else:
+                            json_data = parse_llm_json(repaired_response) if repaired_response else None
+                            if json_data is None:
                                 raise RecoverableLLMError(
                                     "invalid_json_after_repair",
                                     f"{route.label} returned invalid JSON after repair.",
                                 )
+                        # Normalize to fenced JSON so every downstream consumer works — both those
+                        # that call extract_json_from_markdown (generation agents) and those that
+                        # call parse_llm_json (lore intake) — regardless of what the model emitted.
+                        response_text = "```json\n" + json.dumps(json_data, ensure_ascii=False) + "\n```"
 
                     if route_index > 0:
                         logger.warning(

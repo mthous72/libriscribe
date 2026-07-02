@@ -75,5 +75,34 @@ class GracefulDegradeTests(unittest.TestCase):
         self.assertEqual(_call_or_degrade(lambda: "ok", lambda: "fallback"), "ok")
 
 
+class JsonValidationGateTests(unittest.TestCase):
+    """generate_content_with_json_repair must accept BARE JSON (what structured output and clean
+    instruct models emit) — the old fence-only gate rejected it and failed to an empty string,
+    which is why lore extraction returned {} and classification fell back to lore on every model."""
+    def _client(self, canned_response):
+        from libriscribe.utils.llm_client import LLMClient
+        c = LLMClient("local")
+        c._generate_once = lambda *a, **k: canned_response  # bypass the network
+        return c
+
+    def test_bare_json_passes_without_failing(self):
+        from libriscribe.utils.file_utils import parse_llm_json
+        c = self._client('{"role": "technician", "physical_description": "tall"}')
+        out = c.generate_content_with_json_repair("x", json_schema={"type": "object"})
+        self.assertEqual(parse_llm_json(out), {"role": "technician", "physical_description": "tall"})
+
+    def test_preamble_then_bare_json_passes(self):
+        from libriscribe.utils.file_utils import parse_llm_json
+        c = self._client('Sure, here you go:\n{"category": "character"}')
+        out = c.generate_content_with_json_repair("x")
+        self.assertEqual(parse_llm_json(out), {"category": "character"})
+
+    def test_fenced_json_still_works(self):
+        from libriscribe.utils.file_utils import parse_llm_json
+        c = self._client('```json\n{"a": 1}\n```')
+        out = c.generate_content_with_json_repair("x")
+        self.assertEqual(parse_llm_json(out), {"a": 1})
+
+
 if __name__ == "__main__":
     unittest.main()
