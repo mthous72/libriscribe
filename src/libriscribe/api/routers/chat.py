@@ -667,20 +667,16 @@ class ApplyRequest(BaseModel):
     smart: bool = False
 
 
-def _extract_fields(kb, target_type: str, text: str) -> dict:
-    """Use the LLM to parse an idea into typed fields for a lore entity."""
-    fields = SMART_FIELDS.get(target_type, ["description"])
-    prompt = (
-        f"Extract a {target_type} for a {kb.genre} book from the idea below. "
-        f"Return ONLY a JSON object with these string keys: {', '.join(fields)}. "
-        f"Use empty strings for anything not implied. Idea:\n\n{text}"
+def _extract_fields(kb, target_type: str, text: str, entity_name: str = "") -> dict:
+    """Use the LLM to parse an idea into typed fields for a lore entity.
+
+    Delegates to the shared lore extractor so it gets the base system prompt, a concrete JSON
+    example, the "sorter" instruction, and robust fenced/preamble-tolerant JSON parsing."""
+    from libriscribe.services import lore_intake
+
+    return lore_intake.llm_extract_for_type(
+        _client_for(kb), kb.genre, entity_name, text, target_type, book_title=kb.title,
     )
-    try:
-        raw = _client_for(kb).generate_content_with_json_repair(prompt, max_tokens=800, temperature=0.4)
-        data = json.loads(raw)
-        return {k: (str(v) if v is not None else "") for k, v in data.items() if k in fields}
-    except Exception:
-        return {}
 
 
 class ParseRequest(BaseModel):
@@ -704,7 +700,7 @@ def parse_to_proposal(name: str, body: ParseRequest):
 
     from libriscribe.services import lore_intake
 
-    cats = lore_intake.extract_from_text(_client_for(kb), kb.genre, text)
+    cats = lore_intake.extract_from_text(_client_for(kb), kb.genre, text, book_title=kb.title)
     if lore_intake.cats_count(cats) == 0:
         raise HTTPException(
             status_code=422,
@@ -726,7 +722,7 @@ def apply_to_lore(name: str, body: ApplyRequest):
     if target not in SMART_FIELDS:
         raise HTTPException(status_code=400, detail="unsupported target_type")
 
-    fields = _extract_fields(kb, target, body.text) if body.smart else {}
+    fields = _extract_fields(kb, target, body.text, entity_name) if body.smart else {}
     # Draft fallback: put the raw text where it best fits.
     if not fields:
         fields = {"background": body.text} if target == "character" else {"description": body.text}

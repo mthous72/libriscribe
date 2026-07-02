@@ -24,6 +24,8 @@ import json
 import re
 
 from libriscribe.knowledge_base import Character, Location, LoreEntry, StoryArc, Worldbuilding
+from libriscribe.services import lore_prompts
+from libriscribe.utils.file_utils import parse_llm_json
 
 # ─── Canonical mappings ───────────────────────────────────────────────────────
 
@@ -38,12 +40,9 @@ CATEGORY_TO_TYPE = {"characters": "character", "locations": "location", "lore": 
 ENTITY_CATEGORIES = ("characters", "locations", "lore", "arcs")
 
 # The "interesting" fields the LLM is asked to populate per type (a subset of the model).
-SMART_FIELDS = {
-    "character": ["role", "physical_description", "personality_traits", "background", "motivations", "character_arc"],
-    "location": ["description", "significance"],
-    "lore": ["entry_type", "description", "significance"],
-    "arc": ["arc_type", "description", "resolution_notes"],
-}
+# Single source of truth lives in lore_prompts (used to render prompts); aliased here for the
+# many call sites that read it (chat.py, merge/filter logic below).
+SMART_FIELDS = lore_prompts.TYPE_FIELDS
 
 # Accepted top-level keys per category in foreign/native JSON (case-insensitive).
 CATEGORY_KEYS = {
@@ -276,15 +275,6 @@ _CATEGORY_ALIASES = {
     "arc": "arcs", "arcs": "arcs", "story_arc": "arcs", "plot": "arcs", "plotline": "arcs", "storyline": "arcs",
 }
 
-# Per-type field rubric shown to the model when extracting.
-_TYPE_RUBRIC = (
-    "   character: role, physical_description, personality_traits, background, motivations, character_arc\n"
-    "   location: description, significance\n"
-    "   lore: entry_type, description, significance\n"
-    "   arc: arc_type, description, resolution_notes\n"
-)
-
-
 def _flatten_entries(cats) -> list[dict]:
     """Flatten canonical cats into clean {name, content} entries (World-Info noise removed)."""
     entries = []
@@ -305,7 +295,7 @@ def _entries_for_llm(data) -> str:
     return json.dumps(data, default=str, ensure_ascii=False)[:14000]
 
 
-def llm_map(client, genre: str, data) -> dict:
+def llm_map(client, genre: str, data, book_title: str = "") -> dict:
     """Classify imported entries into the right lore categories, reasoning per entry.
 
     The model receives clean {name, content} entries and is told to think through each one
@@ -315,31 +305,15 @@ def llm_map(client, genre: str, data) -> dict:
     if client is None:
         return _empty_cats()
     entries = _entries_for_llm(data)
-    prompt = (
-        f"You are organizing imported worldbuilding notes into a story lorebook for a {genre} "
-        "book. Below is a JSON list of entries, each with a name and content.\n\n"
-        "Work through them ONE AT A TIME. For each entry, first reason about what it actually "
-        "describes, then assign it to the single best category:\n"
-        "- characters: a person, being, creature, android, or any named individual\n"
-        "- locations: a place, building, region, or setting\n"
-        "- lore: a faction, organization, item, technology, concept, event, rule, or system\n"
-        "- arcs: a storyline, plot thread, or narrative arc\n\n"
-        "Then pull the relevant details from the content into typed fields:\n"
-        "- character: role, physical_description, personality_traits, background, motivations, character_arc\n"
-        "- location: description, significance\n"
-        "- lore: entry_type, description, significance\n"
-        "- arc: arc_type, description, resolution_notes\n\n"
-        "Return ONLY a JSON object with keys characters, locations, lore, arcs (each a list of "
-        "objects). Every object MUST include a 'name' and a short 'reasoning' field naming why it "
-        "belongs in that category. Keep the substance from the content (do not summarize away "
-        "detail), and do not invent entries that are not present.\n\n"
-        "ENTRIES:\n" + entries
-    )
+    prompt = lore_prompts.build_map_prompt(genre, book_title, entries)
     try:
-        result = client.generate_content_with_json_repair(prompt, max_tokens=6000, temperature=0.2)
-        return _normalize_cats(json.loads(result))
+        raw = client.generate_content_with_json_repair(
+            prompt, max_tokens=6000, temperature=0.2,
+            system_prompt=lore_prompts.BASE_SYSTEM_PROMPT,
+        )
     except Exception:
         return _empty_cats()
+    return _normalize_cats(parse_llm_json(raw))
 
 
 # ─── Per-entry classification (one small LLM call per entry) ───────────────────
@@ -348,31 +322,20 @@ def llm_map(client, genre: str, data) -> dict:
 _PER_ENTRY_LIMIT = 80
 
 
-def llm_classify_entry(client, genre: str, name: str, content: str):
+def llm_classify_entry(client, genre: str, name: str, content: str, book_title: str = ""):
     """Classify ONE entry and extract its typed fields. Returns (category_key, fields) or None.
 
     Small, focused prompt per entry — far more reliable than one giant call, especially for
     local models. The result is tiny and parsed locally."""
-    prompt = (
-        f"Sort ONE lore entry for a {genre} book into a lorebook and pull out its details.\n\n"
-        f"ENTRY NAME: {name}\n"
-        f"ENTRY CONTENT:\n{(content or '')[:6000]}\n\n"
-        "1) Reason briefly, then decide the single best category:\n"
-        "   character = a person, being, creature, android, or named individual\n"
-        "   location  = a place, building, region, or setting\n"
-        "   lore      = a faction, organization, item, technology, concept, event, rule, or system\n"
-        "   arc       = a storyline or plot thread\n"
-        "2) Extract the details into that category's fields:\n"
-        + _TYPE_RUBRIC +
-        "\nReturn ONLY JSON: {\"category\": \"character|location|lore|arc\", \"reasoning\": \"...\", "
-        "\"fields\": { ... }}. Put the real substance into the fields, use empty strings for "
-        "anything not stated, and do not invent details."
-    )
+    prompt = lore_prompts.build_classify_prompt(genre, book_title, name, content)
     try:
-        raw = client.generate_content_with_json_repair(prompt, max_tokens=1500, temperature=0.2)
-        data = json.loads(raw)
+        raw = client.generate_content_with_json_repair(
+            prompt, max_tokens=1500, temperature=0.2,
+            system_prompt=lore_prompts.BASE_SYSTEM_PROMPT,
+        )
     except Exception:
         return None
+    data = parse_llm_json(raw)
     if not isinstance(data, dict):
         return None
     cat = _CATEGORY_ALIASES.get(str(data.get("category", "")).strip().lower(), "lore")
@@ -380,7 +343,7 @@ def llm_classify_entry(client, genre: str, name: str, content: str):
     return cat, (fields if isinstance(fields, dict) else {})
 
 
-def llm_classify_all(client, genre: str, cats: dict) -> dict:
+def llm_classify_all(client, genre: str, cats: dict, book_title: str = "") -> dict:
     """Classify each recognized entry with its own LLM call, sorting it into the right
     category and extracting typed fields. Falls back to the batch map for very large sets,
     and keeps an entry as lore if its call fails (nothing is lost)."""
@@ -388,14 +351,14 @@ def llm_classify_all(client, genre: str, cats: dict) -> dict:
         return _empty_cats()
     entries = _flatten_entries(cats)
     if len(entries) > _PER_ENTRY_LIMIT:
-        return llm_map(client, genre, cats)
+        return llm_map(client, genre, cats, book_title=book_title)
 
     out = _empty_cats()
     for e in entries:
         name = e["name"].strip()
         if not name:
             continue
-        result = llm_classify_entry(client, genre, name, e["content"])
+        result = llm_classify_entry(client, genre, name, e["content"], book_title=book_title)
         if result:
             cat, fields = result
             out[cat].append({"name": name, "fields": fields})
@@ -404,33 +367,42 @@ def llm_classify_all(client, genre: str, cats: dict) -> dict:
     return out
 
 
-def llm_extract_for_type(client, genre: str, name: str, content: str, category: str) -> dict:
+def llm_extract_for_type(
+    client, genre: str, name: str, content: str, category: str,
+    book_title: str = "", entry_type_hint: str | None = None, existing_fields: dict | None = None,
+) -> dict:
     """Extract typed sub-fields for a KNOWN category from an entry's content.
 
     Used when the user manually re-files an entry in the review panel (e.g. a World Info entry
     that's really a character) — re-parse its content into that type's fields (role,
-    physical_description, ...). One small, focused call."""
+    physical_description, ...). One small, focused call. When ``existing_fields`` is given (the
+    merge/update case), the model is told to augment that record rather than fight it.
+
+    TODO: if a single call returns {} on long/noisy content, a settings-gated two-stage
+    "distill facts about <name>, then field-ize" fallback could improve recall further.
+    """
     if client is None:
         return {}
     type_key = CATEGORY_TO_TYPE.get(category, category if category in SMART_FIELDS else "lore")
     fields_list = SMART_FIELDS.get(type_key, ["description"])
-    prompt = (
-        f"From the content below, extract the details for the {type_key} named '{name}' in a "
-        f"{genre} book.\n\nCONTENT:\n{(content or '')[:6000]}\n\n"
-        f"Return ONLY a JSON object with these string fields: {', '.join(fields_list)}. Fill each "
-        "field from the content; use an empty string if it isn't stated. Keep the real detail and "
-        "do not invent anything."
+    prompt = lore_prompts.build_extract_prompt(
+        genre, book_title, name, content, type_key,
+        entry_type_hint=entry_type_hint, existing_fields=existing_fields,
     )
     try:
-        data = json.loads(client.generate_content_with_json_repair(prompt, max_tokens=1500, temperature=0.2))
+        raw = client.generate_content_with_json_repair(
+            prompt, max_tokens=1500, temperature=0.2,
+            system_prompt=lore_prompts.BASE_SYSTEM_PROMPT,
+        )
     except Exception:
         return {}
+    data = parse_llm_json(raw)
     if not isinstance(data, dict):
         return {}
     return {k: str(v) for k, v in data.items() if k in fields_list and v not in (None, "")}
 
 
-def extract_from_text(client, genre: str, text: str) -> dict:
+def extract_from_text(client, genre: str, text: str, book_title: str = "") -> dict:
     """Parse a free-text brainstorm note into canonical categories, reasoning per entity (B12).
 
     As with imported lore, the model reasons about each entity it finds before assigning a
@@ -438,30 +410,15 @@ def extract_from_text(client, genre: str, text: str) -> dict:
     """
     if client is None:
         return _empty_cats()
-    prompt = (
-        f"Extract structured lore from the brainstorming note below for a {genre} book.\n\n"
-        "First identify each distinct entity the note actually describes — people, places, "
-        "factions/items/concepts, and plotlines. For EACH one, reason about which single "
-        "category fits best, then record it:\n"
-        "- characters: a person, being, creature, or named individual\n"
-        "- locations: a place, building, region, or setting\n"
-        "- lore: a faction, organization, item, technology, concept, event, rule, or system\n"
-        "- arcs: a storyline, plot thread, or narrative arc\n\n"
-        "Produce a JSON object with keys characters, locations, lore, arcs — each a LIST of "
-        "objects. Every object MUST have a 'name' and a short 'reasoning' field (why this "
-        "category). Include these typed fields only when the note implies them:\n"
-        "- character: role, physical_description, personality_traits, background, motivations, character_arc\n"
-        "- location: description, significance\n"
-        "- lore: entry_type, description, significance\n"
-        "- arc: arc_type, description, resolution_notes\n\n"
-        "Only include an entity if the note gives real information about it. Do not invent "
-        "entities. Use empty strings for unknown fields. Return ONLY the JSON.\n\nNOTE:\n" + text
-    )
+    prompt = lore_prompts.build_extract_from_text_prompt(genre, book_title, text)
     try:
-        raw = client.generate_content_with_json_repair(prompt, max_tokens=3000, temperature=0.3)
-        return _normalize_cats(json.loads(raw))
+        raw = client.generate_content_with_json_repair(
+            prompt, max_tokens=3000, temperature=0.3,
+            system_prompt=lore_prompts.BASE_SYSTEM_PROMPT,
+        )
     except Exception:
         return _empty_cats()
+    return _normalize_cats(parse_llm_json(raw))
 
 
 # ─── Proposal (annotate, no write) ────────────────────────────────────────────

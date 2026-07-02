@@ -447,13 +447,18 @@ class LLMClient:
         )
 
     def generate_content_with_json_repair(
-        self, original_prompt: str, max_tokens: int = 2000, temperature: float = 0.7
+        self,
+        original_prompt: str,
+        max_tokens: int = 2000,
+        temperature: float = 0.7,
+        system_prompt: Optional[str] = None,
     ) -> str:
         return self._request_with_fallback(
             prompt=original_prompt,
             max_tokens=max_tokens,
             temperature=temperature,
             require_valid_json=True,
+            system_prompt=system_prompt,
         )
 
     def generate_content_streaming(

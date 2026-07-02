@@ -191,3 +191,67 @@ def extract_json_from_markdown(markdown_text: str) -> Optional[Dict[str, Any]]:
         logger.exception(f"Error extracting JSON from Markdown: {e}")
         print("Error extracting JSON.")
         return None
+
+
+def _balanced_json_slice(text: str) -> Optional[str]:
+    """Return the first balanced {...} or [...] slice in ``text``, respecting strings/escapes.
+
+    Lets us recover JSON that is preceded by a reasoning preamble or followed by trailing
+    prose (common with local models), without tripping on braces that appear inside strings.
+    """
+    open_idx = next((i for i, ch in enumerate(text) if ch in "{["), None)
+    if open_idx is None:
+        return None
+    depth = 0
+    in_str = False
+    escape = False
+    for i in range(open_idx, len(text)):
+        ch = text[i]
+        if in_str:
+            if escape:
+                escape = False
+            elif ch == "\\":
+                escape = True
+            elif ch == '"':
+                in_str = False
+            continue
+        if ch == '"':
+            in_str = True
+        elif ch in "{[":
+            depth += 1
+        elif ch in "}]":
+            depth -= 1
+            if depth == 0:
+                return text[open_idx : i + 1]
+    return None
+
+
+def parse_llm_json(text: str) -> Optional[Any]:
+    """Best-effort extraction of a JSON object/array from an LLM reply. Never raises.
+
+    Local models (LM Studio, Ollama, etc.) commonly wrap JSON in ```json fences and may emit a
+    reasoning preamble before it, so a plain ``json.loads()`` on the raw reply fails. This tries,
+    in order: (1) a ```json fenced block (identical to :func:`extract_json_from_markdown`),
+    (2) any ``` fenced block, (3) the first balanced ``{...}``/``[...]`` slice (skipping any
+    surrounding prose), (4) the whole string as bare JSON. Returns the parsed value or ``None``.
+    """
+    if not text or not text.strip():
+        return None
+    data = extract_json_from_markdown(text)
+    if data is not None:
+        return data
+    for m in re.finditer(r"```(?:json)?\s*(.*?)```", text, re.DOTALL | re.IGNORECASE):
+        try:
+            return json.loads(m.group(1).strip())
+        except json.JSONDecodeError:
+            continue
+    sliced = _balanced_json_slice(text)
+    if sliced is not None:
+        try:
+            return json.loads(sliced)
+        except json.JSONDecodeError:
+            pass
+    try:
+        return json.loads(text.strip())
+    except json.JSONDecodeError:
+        return None

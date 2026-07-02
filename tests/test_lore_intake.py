@@ -8,7 +8,8 @@ import json
 import unittest
 
 from libriscribe.knowledge_base import ProjectKnowledgeBase, Character, Location
-from libriscribe.services import lore_intake
+from libriscribe.services import lore_intake, lore_prompts
+from libriscribe.utils.file_utils import parse_llm_json
 
 
 def _kb():
@@ -273,6 +274,94 @@ class MergeApplyTests(unittest.TestCase):
         summary = lore_intake.merge_apply(kb, {"worldbuilding": {"fields": {"magic_system": "rune-based"}}})
         self.assertEqual(summary["worldbuilding"], 1)
         self.assertEqual(kb.worldbuilding.magic_system, "rune-based")
+
+
+class _FenceClient:
+    """Returns the given object wrapped in a ```json fence — how local models (LM Studio,
+    Ollama) actually reply. Before the parse fix, json.loads() on this raised and every lore
+    call fell back to empty/lore."""
+    def __init__(self, obj):
+        self._obj = obj
+
+    def generate_content_with_json_repair(self, prompt, **kw):
+        return "```json\n" + json.dumps(self._obj) + "\n```"
+
+
+class _PreambleClient:
+    """Returns a reasoning preamble followed by a ```json fence (common with reasoning models)."""
+    def __init__(self, obj):
+        self._obj = obj
+
+    def generate_content_with_json_repair(self, prompt, **kw):
+        return "Reasoning: here is the structured result.\n```json\n" + json.dumps(self._obj) + "\n```"
+
+
+class FencedResponseRegressionTests(unittest.TestCase):
+    """Regressions for the fenced-JSON bug: each of these FAILED before parse_llm_json, because
+    the four lore functions called json.loads() on the ```json-fenced return value."""
+
+    def test_llm_map_parses_fenced_json(self):
+        cats_in = {"characters": [], "locations": [], "arcs": [],
+                   "lore": [{"name": "Maren", "fields": {"description": "technician"}}]}
+        client = _FenceClient({
+            "characters": [{"name": "Maren", "reasoning": "a person", "role": "technician"}],
+            "locations": [], "lore": [], "arcs": [],
+        })
+        out = lore_intake.llm_map(client, "Sci-Fi", cats_in)
+        self.assertEqual([r["name"] for r in out["characters"]], ["Maren"])
+
+    def test_llm_classify_entry_fenced_is_character_not_lore(self):
+        client = _FenceClient({"category": "character", "reasoning": "a person",
+                               "fields": {"role": "technician"}})
+        result = lore_intake.llm_classify_entry(client, "Sci-Fi", "Maren", "Occupation: technician.")
+        self.assertIsNotNone(result)
+        cat, fields = result
+        self.assertEqual(cat, "characters")                 # not mis-filed as lore
+        self.assertEqual(fields.get("role"), "technician")
+
+    def test_llm_extract_for_type_fenced_populates_fields(self):
+        client = _FenceClient({"role": "technician", "physical_description": "tall and lean"})
+        out = lore_intake.llm_extract_for_type(client, "Sci-Fi", "Maren", "content", "characters")
+        self.assertEqual(out.get("role"), "technician")            # no longer "lands in Background"
+        self.assertEqual(out.get("physical_description"), "tall and lean")
+
+    def test_llm_extract_for_type_preamble_populates_fields(self):
+        client = _PreambleClient({"role": "broker", "motivations": "profit"})
+        out = lore_intake.llm_extract_for_type(client, "Sci-Fi", "Tya", "content", "characters")
+        self.assertEqual(out.get("role"), "broker")
+        self.assertEqual(out.get("motivations"), "profit")
+
+    def test_extract_from_text_fenced(self):
+        client = _FenceClient({
+            "characters": [{"name": "Maren", "reasoning": "a person", "role": "technician"}],
+            "locations": [], "lore": [], "arcs": [],
+        })
+        out = lore_intake.extract_from_text(client, "Sci-Fi", "Maren is a technician.")
+        self.assertEqual([r["name"] for r in out["characters"]], ["Maren"])
+
+
+class LorePromptsTests(unittest.TestCase):
+    def test_json_example_parses_and_has_all_fields(self):
+        example = lore_prompts.json_example("character")
+        data = parse_llm_json(example)
+        self.assertIsInstance(data, dict)
+        for f in lore_prompts.TYPE_FIELDS["character"]:
+            self.assertIn(f, data)
+
+    def test_extract_prompt_includes_sorter_example_and_existing(self):
+        p = lore_prompts.build_extract_prompt(
+            "Sci-Fi", "My Book", "Maren", "some content", "character",
+            entry_type_hint="world info", existing_fields={"role": "technician"},
+        )
+        self.assertIn("Ignore all of it", p)      # sorter instruction present
+        self.assertIn("EXISTING RECORD", p)        # augment-don't-fight block present
+        self.assertIn("world info", p)             # entry_type hint threaded in
+        self.assertIn("physical_description", p)   # field guidance present
+
+    def test_classify_prompt_keeps_entry_name_anchor(self):
+        # The per-entry fake client greps for "ENTRY NAME:" — keep that anchor stable.
+        p = lore_prompts.build_classify_prompt("Sci-Fi", "My Book", "Maren", "content")
+        self.assertIn("ENTRY NAME: Maren", p)
 
 
 if __name__ == "__main__":

@@ -542,13 +542,13 @@ def parse_lore(name: str, body: LoreParseRequest):
     if body.smart and detected is not None:
         client = _maybe_client(kb)
         if client is not None:
-            classified = lore_intake.llm_classify_all(client, kb.genre, cats)
+            classified = lore_intake.llm_classify_all(client, kb.genre, cats, book_title=kb.title)
             if lore_intake.cats_count(classified) > 0:
                 cats = classified
                 used_llm = True
                 fmt = f"{fmt} + AI"
     elif detected is None:
-        mapped = lore_intake.llm_map(_maybe_client(kb), kb.genre, body.data)
+        mapped = lore_intake.llm_map(_maybe_client(kb), kb.genre, body.data, book_title=kb.title)
         if lore_intake.cats_count(mapped) > 0:
             cats = mapped
             used_llm = True
@@ -568,6 +568,30 @@ class ExtractFieldsRequest(BaseModel):
     name: str = ""
     content: str = ""
     category: str  # characters | locations | lore | arcs
+    entry_type: str = ""  # optional source label (e.g. "world info") to hint the extractor
+
+
+def _existing_fields_for(kb, category: str, name: str) -> dict | None:
+    """Non-empty typed fields of an existing entity with this name in the target category, so
+    the extractor can augment rather than overwrite (the merge/update case). None if absent."""
+    from libriscribe.services import lore_intake
+
+    type_key = lore_intake.CATEGORY_TO_TYPE.get(category)
+    if not type_key or type_key not in lore_intake.TYPE_MAP:
+        return None
+    _, attr = lore_intake.TYPE_MAP[type_key]
+    store = getattr(kb, attr, {}) or {}
+    target = (name or "").strip().lower()
+    rec = next((v for k, v in store.items() if str(k).strip().lower() == target), None)
+    if rec is None:
+        return None
+    data = rec.model_dump() if hasattr(rec, "model_dump") else dict(rec)
+    out = {}
+    for f in lore_intake.SMART_FIELDS.get(type_key, []):
+        v = data.get(f)
+        if v not in (None, "", [], {}):
+            out[f] = lore_intake._to_display(v)
+    return out or None
 
 
 @router.post("/{name}/lore/extract-fields")
@@ -582,7 +606,12 @@ def extract_fields(name: str, body: ExtractFieldsRequest):
     client = _maybe_client(kb)
     if client is None:
         raise HTTPException(status_code=400, detail="No LLM is configured for this project.")
-    fields = lore_intake.llm_extract_for_type(client, kb.genre, body.name, body.content, body.category)
+    fields = lore_intake.llm_extract_for_type(
+        client, kb.genre, body.name, body.content, body.category,
+        book_title=kb.title,
+        entry_type_hint=body.entry_type or None,
+        existing_fields=_existing_fields_for(kb, body.category, body.name),
+    )
     return {"fields": fields}
 
 
