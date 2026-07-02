@@ -1101,6 +1101,30 @@ co-occurrence across chapters.
 **Open decisions:** enforce referential integrity vs. keep free-form; how aggressively to
 auto-suggest; scope of the relationships panel per entity.
 
+### B26. Brainstorm collaborator preamble — clearer/concise responses + clarifying questions — **effort: S** — *backlog (raised 2026-07-02)*
+
+**Motivation.** The brainstorm system prompt should frame the LLM as a sharp creative collaborator —
+clear, specific, concise — and have it **occasionally ask a clarifying question** rather than always
+answering blind. Better, cleaner responses and a more useful back-and-forth. Companion to B23
+(B23 = length dial; this = behavior contract) — same injection point, design/build together.
+
+**Current state:** `chat._system_prompt` / `_focus_system_prompt`, assembled at
+`chat._assemble_system_prompt` (`chat.py:584`), already frame brainstorming and tailor by focus type
+— but don't push for crispness or invite clarifying questions.
+
+**Design:**
+- Strengthen the preamble into a tight **collaborator contract**: be clear and specific, build on
+  the author's idea, cut filler/hedging.
+- **Ask ONE targeted clarifying question** when the request is genuinely ambiguous or a decision is
+  under-specified — *occasionally*, only when it actually helps (avoid nagging).
+- **Tailor by focus**: character → motivation / voice / contradictions; location → atmosphere /
+  role in plot; arc/thread → stakes / causality / consequences; worldbuilding → internal consistency.
+- Compose with **B23** at `_assemble_system_prompt` (preamble = behavior, verbosity = length).
+- Optionally **user-editable** later (like the existing `writing_system_prompt.txt`).
+
+**Open decisions:** single global preamble vs per-focus variants; question frequency/threshold;
+user-editable now or later.
+
 ## Docs refresh (Docusaurus, **not a wiki**) — low-priority parallel track
 
 Decision (2026-07-01): we already have a **Docusaurus** site in `docs/` wired for GitHub
