@@ -391,18 +391,30 @@ def llm_extract_for_type(
         genre, book_title, name, content, type_key,
         entry_type_hint=entry_type_hint, existing_fields=existing_fields,
     )
-    try:
-        raw = client.generate_content_with_json_repair(
-            prompt, max_tokens=1500, temperature=0.2,
-            system_prompt=lore_prompts.BASE_SYSTEM_PROMPT,
-            json_schema=structured_output.json_schema_for_fields(fields_list),
-        )
-    except Exception:
-        return {}
-    data = parse_llm_json(raw)
-    if not isinstance(data, dict):
-        return {}
-    return {k: str(v) for k, v in data.items() if k in fields_list and v not in (None, "")}
+    schema = structured_output.json_schema_for_fields(fields_list)
+
+    def _run(use_schema: bool) -> dict:
+        try:
+            raw = client.generate_content_with_json_repair(
+                prompt, max_tokens=1500, temperature=0.2,
+                system_prompt=lore_prompts.BASE_SYSTEM_PROMPT,
+                json_schema=schema if use_schema else None,
+            )
+        except Exception:
+            return {}
+        data = parse_llm_json(raw)
+        if not isinstance(data, dict):
+            return {}
+        return {k: str(v) for k, v in data.items() if k in fields_list and v not in (None, "")}
+
+    # Structured output first (grammar-forced JSON on capable/local models). But a strict "fill
+    # every field" grammar can railroad a small model (e.g. Gemma-4) into emitting empty strings
+    # for all fields — which our filter drops to {}. If nothing usable comes back, retry once
+    # UNCONSTRAINED so the model can actually write content (guided by the example + sorter prompt).
+    result = _run(use_schema=True)
+    if not result:
+        result = _run(use_schema=False)
+    return result
 
 
 def extract_from_text(client, genre: str, text: str, book_title: str = "") -> dict:

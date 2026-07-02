@@ -366,6 +366,24 @@ class StructuredOutputThreadingTests(unittest.TestCase):
         self.assertEqual(schema["properties"]["category"]["enum"], ["character", "location", "lore", "arc"])
 
 
+class SchemaEmptyRetryTests(unittest.TestCase):
+    """A strict 'fill every field' grammar can railroad a small model into all-empty fields;
+    extraction must then retry unconstrained so real content still lands."""
+    class _RailroadClient:
+        def generate_content_with_json_repair(self, prompt, **kw):
+            if kw.get("json_schema"):  # under the grammar: emits empty strings for every field
+                return json.dumps({f: "" for f in lore_intake.SMART_FIELDS["character"]})
+            # unconstrained: actually writes content (fenced, like a local model)
+            return "```json\n" + json.dumps({"role": "technician", "physical_description": "tall and lean"}) + "\n```"
+
+    def test_retries_without_schema_when_schema_yields_empty(self):
+        out = lore_intake.llm_extract_for_type(
+            self._RailroadClient(), "Sci-Fi", "Maren", "Occupation: technician. Tall and lean.", "characters",
+        )
+        self.assertEqual(out.get("role"), "technician")
+        self.assertEqual(out.get("physical_description"), "tall and lean")
+
+
 class LorePromptsTests(unittest.TestCase):
     def test_json_example_parses_and_has_all_fields(self):
         example = lore_prompts.json_example("character")
