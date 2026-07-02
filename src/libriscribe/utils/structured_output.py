@@ -27,6 +27,21 @@ def json_schema_for_fields(fields: list[str]) -> dict:
     }
 
 
+def cats_schema() -> dict:
+    """Schema for multi-entity extraction (brainstorm 'Apply to lore', batch import map):
+    ``{characters:[{name,...}], locations:[...], lore:[...], arcs:[...]}``. Each entity REQUIRES a
+    name (what _normalize_cats keys on) but allows extra fields (reasoning + typed fields), so it
+    forces the array-of-named-objects shape without railroading content."""
+    entity = {"type": "object", "properties": {"name": {"type": "string"}}, "required": ["name"]}
+    arr = {"type": "array", "items": entity}
+    return {
+        "type": "object",
+        "properties": {"characters": arr, "locations": arr, "lore": arr, "arcs": arr},
+        "required": ["characters", "locations", "lore", "arcs"],
+        "additionalProperties": False,
+    }
+
+
 def classify_schema() -> dict:
     """Schema for the per-entry classifier: pick a category, explain briefly, extract fields.
 
@@ -47,10 +62,26 @@ def classify_schema() -> dict:
 # ─── Per-provider envelopes ───────────────────────────────────────────────────
 # Each returns the kwargs/params to merge into that provider's request when a schema is active.
 
+def _all_objects_closed(schema) -> bool:
+    """True if every object in the schema sets additionalProperties:false. OpenAI 'strict' mode
+    requires that (and all keys required); an open object (e.g. our entity items or a loose
+    'fields' object) must be non-strict, or strict providers reject it."""
+    if isinstance(schema, dict):
+        if schema.get("type") == "object" and schema.get("additionalProperties", True) is not False:
+            return False
+        return all(_all_objects_closed(v) for v in schema.values())
+    if isinstance(schema, list):
+        return all(_all_objects_closed(v) for v in schema)
+    return True
+
+
 def response_format_openai(schema: dict, name: str = "lore") -> dict:
     """OpenAI-compatible json_schema response_format (OpenAI, OpenRouter, LM Studio, Ollama,
-    Mistral)."""
-    return {"type": "json_schema", "json_schema": {"name": name, "schema": schema, "strict": True}}
+    Mistral). ``strict`` is auto-set: only closed-object schemas can be strict."""
+    return {
+        "type": "json_schema",
+        "json_schema": {"name": name, "schema": schema, "strict": _all_objects_closed(schema)},
+    }
 
 
 def response_format_json_object() -> dict:

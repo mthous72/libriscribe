@@ -307,14 +307,22 @@ def llm_map(client, genre: str, data, book_title: str = "") -> dict:
         return _empty_cats()
     entries = _entries_for_llm(data)
     prompt = lore_prompts.build_map_prompt(genre, book_title, entries)
-    try:
-        raw = client.generate_content_with_json_repair(
-            prompt, max_tokens=6000, temperature=0.2,
-            system_prompt=lore_prompts.BASE_SYSTEM_PROMPT,
-        )
-    except Exception:
-        return _empty_cats()
-    return _normalize_cats(parse_llm_json(raw))
+
+    def _run(use_schema: bool) -> dict:
+        try:
+            raw = client.generate_content_with_json_repair(
+                prompt, max_tokens=6000, temperature=0.2,
+                system_prompt=lore_prompts.BASE_SYSTEM_PROMPT,
+                json_schema=structured_output.cats_schema() if use_schema else None,
+            )
+        except Exception:
+            return _empty_cats()
+        return _normalize_cats(parse_llm_json(raw))
+
+    cats = _run(True)
+    if cats_count(cats) == 0:
+        cats = _run(False)
+    return cats
 
 
 # ─── Per-entry classification (one small LLM call per entry) ───────────────────
@@ -426,14 +434,25 @@ def extract_from_text(client, genre: str, text: str, book_title: str = "") -> di
     if client is None:
         return _empty_cats()
     prompt = lore_prompts.build_extract_from_text_prompt(genre, book_title, text)
-    try:
-        raw = client.generate_content_with_json_repair(
-            prompt, max_tokens=3000, temperature=0.3,
-            system_prompt=lore_prompts.BASE_SYSTEM_PROMPT,
-        )
-    except Exception:
-        return _empty_cats()
-    return _normalize_cats(parse_llm_json(raw))
+
+    def _run(use_schema: bool) -> dict:
+        try:
+            raw = client.generate_content_with_json_repair(
+                prompt, max_tokens=3000, temperature=0.3,
+                system_prompt=lore_prompts.BASE_SYSTEM_PROMPT,
+                json_schema=structured_output.cats_schema() if use_schema else None,
+            )
+        except Exception:
+            return _empty_cats()
+        return _normalize_cats(parse_llm_json(raw))
+
+    # Structured output forces the {characters:[{name,...}], ...} shape _normalize_cats needs. If it
+    # still yields nothing (grammar railroaded empty arrays, or the model found nothing), retry
+    # unconstrained so a capable model can extract freely.
+    cats = _run(True)
+    if cats_count(cats) == 0:
+        cats = _run(False)
+    return cats
 
 
 # ─── Proposal (annotate, no write) ────────────────────────────────────────────

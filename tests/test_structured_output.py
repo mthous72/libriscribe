@@ -26,13 +26,28 @@ class SchemaBuilderTests(unittest.TestCase):
         self.assertEqual(schema["required"], ["category", "fields"])
 
     def test_response_format_openai_envelope(self):
-        rf = so.response_format_openai({"type": "object"}, name="lore")
+        rf = so.response_format_openai(so.json_schema_for_fields(["role"]), name="lore")
         self.assertEqual(rf["type"], "json_schema")
         self.assertEqual(rf["json_schema"]["name"], "lore")
-        self.assertTrue(rf["json_schema"]["strict"])
+        self.assertIn("schema", rf["json_schema"])
 
     def test_response_format_json_object(self):
         self.assertEqual(so.response_format_json_object(), {"type": "json_object"})
+
+    def test_cats_schema_shape(self):
+        schema = so.cats_schema()
+        self.assertEqual(set(schema["properties"]), {"characters", "locations", "lore", "arcs"})
+        item = schema["properties"]["characters"]["items"]
+        self.assertEqual(item["required"], ["name"])  # each entity must have a name
+
+    def test_strict_auto_off_for_open_schema(self):
+        # cats_schema has open entity items -> must NOT be strict (strict needs closed objects)
+        rf = so.response_format_openai(so.cats_schema())
+        self.assertFalse(rf["json_schema"]["strict"])
+
+    def test_strict_auto_on_for_closed_schema(self):
+        rf = so.response_format_openai(so.json_schema_for_fields(["role"]))
+        self.assertTrue(rf["json_schema"]["strict"])
 
 
 class GracefulDegradeTests(unittest.TestCase):

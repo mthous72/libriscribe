@@ -713,6 +713,46 @@ def parse_to_proposal(name: str, body: ParseRequest):
     return {"proposal": lore_intake.build_proposal(kb, cats)}
 
 
+@router.post("/{name}/chat/parse/debug")
+def parse_to_proposal_debug(name: str, body: ParseRequest):
+    """Diagnostic for brainstorm 'Apply to lore': the model + prompt, the RAW response (with and
+    without the schema), how each parses/normalizes, and the final categories — so we can see why
+    extraction found nothing instead of guessing."""
+    from libriscribe.services import lore_intake, lore_prompts
+    from libriscribe.utils import structured_output
+    from libriscribe.utils.file_utils import parse_llm_json
+
+    kb = load_kb(name)
+    if not kb:
+        raise HTTPException(status_code=404, detail="Project not found")
+    text = (body.text or "").strip()
+    client = _utility_client_for(kb)
+    prompt = lore_prompts.build_extract_from_text_prompt(kb.genre, kb.title, text)
+
+    def _raw(use_schema: bool):
+        try:
+            return client.generate_content(
+                prompt, max_tokens=3000, temperature=0.3,
+                system_prompt=lore_prompts.BASE_SYSTEM_PROMPT,
+                json_schema=structured_output.cats_schema() if use_schema else None,
+            )
+        except Exception as exc:  # noqa: BLE001 — surface the error text for diagnosis
+            return f"<<EXCEPTION: {type(exc).__name__}: {exc}>>"
+
+    raw_schema = _raw(True)
+    raw_plain = _raw(False)
+    return {
+        "provider": kb.llm_provider,
+        "model": getattr(client, "model", None),
+        "prompt": prompt,
+        "raw_with_schema": raw_schema,
+        "normalized_with_schema": lore_intake._normalize_cats(parse_llm_json(raw_schema)),
+        "raw_without_schema": raw_plain,
+        "normalized_without_schema": lore_intake._normalize_cats(parse_llm_json(raw_plain)),
+        "final_cats": lore_intake.extract_from_text(client, kb.genre, text, book_title=kb.title),
+    }
+
+
 @router.post("/{name}/chat/apply")
 def apply_to_lore(name: str, body: ApplyRequest):
     kb = load_kb(name)

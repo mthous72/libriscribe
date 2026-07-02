@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { parseChat, streamChat, previewChat, listCharacters, listLocations, listLoreEntries, listArcs, listSessions, createSession, updateSession, deleteSession, getSession, clearSession } from '../api/client'
+import { parseChat, parseChatDebug, streamChat, previewChat, listCharacters, listLocations, listLoreEntries, listArcs, listSessions, createSession, updateSession, deleteSession, getSession, clearSession } from '../api/client'
 import { useBrainstormStore } from '../store/brainstormSlice'
 import LoreProposalReview, { Proposal } from './LoreProposalReview'
 import { MessageSquarePlus, X, Send, Trash2, Loader2, Sparkles, Plus, Pencil, Eye } from 'lucide-react'
@@ -257,9 +257,10 @@ function ParseApply({ projectName, text, onDone, onView }: { projectName: string
   const [proposal, setProposal] = useState<Proposal | null>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
+  const [debug, setDebug] = useState<any>(null)
 
   const parse = async () => {
-    setBusy(true); setError(''); setProposal(null)
+    setBusy(true); setError(''); setProposal(null); setDebug(null)
     try {
       const r = await parseChat(projectName, { text })
       setProposal(r.proposal)
@@ -267,6 +268,18 @@ function ParseApply({ projectName, text, onDone, onView }: { projectName: string
       setError(e?.response?.data?.detail || 'Could not parse this reply.')
     } finally {
       setBusy(false)
+    }
+  }
+
+  const runDebug = async () => {
+    setDebug({ loading: true })
+    try {
+      const r = await parseChatDebug(projectName, { text })
+      // eslint-disable-next-line no-console
+      console.log('[brainstorm apply debug]', r)
+      setDebug(r)
+    } catch (e: any) {
+      setDebug({ error: e?.response?.data?.detail || String(e) })
     }
   }
 
@@ -280,8 +293,14 @@ function ParseApply({ projectName, text, onDone, onView }: { projectName: string
           <p>{error}</p>
           <div className="flex gap-2">
             <button onClick={parse} className="px-2 py-1 bg-gray-700 hover:bg-gray-600 rounded">Retry</button>
+            <button onClick={runDebug} className="px-2 py-1 bg-gray-700 hover:bg-gray-600 rounded text-amber-300">Debug</button>
             <button onClick={onDone} className="px-2 py-1 bg-gray-700 hover:bg-gray-600 rounded">Cancel</button>
           </div>
+          {debug && (
+            <pre className="max-h-64 overflow-auto rounded bg-black/60 border border-gray-700 p-2 text-[10px] text-gray-300 whitespace-pre-wrap break-words">
+              {debug.loading ? 'Running diagnostic…' : JSON.stringify(debug, null, 2)}
+            </pre>
+          )}
         </div>
       )}
       {proposal && (

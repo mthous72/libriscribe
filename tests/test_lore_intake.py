@@ -383,6 +383,18 @@ class SchemaEmptyRetryTests(unittest.TestCase):
         self.assertEqual(out.get("role"), "technician")
         self.assertEqual(out.get("physical_description"), "tall and lean")
 
+    def test_extract_from_text_retries_without_schema_when_empty(self):
+        class _C:  # empty cats under the schema, real content unconstrained (brainstorm Apply-to-lore)
+            def generate_content_with_json_repair(self, prompt, **kw):
+                if kw.get("json_schema"):
+                    return json.dumps({"characters": [], "locations": [], "lore": [], "arcs": []})
+                return "```json\n" + json.dumps({
+                    "characters": [{"name": "Maren", "role": "technician"}],
+                    "locations": [], "lore": [], "arcs": [],
+                }) + "\n```"
+        out = lore_intake.extract_from_text(_C(), "Sci-Fi", "Maren is a sharp machine technician.")
+        self.assertEqual([r["name"] for r in out["characters"]], ["Maren"])
+
 
 class LorePromptsTests(unittest.TestCase):
     def test_json_example_parses_and_has_all_fields(self):

@@ -80,6 +80,7 @@ export const importLore = (name: string, body: { data: any, smart?: boolean }) =
 // Smart lore intake (B12 + B13): parse → review → merge
 export const parseLore = (name: string, body: { data: any, smart?: boolean }) => api.post(`/projects/${name}/lore/parse`, body).then(r => r.data)
 export const parseChat = (name: string, body: { text: string }) => api.post(`/projects/${name}/chat/parse`, body).then(r => r.data)
+export const parseChatDebug = (name: string, body: { text: string }) => api.post(`/projects/${name}/chat/parse/debug`, body).then(r => r.data)
 export const applyParsed = (name: string, records: any) => api.post(`/projects/${name}/lore/apply-parsed`, { records }).then(r => r.data)
 export const extractFields = (name: string, body: { name: string, content: string, category: string }) => api.post(`/projects/${name}/lore/extract-fields`, body).then(r => r.data)
 export const extractFieldsDebug = (name: string, body: { name: string, content: string, category: string, entry_type?: string }) => api.post(`/projects/${name}/lore/extract-fields/debug`, body).then(r => r.data)
