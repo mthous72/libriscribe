@@ -50,5 +50,36 @@ class ModelRoutingTests(unittest.TestCase):
         )
 
 
+class UtilityClientTests(unittest.TestCase):
+    """Two-role routing (B22): Writing model (kb.model) vs Utility model (kb.utility_model),
+    with the utility client falling back to the writing model when unset."""
+    @staticmethod
+    def _kb(**kw):
+        from libriscribe.knowledge_base import ProjectKnowledgeBase
+        base = dict(project_name="t", title="T", genre="Fantasy", llm_provider="local")
+        base.update(kw)
+        return ProjectKnowledgeBase(**base)
+
+    def test_utility_client_uses_utility_model_when_set(self):
+        from libriscribe.services import project_service
+        c = project_service.create_utility_client(self._kb(model="writer-x", utility_model="instruct-y"))
+        self.assertEqual(c.model, "instruct-y")
+
+    def test_utility_client_falls_back_to_writing_model(self):
+        from libriscribe.services import project_service
+        c = project_service.create_utility_client(self._kb(model="writer-x"))
+        self.assertEqual(c.model, "writer-x")
+
+    def test_utility_client_blank_utility_falls_back(self):
+        from libriscribe.services import project_service
+        c = project_service.create_utility_client(self._kb(model="writer-x", utility_model="   "))
+        self.assertEqual(c.model, "writer-x")
+
+    def test_writing_client_ignores_utility_model(self):
+        from libriscribe.services import project_service
+        c = project_service.create_llm_client(self._kb(model="writer-x", utility_model="instruct-y"))
+        self.assertEqual(c.model, "writer-x")
+
+
 if __name__ == "__main__":
     unittest.main()

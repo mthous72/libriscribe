@@ -1003,6 +1003,40 @@ the first brainstorm. Keep it distinct from the lightweight chat-warm because it
 threshold (default ~4 min ping / ~5 min idle); whether to expose the enable/disable setting per
 project or global; whether index refresh on open is automatic or gated behind the same setting.
 
+### B22. Two-role model routing — Writing vs Utility model — **effort: M** — *APPROVED, building (2026-07-02)*
+
+**Motivation.** Adult/uncensored fiction needs an uncensored model for prose, but "aggressive"
+uncensored RP merges follow instructions / emit JSON poorly — bad for the *structured* jobs (lore
+extraction, classification). Rather than per-agent granularity (12 confusing dropdowns — a Norman
+Door), split into **two roles**:
+- **Writing model** = the existing project `model` — prose, brainstorm chat, chapter generation.
+- **Utility model** = an optional clean/instruct (ideally uncensored *instruct*, e.g. an abliterated
+  or QAT-instruct model) used for structured tasks: lore intake (import classify + AI-map +
+  extract-for-type), and brainstorm "Apply to lore" structuring. **Blank ⇒ use the Writing model**
+  (so nothing changes for users who don't set it).
+
+Both roles share the project's `llm_provider` (same LM Studio/Ollama server, different loaded model
+id) in v1 — no second provider/base-URL. Reuses the existing per-agent plumbing conceptually
+(`kb.agent_models` / `_get_model_for_agent`) but exposes a single clean field.
+
+**Backend:**
+- `knowledge_base.ProjectKnowledgeBase.utility_model: str = ""` (next to `model`).
+- `project_service.create_utility_client(kb)` → `LLMClient(kb.llm_provider)` with model
+  `kb.utility_model or kb.model` (falls back to Writing). Mirror of `create_llm_client`.
+- Route the structured calls to it: `lorebook._maybe_client` (parse/classify + extract-fields) and
+  `chat.extract_from_text` / `chat._extract_fields` (apply-to-lore). Leave brainstorm *chat*
+  generation and the generation pipeline on the Writing model.
+- Persist via `PUT /{name}/settings` (`utility_model` on `UpdateProjectSettings`); return it in
+  `get_project_detail` + `ProjectDetail`; extend `resolve_active_model` to also report the resolved
+  utility model + source.
+
+**Frontend (ProjectDashboard AI-config):** a second `ModelPicker` "Utility model (structured
+tasks — lore, classification)" with help "leave blank to use the writing model"; saved alongside
+provider/model; readout shows both ("Writing: X · Utility: Y (or same as writing)").
+
+**Later (not v1):** route the pipeline's structured agents (outliner, character/worldbuilding JSON,
+fact-check) to Utility too; allow a different provider for Utility.
+
 ## Docs refresh (Docusaurus, **not a wiki**) — low-priority parallel track
 
 Decision (2026-07-01): we already have a **Docusaurus** site in `docs/` wired for GitHub

@@ -32,6 +32,19 @@ def create_llm_client(kb):
     return client
 
 
+def create_utility_client(kb):
+    """LLMClient for STRUCTURED tasks (lore intake, classification). Uses the project's
+    ``utility_model`` when set, else falls back to the Writing model — so uncensored prose can use
+    an aggressive model while lore extraction uses a clean instruct model. Same provider."""
+    from libriscribe.utils.llm_client import LLMClient
+
+    client = LLMClient(kb.llm_provider)
+    model = (getattr(kb, "utility_model", "") or "").strip() or (kb.model or "").strip()
+    if model:
+        client.set_model(model)
+    return client
+
+
 _PLACEHOLDER_KEYS = {"", "your_api_key_here", "your-api-key-here", "changeme"}
 
 
@@ -51,11 +64,14 @@ def resolve_active_model(project_name: str) -> dict[str, Any] | None:
     else:
         key = (getattr(s, f"{provider}_api_key", "") or "").strip()
         configured = bool(key) and key.lower() not in _PLACEHOLDER_KEYS
+    utility_set = bool((getattr(kb, "utility_model", "") or "").strip())
     return {
         "provider": provider,
         "model": model,
         "source": "project" if kb.model else "provider default",
         "configured": configured,
+        "utility_model": (kb.utility_model.strip() if utility_set else model),
+        "utility_source": "utility" if utility_set else "same as writing",
     }
 
 
@@ -125,6 +141,7 @@ def get_project_detail(project_name: str) -> dict[str, Any] | None:
         "num_chapters": kb.num_chapters,
         "llm_provider": kb.llm_provider,
         "model": kb.model,
+        "utility_model": kb.utility_model,
         "outline": kb.outline,
         "next_step": progress.next_step,
         "chapter_count": len(existing_chapters),

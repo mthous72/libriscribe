@@ -33,7 +33,7 @@ from libriscribe.knowledge_base import (
     Worldbuilding,
     Scene,
 )
-from libriscribe.services.project_service import load_kb, save_kb, get_projects_dir, create_llm_client
+from libriscribe.services.project_service import load_kb, save_kb, get_projects_dir, create_llm_client, create_utility_client
 
 router = APIRouter(prefix="/api/projects", tags=["lorebook"])
 
@@ -510,9 +510,10 @@ class ProposalApplyRequest(BaseModel):
 
 
 def _maybe_client(kb):
-    """Best-effort LLM client for the project; None if it can't be built."""
+    """Best-effort LLM client for STRUCTURED lore tasks (classify, extract) — uses the project's
+    Utility model when set (falls back to the Writing model). None if it can't be built."""
     try:
-        return create_llm_client(kb)
+        return create_utility_client(kb)
     except Exception:
         return None
 

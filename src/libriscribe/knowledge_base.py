@@ -193,7 +193,8 @@ class ProjectKnowledgeBase(BaseModel):
     num_chapters: int | tuple[int, int] = 1
     num_chapters_str: str = ""
     llm_provider: str = "openai"
-    model: str = ""
+    model: str = ""  # the "Writing" model — prose, brainstorm chat, chapter generation
+    utility_model: str = ""  # optional model for structured tasks (lore intake); blank ⇒ use `model`
     agent_models: dict[str, str] = Field(default_factory=dict)
     fallback_chain: list[str] = Field(default_factory=list)
     agent_fallback_chains: dict[str, list[str]] = Field(default_factory=dict)

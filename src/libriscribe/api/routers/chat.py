@@ -20,7 +20,7 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 from libriscribe.knowledge_base import Character, Location, LoreEntry, StoryArc
-from libriscribe.services.project_service import get_projects_dir, load_kb, save_kb, create_llm_client
+from libriscribe.services.project_service import get_projects_dir, load_kb, save_kb, create_llm_client, create_utility_client
 from libriscribe.services.lore_intake import SMART_FIELDS
 from libriscribe.utils.token_utils import estimate_tokens
 
@@ -286,7 +286,11 @@ def _manage_session_memory(name: str, kb, session: dict, client) -> tuple[str, i
 
 
 def _client_for(kb):
-    return create_llm_client(kb)
+    return create_llm_client(kb)  # Writing model — the brainstorm conversation itself
+
+
+def _utility_client_for(kb):
+    return create_utility_client(kb)  # Utility model — structured lore extraction from a reply
 
 
 # ─── Endpoints ────────────────────────────────────────────────────────────────
@@ -675,7 +679,7 @@ def _extract_fields(kb, target_type: str, text: str, entity_name: str = "") -> d
     from libriscribe.services import lore_intake
 
     return lore_intake.llm_extract_for_type(
-        _client_for(kb), kb.genre, entity_name, text, target_type, book_title=kb.title,
+        _utility_client_for(kb), kb.genre, entity_name, text, target_type, book_title=kb.title,
     )
 
 
@@ -700,7 +704,7 @@ def parse_to_proposal(name: str, body: ParseRequest):
 
     from libriscribe.services import lore_intake
 
-    cats = lore_intake.extract_from_text(_client_for(kb), kb.genre, text, book_title=kb.title)
+    cats = lore_intake.extract_from_text(_utility_client_for(kb), kb.genre, text, book_title=kb.title)
     if lore_intake.cats_count(cats) == 0:
         raise HTTPException(
             status_code=422,

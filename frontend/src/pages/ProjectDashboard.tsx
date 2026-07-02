@@ -29,12 +29,13 @@ export default function ProjectDashboard() {
   const logEndRef = useRef<HTMLDivElement>(null)
   const [llmProvider, setLlmProvider] = useState('openai')
   const [llmModel, setLlmModel] = useState('')
+  const [utilityModel, setUtilityModel] = useState('')
   const [llmModels, setLlmModels] = useState<any[]>([])
   const [loadingLlmModels, setLoadingLlmModels] = useState(false)
   const [llmModelError, setLlmModelError] = useState('')
   const [savingLlm, setSavingLlm] = useState(false)
   const [savedLlm, setSavedLlm] = useState(false)
-  const [activeModel, setActiveModel] = useState<{ provider: string, model: string, source: string, configured: boolean } | null>(null)
+  const [activeModel, setActiveModel] = useState<{ provider: string, model: string, source: string, configured: boolean, utility_model: string, utility_source: string } | null>(null)
   const [versions, setVersions] = useState<any[]>([])
   const [versionLabel, setVersionLabel] = useState('')
   const [savingVersion, setSavingVersion] = useState(false)
@@ -105,6 +106,7 @@ export default function ProjectDashboard() {
     if (project) {
       setLlmProvider(project.llm_provider || 'openai')
       setLlmModel(project.model || '')
+      setUtilityModel(project.utility_model || '')
     }
   }, [project])
 
@@ -167,7 +169,7 @@ export default function ProjectDashboard() {
   const saveLlm = async () => {
     setSavingLlm(true)
     try {
-      await updateProjectSettings(name!, { llm_provider: llmProvider, model: llmModel })
+      await updateProjectSettings(name!, { llm_provider: llmProvider, model: llmModel, utility_model: utilityModel })
       setSavedLlm(true)
       setTimeout(() => setSavedLlm(false), 2000)
       refresh()
@@ -309,7 +311,7 @@ export default function ProjectDashboard() {
             </select>
           </label>
           <label className="block">
-            <span className="text-xs text-gray-400">Model</span>
+            <span className="text-xs text-gray-400">Writing model</span>
             <ModelPicker
               value={llmModel}
               onChange={setLlmModel}
@@ -319,18 +321,42 @@ export default function ProjectDashboard() {
               placeholder="leave blank for the provider default"
               error={llmModelError}
             />
+            <p className="mt-1 text-xs text-gray-500">Prose, brainstorm chat, chapter generation.</p>
+          </label>
+          <label className="block">
+            <span className="text-xs text-gray-400">Utility model</span>
+            <ModelPicker
+              value={utilityModel}
+              onChange={setUtilityModel}
+              models={llmModels}
+              loading={loadingLlmModels}
+              onLoad={loadLlmModels}
+              placeholder="leave blank to use the writing model"
+            />
+            <p className="mt-1 text-xs text-gray-500">
+              Structured tasks — lore extraction & classification. Use a clean instruct model here.
+            </p>
           </label>
         </div>
         {activeModel && (
-          <div className="text-xs">
-            <span className="text-gray-500">Using: </span>
-            <span className="font-medium text-gray-200">{activeModel.model || '(none set)'}</span>
-            <span className="text-gray-500">
-              {' — '}{activeModel.source === 'project' ? 'this project' : 'provider default (Settings)'}
-            </span>
-            {!activeModel.configured && (
-              <span className="ml-2 text-amber-400">⚠ {activeModel.provider} not configured in Settings</span>
-            )}
+          <div className="text-xs space-y-0.5">
+            <div>
+              <span className="text-gray-500">Writing: </span>
+              <span className="font-medium text-gray-200">{activeModel.model || '(none set)'}</span>
+              <span className="text-gray-500">
+                {' — '}{activeModel.source === 'project' ? 'this project' : 'provider default (Settings)'}
+              </span>
+              {!activeModel.configured && (
+                <span className="ml-2 text-amber-400">⚠ {activeModel.provider} not configured in Settings</span>
+              )}
+            </div>
+            <div>
+              <span className="text-gray-500">Utility: </span>
+              <span className="font-medium text-gray-200">{activeModel.utility_model || '(none set)'}</span>
+              <span className="text-gray-500">
+                {' — '}{activeModel.utility_source === 'utility' ? 'this project' : 'same as writing'}
+              </span>
+            </div>
           </div>
         )}
         <button

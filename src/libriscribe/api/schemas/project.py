@@ -53,6 +53,7 @@ class ProjectDetail(BaseModel):
     num_chapters: int | tuple[int, int] | str = 1
     llm_provider: str = "openai"
     model: str = ""
+    utility_model: str = ""
     outline: str = ""
     next_step: str = "concept"
     chapter_count: int = 0

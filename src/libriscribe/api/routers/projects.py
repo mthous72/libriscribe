@@ -138,6 +138,7 @@ def restore_version(name: str, version: int):
 class UpdateProjectSettings(BaseModel):
     llm_provider: str | None = None
     model: str | None = None
+    utility_model: str | None = None
     fallback_chain: list[str] | None = None
 
 
@@ -155,6 +156,8 @@ def update_project_settings(name: str, body: UpdateProjectSettings):
         kb.llm_provider = body.llm_provider
     if body.model is not None:
         kb.model = body.model
+    if body.utility_model is not None:
+        kb.utility_model = body.utility_model
     if body.fallback_chain is not None:
         kb.fallback_chain = body.fallback_chain
     project_service.save_kb(name, kb)
