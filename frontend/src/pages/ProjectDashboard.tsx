@@ -119,6 +119,11 @@ export default function ProjectDashboard() {
     logEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [logs])
 
+  const refreshActiveModel = () => {
+    if (name) getActiveModel(name).then(setActiveModel).catch(() => setActiveModel(null))
+  }
+  useEffect(() => { refreshActiveModel() }, [name])
+
   if (loading) return <div className="text-gray-400">Loading...</div>
   if (!project) return <div className="text-red-400">Project not found</div>
 
@@ -141,11 +146,6 @@ export default function ProjectDashboard() {
       await resumeGeneration(name!, { proceed, apply_ai_style: applyStyle })
     } catch {}
   }
-
-  const refreshActiveModel = () => {
-    if (name) getActiveModel(name).then(setActiveModel).catch(() => setActiveModel(null))
-  }
-  useEffect(() => { refreshActiveModel() }, [name])
 
   const loadLlmModels = async () => {
     setLoadingLlmModels(true)
