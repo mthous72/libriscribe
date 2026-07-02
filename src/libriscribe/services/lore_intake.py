@@ -25,6 +25,7 @@ import re
 
 from libriscribe.knowledge_base import Character, Location, LoreEntry, StoryArc, Worldbuilding
 from libriscribe.services import lore_prompts
+from libriscribe.utils import structured_output
 from libriscribe.utils.file_utils import parse_llm_json
 
 # ─── Canonical mappings ───────────────────────────────────────────────────────
@@ -332,6 +333,7 @@ def llm_classify_entry(client, genre: str, name: str, content: str, book_title: 
         raw = client.generate_content_with_json_repair(
             prompt, max_tokens=1500, temperature=0.2,
             system_prompt=lore_prompts.BASE_SYSTEM_PROMPT,
+            json_schema=structured_output.classify_schema(),
         )
     except Exception:
         return None
@@ -393,6 +395,7 @@ def llm_extract_for_type(
         raw = client.generate_content_with_json_repair(
             prompt, max_tokens=1500, temperature=0.2,
             system_prompt=lore_prompts.BASE_SYSTEM_PROMPT,
+            json_schema=structured_output.json_schema_for_fields(fields_list),
         )
     except Exception:
         return {}

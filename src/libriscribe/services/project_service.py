@@ -32,6 +32,33 @@ def create_llm_client(kb):
     return client
 
 
+_PLACEHOLDER_KEYS = {"", "your_api_key_here", "your-api-key-here", "changeme"}
+
+
+def resolve_active_model(project_name: str) -> dict[str, Any] | None:
+    """Resolve the model that will ACTUALLY run for a project, and where it comes from — so the
+    UI can show it plainly (project override vs. the provider default from Settings) instead of a
+    silent fallback. Returns None if the project doesn't exist."""
+    kb = load_kb(project_name)
+    if kb is None:
+        return None
+    s = Settings()
+    provider = kb.llm_provider or "openai"
+    default_model = getattr(s, f"{provider}_model", "") or ""
+    model = kb.model or default_model
+    if provider == "local":
+        configured = bool(getattr(s, "local_base_url", ""))
+    else:
+        key = (getattr(s, f"{provider}_api_key", "") or "").strip()
+        configured = bool(key) and key.lower() not in _PLACEHOLDER_KEYS
+    return {
+        "provider": provider,
+        "model": model,
+        "source": "project" if kb.model else "provider default",
+        "configured": configured,
+    }
+
+
 def list_projects() -> list[dict[str, Any]]:
     """Lists all projects with summary info."""
     projects_dir = get_projects_dir()

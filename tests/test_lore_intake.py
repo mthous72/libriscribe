@@ -340,6 +340,32 @@ class FencedResponseRegressionTests(unittest.TestCase):
         self.assertEqual([r["name"] for r in out["characters"]], ["Maren"])
 
 
+class StructuredOutputThreadingTests(unittest.TestCase):
+    """The per-entry lore calls should pass a json_schema to the client so capable models force
+    valid, correctly-shaped JSON at generation time."""
+    class _SpyClient:
+        def __init__(self, obj):
+            self._obj = obj
+            self.last_kwargs = None
+        def generate_content_with_json_repair(self, prompt, **kw):
+            self.last_kwargs = kw
+            return "```json\n" + json.dumps(self._obj) + "\n```"
+
+    def test_extract_for_type_passes_field_schema(self):
+        client = self._SpyClient({"role": "technician"})
+        lore_intake.llm_extract_for_type(client, "Sci-Fi", "Maren", "content", "characters")
+        schema = (client.last_kwargs or {}).get("json_schema")
+        self.assertIsNotNone(schema)
+        self.assertEqual(set(schema["properties"]), set(lore_intake.SMART_FIELDS["character"]))
+
+    def test_classify_entry_passes_classify_schema(self):
+        client = self._SpyClient({"category": "character", "fields": {"role": "technician"}})
+        lore_intake.llm_classify_entry(client, "Sci-Fi", "Maren", "content")
+        schema = (client.last_kwargs or {}).get("json_schema")
+        self.assertIsNotNone(schema)
+        self.assertEqual(schema["properties"]["category"]["enum"], ["character", "location", "lore", "arc"])
+
+
 class LorePromptsTests(unittest.TestCase):
     def test_json_example_parses_and_has_all_fields(self):
         example = lore_prompts.json_example("character")

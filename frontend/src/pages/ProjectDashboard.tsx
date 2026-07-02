@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { useProject } from '../hooks/useProject'
 import { useWebSocket } from '../hooks/useWebSocket'
 import { useGenerationStore } from '../store/generationSlice'
-import { startGeneration, cancelGeneration, resumeGeneration, listChapters, getCost, updateProjectSettings, fetchProviderModels, listVersions, saveVersion, restoreVersion, getRetrieval, setRetrieval, getStats } from '../api/client'
+import { startGeneration, cancelGeneration, resumeGeneration, listChapters, getCost, updateProjectSettings, fetchProviderModels, getActiveModel, listVersions, saveVersion, restoreVersion, getRetrieval, setRetrieval, getStats } from '../api/client'
 import ModelPicker from '../components/ModelPicker'
 import { Play, Square, BookOpen, Map, FileText, Download, Save, RefreshCw, Loader2, RotateCcw } from 'lucide-react'
 
@@ -31,8 +31,10 @@ export default function ProjectDashboard() {
   const [llmModel, setLlmModel] = useState('')
   const [llmModels, setLlmModels] = useState<any[]>([])
   const [loadingLlmModels, setLoadingLlmModels] = useState(false)
+  const [llmModelError, setLlmModelError] = useState('')
   const [savingLlm, setSavingLlm] = useState(false)
   const [savedLlm, setSavedLlm] = useState(false)
+  const [activeModel, setActiveModel] = useState<{ provider: string, model: string, source: string, configured: boolean } | null>(null)
   const [versions, setVersions] = useState<any[]>([])
   const [versionLabel, setVersionLabel] = useState('')
   const [savingVersion, setSavingVersion] = useState(false)
@@ -140,12 +142,23 @@ export default function ProjectDashboard() {
     } catch {}
   }
 
+  const refreshActiveModel = () => {
+    if (name) getActiveModel(name).then(setActiveModel).catch(() => setActiveModel(null))
+  }
+  useEffect(() => { refreshActiveModel() }, [name])
+
   const loadLlmModels = async () => {
     setLoadingLlmModels(true)
+    setLlmModelError('')
     try {
       setLlmModels(await fetchProviderModels({ provider: llmProvider }))
     } catch (e: any) {
-      alert(e?.response?.data?.detail || 'Failed to load models')
+      const detail = e?.response?.data?.detail
+      setLlmModelError(
+        detail || (llmProvider === 'local'
+          ? 'Could not reach the local server. Set the Server Base URL in Settings and make sure the server is running.'
+          : 'Could not load models. Check the provider’s API key in Settings.'),
+      )
     } finally {
       setLoadingLlmModels(false)
     }
@@ -158,6 +171,7 @@ export default function ProjectDashboard() {
       setSavedLlm(true)
       setTimeout(() => setSavedLlm(false), 2000)
       refresh()
+      refreshActiveModel()
     } catch (e: any) {
       alert(e?.response?.data?.detail || 'Failed to save AI settings')
     } finally {
@@ -303,9 +317,22 @@ export default function ProjectDashboard() {
               loading={loadingLlmModels}
               onLoad={loadLlmModels}
               placeholder="leave blank for the provider default"
+              error={llmModelError}
             />
           </label>
         </div>
+        {activeModel && (
+          <div className="text-xs">
+            <span className="text-gray-500">Using: </span>
+            <span className="font-medium text-gray-200">{activeModel.model || '(none set)'}</span>
+            <span className="text-gray-500">
+              {' — '}{activeModel.source === 'project' ? 'this project' : 'provider default (Settings)'}
+            </span>
+            {!activeModel.configured && (
+              <span className="ml-2 text-amber-400">⚠ {activeModel.provider} not configured in Settings</span>
+            )}
+          </div>
+        )}
         <button
           onClick={saveLlm}
           disabled={savingLlm}

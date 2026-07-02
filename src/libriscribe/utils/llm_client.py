@@ -9,6 +9,7 @@ import requests
 # (google.genai alone ~0.7s), even when only one provider is used.
 
 from libriscribe.settings import Settings
+from libriscribe.utils import structured_output
 from libriscribe.utils.cost_tracker import CostTracker
 from libriscribe.utils.file_utils import extract_json_from_markdown
 from libriscribe.utils.token_utils import estimate_tokens
@@ -21,6 +22,34 @@ from libriscribe.utils.model_routing import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+# Tokens that identify a "the structured-output param is unsupported" failure, so we can retry the
+# same call WITHOUT the schema instead of failing. Lets structured output be universal + safe.
+_SCHEMA_ERROR_TOKENS = (
+    "response_format", "json_schema", "response_mime_type", "response_schema", "output_config",
+)
+
+
+def _is_schema_error(exc: Exception) -> bool:
+    """True if an exception looks like the provider/SDK rejecting the structured-output param."""
+    if isinstance(exc, TypeError):  # SDK too old for the kwarg
+        return True
+    msg = f"{getattr(exc, 'message', '')} {exc}".lower()
+    return any(tok in msg for tok in _SCHEMA_ERROR_TOKENS)
+
+
+def _call_or_degrade(with_schema, without_schema):
+    """Run ``with_schema``; if it fails specifically because structured output is unsupported,
+    fall back to ``without_schema``. Other errors propagate to the normal fallback loop. Servers
+    that SILENTLY ignore the schema need no handling — their output is still parsed downstream."""
+    try:
+        return with_schema()
+    except Exception as exc:  # noqa: BLE001 — classify then re-raise non-schema errors
+        if _is_schema_error(exc):
+            logger.info("Structured output unsupported (%s); retrying without schema.", exc)
+            return without_schema()
+        raise
 
 httpx_logger = logging.getLogger("httpx")
 httpx_logger.setLevel(logging.WARNING)
@@ -207,6 +236,7 @@ class LLMClient:
         language: str = "English",
         require_valid_json: bool = False,
         system_prompt: Optional[str] = None,
+        json_schema: Optional[dict] = None,
     ) -> str:
         prepared_prompt = self._prepare_prompt(prompt, language)
         routes = build_fallback_route_chain(
@@ -226,6 +256,7 @@ class LLMClient:
                         max_tokens=max_tokens,
                         temperature=temperature,
                         system_prompt=system_prompt,
+                        json_schema=json_schema,
                     )
                     if not response_text or not response_text.strip():
                         raise RecoverableLLMError(
@@ -309,6 +340,7 @@ class LLMClient:
         max_tokens: int,
         temperature: float,
         system_prompt: Optional[str] = None,
+        json_schema: Optional[dict] = None,
     ) -> str:
         provider = route.provider
         model = route.model
@@ -325,12 +357,15 @@ class LLMClient:
             if system_prompt:
                 messages.append({"role": "system", "content": system_prompt})
             messages.append({"role": "user", "content": request_prompt})
-            response = client.chat.completions.create(
-                model=model,
-                messages=messages,
-                max_tokens=max_tokens,
-                temperature=temperature,
-            )
+            base = dict(model=model, messages=messages, max_tokens=max_tokens, temperature=temperature)
+            if json_schema:
+                rf = structured_output.response_format_openai(json_schema)
+                response = _call_or_degrade(
+                    lambda: client.chat.completions.create(**base, response_format=rf),
+                    lambda: client.chat.completions.create(**base),
+                )
+            else:
+                response = client.chat.completions.create(**base)
             content = (response.choices[0].message.content or "").strip()
             if provider == "openrouter" and "```json" not in content and "{" in content:
                 json_match = re.search(r"\{.*\}", content, re.DOTALL)
@@ -349,7 +384,14 @@ class LLMClient:
             )
             if system_prompt:
                 claude_kwargs["system"] = system_prompt
-            response = client.messages.create(**claude_kwargs)
+            if json_schema:
+                output_config = {"format": {"type": "json_schema", "schema": json_schema}}
+                response = _call_or_degrade(
+                    lambda: client.messages.create(**claude_kwargs, output_config=output_config),
+                    lambda: client.messages.create(**claude_kwargs),
+                )
+            else:
+                response = client.messages.create(**claude_kwargs)
             text_content = response.content[0].text.strip()
             self._log_usage(provider, model, prompt, text_content)
             return text_content
@@ -366,11 +408,20 @@ class LLMClient:
             )
             if system_prompt:
                 google_config_kwargs["system_instruction"] = system_prompt
-            response = client.models.generate_content(
-                model=model,
-                contents=prompt,
-                config=google_genai_types.GenerateContentConfig(**google_config_kwargs),
-            )
+
+            def _google_generate(extra_cfg: dict):
+                cfg = google_genai_types.GenerateContentConfig(**google_config_kwargs, **extra_cfg)
+                return client.models.generate_content(model=model, contents=prompt, config=cfg)
+
+            if json_schema:
+                response = _call_or_degrade(
+                    lambda: _google_generate(
+                        {"response_mime_type": "application/json", "response_schema": json_schema}
+                    ),
+                    lambda: _google_generate({}),
+                )
+            else:
+                response = _google_generate({})
             text_response = (response.text or "").strip()
             self._log_usage(provider, model, prompt, text_response)
             return text_response
@@ -384,18 +435,23 @@ class LLMClient:
             if system_prompt:
                 ds_messages.append({"role": "system", "content": system_prompt})
             ds_messages.append({"role": "user", "content": prompt})
-            data = {
-                "model": model,
-                "messages": ds_messages,
-                "max_tokens": max_tokens,
-                "temperature": temperature,
-            }
-            response = requests.post(
-                "https://api.deepseek.com/v1/chat/completions",
-                headers=headers,
-                json=data,
-                timeout=120,
-            )
+
+            def _deepseek_post(extra: dict):
+                data = {
+                    "model": model, "messages": ds_messages,
+                    "max_tokens": max_tokens, "temperature": temperature, **extra,
+                }
+                return requests.post(
+                    "https://api.deepseek.com/v1/chat/completions",
+                    headers=headers, json=data, timeout=120,
+                )
+
+            if json_schema:  # DeepSeek supports json_object (best-effort), not json_schema
+                response = _deepseek_post({"response_format": structured_output.response_format_json_object()})
+                if response.status_code >= 400:  # provider rejected the param — retry plain
+                    response = _deepseek_post({})
+            else:
+                response = _deepseek_post({})
             response.raise_for_status()
             content = response.json()["choices"][0]["message"]["content"].strip()
             self._log_usage(provider, model, prompt, content)
@@ -410,18 +466,25 @@ class LLMClient:
             if system_prompt:
                 mi_messages.append({"role": "system", "content": system_prompt})
             mi_messages.append({"role": "user", "content": prompt})
-            data = {
-                "model": model,
-                "messages": mi_messages,
-                "max_tokens": max_tokens,
-                "temperature": temperature,
-            }
-            response = requests.post(
-                "https://api.mistral.ai/v1/chat/completions",
-                headers=headers,
-                json=data,
-                timeout=120,
-            )
+
+            def _mistral_post(extra: dict):
+                data = {
+                    "model": model, "messages": mi_messages,
+                    "max_tokens": max_tokens, "temperature": temperature, **extra,
+                }
+                return requests.post(
+                    "https://api.mistral.ai/v1/chat/completions",
+                    headers=headers, json=data, timeout=120,
+                )
+
+            if json_schema:  # Mistral supports OpenAI-style json_schema (strict)
+                response = _mistral_post(
+                    {"response_format": structured_output.response_format_openai(json_schema)}
+                )
+                if response.status_code >= 400:  # provider rejected the schema — retry plain
+                    response = _mistral_post({})
+            else:
+                response = _mistral_post({})
             response.raise_for_status()
             content = response.json()["choices"][0]["message"]["content"].strip()
             self._log_usage(provider, model, prompt, content)
@@ -452,6 +515,7 @@ class LLMClient:
         max_tokens: int = 2000,
         temperature: float = 0.7,
         system_prompt: Optional[str] = None,
+        json_schema: Optional[dict] = None,
     ) -> str:
         return self._request_with_fallback(
             prompt=original_prompt,
@@ -459,6 +523,7 @@ class LLMClient:
             temperature=temperature,
             require_valid_json=True,
             system_prompt=system_prompt,
+            json_schema=json_schema,
         )
 
     def generate_content_streaming(

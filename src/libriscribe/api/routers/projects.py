@@ -73,6 +73,16 @@ def get_project(name: str):
     return detail
 
 
+@router.get("/{name}/active-model")
+def get_active_model(name: str):
+    """The model that will actually run for this project, and where it comes from (the project's
+    own override, or the provider default from Settings when the project's model is blank)."""
+    resolved = project_service.resolve_active_model(name)
+    if resolved is None:
+        raise HTTPException(status_code=404, detail="Project not found")
+    return resolved
+
+
 @router.get("/{name}/export")
 def export_project(name: str):
     """Download the whole project as a single self-contained .libriscribe.json bundle."""

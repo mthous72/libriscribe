@@ -6,7 +6,7 @@ export interface ModelInfo { id: string; label?: string; free?: boolean }
 // fetches the provider's models and shows them in a proper <select> (an HTML <datalist>
 // only surfaces options that match the already-typed text, so it reads as "no dropdown").
 export default function ModelPicker({
-  value, onChange, models, loading, onLoad, placeholder,
+  value, onChange, models, loading, onLoad, placeholder, error,
 }: {
   value: string
   onChange: (v: string) => void
@@ -14,6 +14,7 @@ export default function ModelPicker({
   loading: boolean
   onLoad: () => void
   placeholder?: string
+  error?: string
 }) {
   const inList = models.some(m => m.id === value)
   const freeCount = models.filter(m => m.free).length
@@ -50,6 +51,7 @@ export default function ModelPicker({
           ))}
         </select>
       )}
+      {error && <p className="mt-1 text-xs text-red-400">{error}</p>}
     </div>
   )
 }

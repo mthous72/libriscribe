@@ -190,7 +190,7 @@ export default function SettingsPage() {
               </label>
 
               <label className="block">
-                <span className="text-xs text-gray-400">Model</span>
+                <span className="text-xs text-gray-400">Default model</span>
                 <ModelPicker
                   value={settings[`${p.key}_model`] || ''}
                   onChange={v => setSettings({ ...settings, [`${p.key}_model`]: v })}
@@ -198,12 +198,13 @@ export default function SettingsPage() {
                   loading={loadingModels === p.key}
                   onLoad={() => loadModels(p.key)}
                 />
+                <p className="mt-1 text-xs text-gray-500">Used when a project leaves its Model blank.</p>
               </label>
             </div>
           )
         })}
 
-        <label className="block">
+        <label className="block opacity-70">
           <span className="text-xs text-gray-400">Default LLM Provider</span>
           <select
             className="w-full mt-1 px-3 py-1.5 bg-gray-800 border border-gray-700 rounded-lg text-sm"
@@ -212,6 +213,9 @@ export default function SettingsPage() {
           >
             {PROVIDERS.map(p => <option key={p.key} value={p.key}>{p.label}</option>)}
           </select>
+          <p className="mt-1 text-xs text-gray-500">
+            Each project sets its own provider in its dashboard — that always wins over this.
+          </p>
         </label>
 
         <button
