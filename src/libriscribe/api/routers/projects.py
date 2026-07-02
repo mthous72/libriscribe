@@ -448,16 +448,26 @@ async def trigger_format(name: str):
 @router.get("/{name}/cost", response_model=CostSummary)
 def get_cost(name: str):
     """Parses llm_usage.jsonl for cost info."""
+    from libriscribe.utils.paths import get_app_data_dir
+
     project_dir = project_service.get_projects_dir() / name
     usage_file = project_dir / "llm_usage.jsonl"
-    # Also check cwd
-    cwd_usage = Path("llm_usage.jsonl")
+    cwd_usage = Path("llm_usage.jsonl")            # legacy location (older builds)
+    appdata_usage = get_app_data_dir() / "llm_usage.jsonl"  # where CostTracker writes now
 
     entries = []
     total_cost = 0.0
     total_tokens = 0
 
-    for path in [usage_file, cwd_usage]:
+    seen: set[str] = set()
+    for path in [usage_file, cwd_usage, appdata_usage]:
+        try:
+            key = str(path.resolve())
+        except Exception:
+            key = str(path)
+        if key in seen:
+            continue
+        seen.add(key)
         if path.exists():
             try:
                 for line in path.read_text(encoding="utf-8").splitlines():
