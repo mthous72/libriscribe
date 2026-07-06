@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { parseChat, streamChat, previewChat, listCharacters, listLocations, listLoreEntries, listArcs, listSessions, createSession, updateSession, deleteSession, getSession, clearSession } from '../api/client'
+import { parseChat, parseChatDebug, streamChat, previewChat, listCharacters, listLocations, listLoreEntries, listArcs, listSessions, createSession, updateSession, deleteSession, getSession, clearSession } from '../api/client'
 import { useBrainstormStore } from '../store/brainstormSlice'
 import LoreProposalReview, { Proposal } from './LoreProposalReview'
 import { MessageSquarePlus, X, Send, Trash2, Loader2, Sparkles, Plus, Pencil, Eye } from 'lucide-react'
@@ -221,6 +221,7 @@ export default function BrainstormDrawer({ projectName }: { projectName: string 
                       <ParseApply
                         projectName={projectName}
                         text={m.content}
+                        focus={focus}
                         onDone={() => setApplyFor(null)}
                         onView={() => { close(); navigate(`/projects/${projectName}/lorebook`) }}
                       />
@@ -253,20 +254,34 @@ export default function BrainstormDrawer({ projectName }: { projectName: string 
 }
 
 // Parse a brainstorm reply into a multi-category proposal, then review & smart-merge it.
-function ParseApply({ projectName, text, onDone, onView }: { projectName: string, text: string, onDone: () => void, onView: () => void }) {
+// When a Focus is active, the reply is decomposed straight into that entity's full field set (B24).
+function ParseApply({ projectName, text, focus, onDone, onView }: { projectName: string, text: string, focus?: { type: string, name: string } | null, onDone: () => void, onView: () => void }) {
   const [proposal, setProposal] = useState<Proposal | null>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
+  const [debug, setDebug] = useState<any>(null)
 
   const parse = async () => {
-    setBusy(true); setError(''); setProposal(null)
+    setBusy(true); setError(''); setProposal(null); setDebug(null)
     try {
-      const r = await parseChat(projectName, { text })
+      const r = await parseChat(projectName, { text, focus_type: focus?.type || null, focus_name: focus?.name || null })
       setProposal(r.proposal)
     } catch (e: any) {
       setError(e?.response?.data?.detail || 'Could not parse this reply.')
     } finally {
       setBusy(false)
+    }
+  }
+
+  const runDebug = async () => {
+    setDebug({ loading: true })
+    try {
+      const r = await parseChatDebug(projectName, { text, focus_type: focus?.type || null, focus_name: focus?.name || null })
+      // eslint-disable-next-line no-console
+      console.log('[brainstorm apply debug]', r)
+      setDebug(r)
+    } catch (e: any) {
+      setDebug({ error: e?.response?.data?.detail || String(e) })
     }
   }
 
@@ -280,8 +295,14 @@ function ParseApply({ projectName, text, onDone, onView }: { projectName: string
           <p>{error}</p>
           <div className="flex gap-2">
             <button onClick={parse} className="px-2 py-1 bg-gray-700 hover:bg-gray-600 rounded">Retry</button>
+            <button onClick={runDebug} className="px-2 py-1 bg-gray-700 hover:bg-gray-600 rounded text-amber-300">Debug</button>
             <button onClick={onDone} className="px-2 py-1 bg-gray-700 hover:bg-gray-600 rounded">Cancel</button>
           </div>
+          {debug && (
+            <pre className="max-h-64 overflow-auto rounded bg-black/60 border border-gray-700 p-2 text-[10px] text-gray-300 whitespace-pre-wrap break-words">
+              {debug.loading ? 'Running diagnostic…' : JSON.stringify(debug, null, 2)}
+            </pre>
+          )}
         </div>
       )}
       {proposal && (

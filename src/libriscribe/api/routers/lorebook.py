@@ -573,26 +573,11 @@ class ExtractFieldsRequest(BaseModel):
 
 
 def _existing_fields_for(kb, category: str, name: str) -> dict | None:
-    """Non-empty typed fields of an existing entity with this name in the target category, so
-    the extractor can augment rather than overwrite (the merge/update case). None if absent."""
+    """Non-empty typed fields of an existing entity so the extractor augments rather than
+    overwrites (the merge/update case). Delegates to the shared lore_intake helper."""
     from libriscribe.services import lore_intake
 
-    type_key = lore_intake.CATEGORY_TO_TYPE.get(category)
-    if not type_key or type_key not in lore_intake.TYPE_MAP:
-        return None
-    _, attr = lore_intake.TYPE_MAP[type_key]
-    store = getattr(kb, attr, {}) or {}
-    target = (name or "").strip().lower()
-    rec = next((v for k, v in store.items() if str(k).strip().lower() == target), None)
-    if rec is None:
-        return None
-    data = rec.model_dump() if hasattr(rec, "model_dump") else dict(rec)
-    out = {}
-    for f in lore_intake.SMART_FIELDS.get(type_key, []):
-        v = data.get(f)
-        if v not in (None, "", [], {}):
-            out[f] = lore_intake._to_display(v)
-    return out or None
+    return lore_intake.existing_fields_for(kb, category, name)
 
 
 @router.post("/{name}/lore/extract-fields")
@@ -614,6 +599,63 @@ def extract_fields(name: str, body: ExtractFieldsRequest):
         existing_fields=_existing_fields_for(kb, body.category, body.name),
     )
     return {"fields": fields}
+
+
+@router.post("/{name}/lore/extract-fields/debug")
+def extract_fields_debug(name: str, body: ExtractFieldsRequest):
+    """Diagnostic (kept intentionally): show the FULL round-trip for a field extraction — the
+    model used, the exact prompt, the RAW model responses (with and without the JSON schema), how
+    each parses, and the final field result. For local-model extraction reliability debugging."""
+    from libriscribe.services import lore_intake, lore_prompts
+    from libriscribe.utils import structured_output
+    from libriscribe.utils.file_utils import parse_llm_json
+
+    kb = load_kb(name)
+    if not kb:
+        raise HTTPException(status_code=404, detail="Project not found")
+    client = _maybe_client(kb)
+    if client is None:
+        raise HTTPException(status_code=400, detail="No LLM is configured for this project.")
+
+    type_key = lore_intake.CATEGORY_TO_TYPE.get(
+        body.category, body.category if body.category in lore_intake.SMART_FIELDS else "lore"
+    )
+    fields_list = lore_intake.SMART_FIELDS.get(type_key, ["description"])
+    schema = structured_output.json_schema_for_fields(fields_list)
+    prompt = lore_prompts.build_extract_prompt(
+        kb.genre, kb.title, body.name, body.content, type_key,
+        entry_type_hint=body.entry_type or None,
+        existing_fields=_existing_fields_for(kb, body.category, body.name),
+    )
+
+    def _raw(use_schema: bool):
+        try:
+            return client.generate_content(
+                prompt, max_tokens=1500, temperature=0.2,
+                system_prompt=lore_prompts.BASE_SYSTEM_PROMPT,
+                json_schema=schema if use_schema else None,
+            )
+        except Exception as exc:  # noqa: BLE001 — surface the error text for diagnosis
+            return f"<<EXCEPTION: {type(exc).__name__}: {exc}>>"
+
+    raw_schema = _raw(True)
+    raw_plain = _raw(False)
+    return {
+        "provider": kb.llm_provider,
+        "model": getattr(client, "model", None),
+        "type_key": type_key,
+        "fields_list": fields_list,
+        "prompt": prompt,
+        "raw_with_schema": raw_schema,
+        "parsed_with_schema": parse_llm_json(raw_schema),
+        "raw_without_schema": raw_plain,
+        "parsed_without_schema": parse_llm_json(raw_plain),
+        "final_fields": lore_intake.llm_extract_for_type(
+            client, kb.genre, body.name, body.content, body.category,
+            book_title=kb.title, entry_type_hint=body.entry_type or None,
+            existing_fields=_existing_fields_for(kb, body.category, body.name),
+        ),
+    }
 
 
 @router.post("/{name}/lore/apply-parsed")

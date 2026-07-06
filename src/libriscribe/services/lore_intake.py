@@ -38,6 +38,7 @@ TYPE_MAP = {
     "arc": (StoryArc, "story_arcs"),
 }
 CATEGORY_TO_TYPE = {"characters": "character", "locations": "location", "lore": "lore", "arcs": "arc"}
+TYPE_TO_CATEGORY = {v: k for k, v in CATEGORY_TO_TYPE.items()}  # character -> characters, ...
 ENTITY_CATEGORIES = ("characters", "locations", "lore", "arcs")
 
 # The "interesting" fields the LLM is asked to populate per type (a subset of the model).
@@ -452,6 +453,56 @@ def extract_from_text(client, genre: str, text: str, book_title: str = "") -> di
     cats = _run(True)
     if cats_count(cats) == 0:
         cats = _run(False)
+    return cats
+
+
+def existing_fields_for(kb, category: str, name: str) -> dict | None:
+    """Non-empty typed fields of an existing entity with this name in `category` (accepts a plural
+    category like 'characters' or a singular type key like 'character'). Used to augment rather
+    than overwrite when re-parsing/merging. None if the entity doesn't exist yet."""
+    type_key = CATEGORY_TO_TYPE.get(category, category if category in SMART_FIELDS else None)
+    if not type_key or type_key not in TYPE_MAP:
+        return None
+    _, attr = TYPE_MAP[type_key]
+    store = getattr(kb, attr, {}) or {}
+    target = (name or "").strip().lower()
+    rec = next((v for k, v in store.items() if str(k).strip().lower() == target), None)
+    if rec is None:
+        return None
+    data = rec.model_dump() if hasattr(rec, "model_dump") else dict(rec)
+    out = {}
+    for f in SMART_FIELDS.get(type_key, []):
+        v = data.get(f)
+        if v not in (None, "", [], {}):
+            out[f] = _to_display(v)
+    return out or None
+
+
+def extract_focused(client, kb, focus_type: str, focus_name: str, text: str) -> dict:
+    """Focus-aware brainstorm parse (B24). The session already knows the entity being developed,
+    so decompose the reply into that KNOWN entity's FULL typed field set (pre-targeted to it,
+    augmenting its current fields) instead of re-discovering/re-classifying it — then still sweep
+    the reply for any OTHER entities and fold them in, deduped against the focus."""
+    if client is None:
+        return _empty_cats()
+    category = TYPE_TO_CATEGORY.get(focus_type, focus_type)
+    cats = _empty_cats()
+
+    fields = llm_extract_for_type(
+        client, kb.genre, focus_name, text, focus_type, book_title=kb.title,
+        existing_fields=existing_fields_for(kb, category, focus_name),
+    )
+    if fields and category in cats:
+        cats[category].append({"name": focus_name, "fields": fields})
+
+    # Also catch other entities the reply introduces — but never duplicate the focused one.
+    others = extract_from_text(client, kb.genre, text, book_title=kb.title)
+    target = (focus_name or "").strip().lower()
+    for cat in ENTITY_CATEGORIES:
+        for rec in others.get(cat, []) or []:
+            if cat == category and str(rec.get("name", "")).strip().lower() == target:
+                continue
+            cats[cat].append(rec)
     return cats
 
 
