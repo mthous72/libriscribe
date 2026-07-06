@@ -420,5 +420,60 @@ class LorePromptsTests(unittest.TestCase):
         self.assertIn("ENTRY NAME: Maren", p)
 
 
+class ExpandedCharacterFieldsTests(unittest.TestCase):
+    def test_character_field_set_includes_conflicts_and_age(self):
+        for f in ("internal_conflicts", "external_conflicts", "age"):
+            self.assertIn(f, lore_intake.SMART_FIELDS["character"])
+
+    def test_merge_applies_conflict_fields_to_character(self):
+        kb = _kb()
+        lore_intake.merge_apply(kb, {"characters": [{"name": "Maren", "fields": {
+            "internal_conflicts": "guilt over the war", "external_conflicts": "hunted by the guild"}}]})
+        m = kb.characters["Maren"]
+        self.assertEqual(m.internal_conflicts, "guilt over the war")
+        self.assertEqual(m.external_conflicts, "hunted by the guild")
+
+
+class FocusAwareApplyTests(unittest.TestCase):
+    """B24: a focused brainstorm decomposes the reply into the KNOWN entity's full field set,
+    deduped against any entities the discovery sweep also surfaces."""
+    class _C:
+        """extract-for-type returns full character fields; the discovery sweep finds nothing else."""
+        def generate_content_with_json_repair(self, prompt, **kw):
+            if "brainstorming note" in prompt:  # extract_from_text (discovery)
+                return json.dumps({"characters": [], "locations": [], "lore": [], "arcs": []})
+            return "```json\n" + json.dumps({
+                "internal_conflicts": "guilt", "external_conflicts": "hunted", "motivations": "freedom",
+            }) + "\n```"
+
+    def test_decomposes_focused_entity_into_full_fields(self):
+        cats = lore_intake.extract_focused(self._C(), _kb(), "character", "Maren", "Maren: guilt, hunted, wants out.")
+        chars = cats["characters"]
+        self.assertEqual([r["name"] for r in chars], ["Maren"])
+        f = chars[0]["fields"]
+        self.assertEqual(f.get("internal_conflicts"), "guilt")
+        self.assertEqual(f.get("external_conflicts"), "hunted")
+
+    def test_dedups_focus_and_keeps_other_entities(self):
+        class _C2:
+            def generate_content_with_json_repair(self, prompt, **kw):
+                if "brainstorming note" in prompt:  # discovery also surfaces Maren + a new one
+                    return json.dumps({"characters": [{"name": "Maren", "role": "tech"},
+                                                       {"name": "Tya", "role": "broker"}],
+                                       "locations": [], "lore": [], "arcs": []})
+                return "```json\n" + json.dumps({"motivations": "freedom"}) + "\n```"
+        cats = lore_intake.extract_focused(_C2(), _kb(), "character", "Maren", "...")
+        names = [r["name"] for r in cats["characters"]]
+        self.assertEqual(names.count("Maren"), 1)   # focused entity, not duplicated
+        self.assertIn("Tya", names)                 # other entity retained
+
+    def test_existing_fields_for_accepts_plural_and_singular(self):
+        kb = _kb()
+        kb.add_character(Character(name="Tya", role="rogue", motivations="freedom"))
+        self.assertEqual(lore_intake.existing_fields_for(kb, "characters", "tya")["role"], "rogue")
+        self.assertEqual(lore_intake.existing_fields_for(kb, "character", "Tya")["motivations"], "freedom")
+        self.assertIsNone(lore_intake.existing_fields_for(kb, "characters", "Nobody"))
+
+
 if __name__ == "__main__":
     unittest.main()

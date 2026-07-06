@@ -20,7 +20,10 @@ import json
 
 # type key -> the "interesting" fields the model is asked to populate (subset of the model).
 TYPE_FIELDS = {
-    "character": ["role", "physical_description", "personality_traits", "background", "motivations", "character_arc"],
+    "character": [
+        "role", "age", "physical_description", "personality_traits", "background",
+        "motivations", "internal_conflicts", "external_conflicts", "character_arc",
+    ],
     "location": ["description", "significance"],
     "lore": ["entry_type", "description", "significance"],
     "arc": ["arc_type", "description", "resolution_notes"],
@@ -34,7 +37,10 @@ FIELD_DESCRIPTIONS = {
     "personality_traits": "temperament, disposition, notable traits and quirks",
     "background": "history, origin, backstory, and formative events",
     "motivations": "goals, desires, drives — what this entity wants",
+    "internal_conflicts": "inner struggles — doubts, guilt, competing desires, and self-doubt within the character",
+    "external_conflicts": "conflicts with other people, forces, institutions, or circumstances",
     "character_arc": "how the entity changes, or is expected to change, across the story",
+    "age": "the character's age",
     "description": "a clear description of what this is",
     "significance": "why it matters to the story or world",
     "entry_type": "the kind of thing this is (e.g. faction, item, technology, concept, event, rule)",

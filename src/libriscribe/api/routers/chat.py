@@ -685,6 +685,8 @@ def _extract_fields(kb, target_type: str, text: str, entity_name: str = "") -> d
 
 class ParseRequest(BaseModel):
     text: str
+    focus_type: str | None = None  # B24: when the session is focused on an entity, decompose the
+    focus_name: str | None = None  # reply straight into THAT known entity's full field set
 
 
 @router.post("/{name}/chat/parse")
@@ -692,7 +694,9 @@ def parse_to_proposal(name: str, body: ParseRequest):
     """Parse a brainstorm reply into a reviewable, multi-category lore proposal (B12).
 
     Extracts characters / locations / lore / arcs with typed fields, annotates each with
-    new/update status against the KB, and returns the proposal WITHOUT writing anything.
+    new/update status against the KB, and returns the proposal WITHOUT writing anything. When a
+    focus is supplied (B24), the focused entity is decomposed into its full typed field set and
+    pre-targeted to the known record, rather than re-classified from scratch.
     """
     kb = load_kb(name)
     if not kb:
@@ -704,13 +708,60 @@ def parse_to_proposal(name: str, body: ParseRequest):
 
     from libriscribe.services import lore_intake
 
-    cats = lore_intake.extract_from_text(_utility_client_for(kb), kb.genre, text, book_title=kb.title)
+    client = _utility_client_for(kb)
+    if body.focus_type and body.focus_name:
+        cats = lore_intake.extract_focused(client, kb, body.focus_type, body.focus_name, text)
+    else:
+        cats = lore_intake.extract_from_text(client, kb.genre, text, book_title=kb.title)
     if lore_intake.cats_count(cats) == 0:
         raise HTTPException(
             status_code=422,
             detail="Couldn't extract any lore from this reply. Try a more concrete idea, or use the manual editor.",
         )
     return {"proposal": lore_intake.build_proposal(kb, cats)}
+
+
+@router.post("/{name}/chat/parse/debug")
+def parse_to_proposal_debug(name: str, body: ParseRequest):
+    """Diagnostic (kept): the model + prompt, the RAW response (with and without the schema), how
+    each parses/normalizes, and the final categories — for debugging local-model extraction."""
+    from libriscribe.services import lore_intake, lore_prompts
+    from libriscribe.utils import structured_output
+    from libriscribe.utils.file_utils import parse_llm_json
+
+    kb = load_kb(name)
+    if not kb:
+        raise HTTPException(status_code=404, detail="Project not found")
+    text = (body.text or "").strip()
+    client = _utility_client_for(kb)
+    prompt = lore_prompts.build_extract_from_text_prompt(kb.genre, kb.title, text)
+
+    def _raw(use_schema: bool):
+        try:
+            return client.generate_content(
+                prompt, max_tokens=3000, temperature=0.3,
+                system_prompt=lore_prompts.BASE_SYSTEM_PROMPT,
+                json_schema=structured_output.cats_schema() if use_schema else None,
+            )
+        except Exception as exc:  # noqa: BLE001 — surface the error text for diagnosis
+            return f"<<EXCEPTION: {type(exc).__name__}: {exc}>>"
+
+    raw_schema = _raw(True)
+    raw_plain = _raw(False)
+    focused = None
+    if body.focus_type and body.focus_name:
+        focused = lore_intake.extract_focused(client, kb, body.focus_type, body.focus_name, text)
+    return {
+        "provider": kb.llm_provider,
+        "model": getattr(client, "model", None),
+        "focus": {"type": body.focus_type, "name": body.focus_name} if body.focus_type else None,
+        "prompt": prompt,
+        "raw_with_schema": raw_schema,
+        "normalized_with_schema": lore_intake._normalize_cats(parse_llm_json(raw_schema)),
+        "raw_without_schema": raw_plain,
+        "normalized_without_schema": lore_intake._normalize_cats(parse_llm_json(raw_plain)),
+        "final_cats": focused if focused is not None else lore_intake.extract_from_text(client, kb.genre, text, book_title=kb.title),
+    }
 
 
 @router.post("/{name}/chat/apply")
