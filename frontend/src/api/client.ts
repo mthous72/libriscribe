@@ -125,17 +125,17 @@ export const clearChat = (name: string) => api.delete(`/projects/${name}/chat`)
 // Brainstorm sessions (B18)
 export const listSessions = (name: string) => api.get(`/projects/${name}/chat/sessions`).then(r => r.data)
 export const createSession = (name: string, body: { title?: string, focus?: any }) => api.post(`/projects/${name}/chat/sessions`, body || {}).then(r => r.data)
-export const updateSession = (name: string, sid: string, body: { title?: string, focus?: any }) => api.patch(`/projects/${name}/chat/sessions/${sid}`, body).then(r => r.data)
+export const updateSession = (name: string, sid: string, body: { title?: string, focus?: any, prefs?: any }) => api.patch(`/projects/${name}/chat/sessions/${sid}`, body).then(r => r.data)
 export const deleteSession = (name: string, sid: string) => api.delete(`/projects/${name}/chat/sessions/${sid}`)
 export const getSession = (name: string, sid: string) => api.get(`/projects/${name}/chat/sessions/${sid}`).then(r => r.data)
 export const clearSession = (name: string, sid: string) => api.delete(`/projects/${name}/chat/sessions/${sid}/messages`)
 export const applyChat = (name: string, body: { text: string, target_type: string, entity_name: string, smart?: boolean }) => api.post(`/projects/${name}/chat/apply`, body).then(r => r.data)
 // Streaming chat uses fetch (axios doesn't stream response bodies in the browser).
-export async function streamChat(name: string, message: string, onToken: (t: string) => void, focus?: { type: string, name: string } | null, useReferences: boolean = true, sessionId?: string | null): Promise<void> {
+export async function streamChat(name: string, message: string, onToken: (t: string) => void, focus?: { type: string, name: string } | null, useReferences: boolean = true, sessionId?: string | null, prefs?: Record<string, any> | null): Promise<void> {
   const res = await fetch(`/api/projects/${name}/chat`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ message, focus_type: focus?.type || null, focus_name: focus?.name || null, use_references: useReferences, session_id: sessionId || null }),
+    body: JSON.stringify({ message, focus_type: focus?.type || null, focus_name: focus?.name || null, use_references: useReferences, session_id: sessionId || null, prefs: prefs || null }),
   })
   if (!res.ok || !res.body) throw new Error(`chat failed (${res.status})`)
   const reader = res.body.getReader()
