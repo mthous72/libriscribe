@@ -257,6 +257,7 @@ function ParseApply({ projectName, text, onDone, onView }: { projectName: string
   const [proposal, setProposal] = useState<Proposal | null>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
+  const bumpLore = useBrainstormStore(s => s.bumpLore)
 
   const parse = async () => {
     setBusy(true); setError(''); setProposal(null)
@@ -285,7 +286,7 @@ function ParseApply({ projectName, text, onDone, onView }: { projectName: string
         </div>
       )}
       {proposal && (
-        <LoreProposalReview projectName={projectName} proposal={proposal} onCancel={onDone} onView={onView} />
+        <LoreProposalReview projectName={projectName} proposal={proposal} onApplied={() => bumpLore()} onCancel={onDone} onView={onView} />
       )}
     </div>
   )

@@ -89,6 +89,9 @@ export default function LorebookPage() {
   const [importFormat, setImportFormat] = useState('')
   const fileRef = useRef<HTMLInputElement>(null)
   const openBrainstorm = useBrainstormStore(s => s.openBrainstorm)
+  // Refresh when lore is written elsewhere (e.g. brainstorm Apply-to-lore, which is a separate component).
+  const loreVersion = useBrainstormStore(s => s.loreVersion)
+  const lastLoreVersion = useRef(loreVersion)
 
   const onImportFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
@@ -123,6 +126,13 @@ export default function LorebookPage() {
   }
 
   useEffect(() => { reload() }, [name])
+
+  // Reload when something else writes lore (brainstorm Apply-to-lore) — fires only on an actual bump.
+  useEffect(() => {
+    if (loreVersion === lastLoreVersion.current) return
+    lastLoreVersion.current = loreVersion
+    reload()
+  }, [loreVersion])
 
   const doSearch = async () => {
     if (!name || !searchQuery) return
