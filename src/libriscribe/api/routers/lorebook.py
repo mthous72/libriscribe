@@ -48,7 +48,7 @@ def list_characters(name: str):
     return list(kb.characters.values())
 
 
-@router.get("/{name}/characters/{char_name}")
+@router.get("/{name}/characters/{char_name:path}")
 def get_character(name: str, char_name: str):
     kb = load_kb(name)
     if not kb:
@@ -79,7 +79,7 @@ def create_character(name: str, req: CharacterRequest):
     return char
 
 
-@router.put("/{name}/characters/{char_name}")
+@router.put("/{name}/characters/{char_name:path}")
 def update_character(name: str, char_name: str, req: CharacterRequest):
     kb = load_kb(name)
     if not kb:
@@ -93,7 +93,7 @@ def update_character(name: str, char_name: str, req: CharacterRequest):
     return char
 
 
-@router.delete("/{name}/characters/{char_name}", status_code=204)
+@router.delete("/{name}/characters/{char_name:path}", status_code=204)
 def delete_character(name: str, char_name: str):
     kb = load_kb(name)
     if not kb:
@@ -114,7 +114,7 @@ def list_locations(name: str):
     return list(kb.locations.values())
 
 
-@router.get("/{name}/locations/{loc_name}")
+@router.get("/{name}/locations/{loc_name:path}")
 def get_location(name: str, loc_name: str):
     kb = load_kb(name)
     if not kb:
@@ -136,7 +136,7 @@ def create_location(name: str, req: LocationRequest):
     return loc
 
 
-@router.put("/{name}/locations/{loc_name}")
+@router.put("/{name}/locations/{loc_name:path}")
 def update_location(name: str, loc_name: str, req: LocationRequest):
     kb = load_kb(name)
     if not kb:
@@ -149,7 +149,7 @@ def update_location(name: str, loc_name: str, req: LocationRequest):
     return loc
 
 
-@router.delete("/{name}/locations/{loc_name}", status_code=204)
+@router.delete("/{name}/locations/{loc_name:path}", status_code=204)
 def delete_location(name: str, loc_name: str):
     kb = load_kb(name)
     if not kb:
@@ -170,7 +170,7 @@ def list_lore(name: str):
     return list(kb.lore_entries.values())
 
 
-@router.get("/{name}/lore/{entry_name}")
+@router.get("/{name}/lore/{entry_name:path}")
 def get_lore_entry(name: str, entry_name: str):
     kb = load_kb(name)
     if not kb:
@@ -192,7 +192,7 @@ def create_lore_entry(name: str, req: LoreEntryRequest):
     return entry
 
 
-@router.put("/{name}/lore/{entry_name}")
+@router.put("/{name}/lore/{entry_name:path}")
 def update_lore_entry(name: str, entry_name: str, req: LoreEntryRequest):
     kb = load_kb(name)
     if not kb:
@@ -205,7 +205,7 @@ def update_lore_entry(name: str, entry_name: str, req: LoreEntryRequest):
     return entry
 
 
-@router.delete("/{name}/lore/{entry_name}", status_code=204)
+@router.delete("/{name}/lore/{entry_name:path}", status_code=204)
 def delete_lore_entry(name: str, entry_name: str):
     kb = load_kb(name)
     if not kb:
@@ -226,7 +226,7 @@ def list_arcs(name: str):
     return list(kb.story_arcs.values())
 
 
-@router.get("/{name}/arcs/{arc_name}")
+@router.get("/{name}/arcs/{arc_name:path}")
 def get_arc(name: str, arc_name: str):
     kb = load_kb(name)
     if not kb:
@@ -256,7 +256,7 @@ def create_arc(name: str, req: StoryArcRequest):
     return arc
 
 
-@router.put("/{name}/arcs/{arc_name}")
+@router.put("/{name}/arcs/{arc_name:path}")
 def update_arc(name: str, arc_name: str, req: StoryArcRequest):
     kb = load_kb(name)
     if not kb:
@@ -269,7 +269,7 @@ def update_arc(name: str, arc_name: str, req: StoryArcRequest):
     return arc
 
 
-@router.delete("/{name}/arcs/{arc_name}", status_code=204)
+@router.delete("/{name}/arcs/{arc_name:path}", status_code=204)
 def delete_arc(name: str, arc_name: str):
     kb = load_kb(name)
     if not kb:
@@ -790,7 +790,7 @@ def _parse_chapter_range(body: AnalyzeRequest | None) -> tuple[int, int] | None:
     return None
 
 
-@router.post("/{name}/analyze/character/{char_name}")
+@router.post("/{name}/analyze/character/{char_name:path}")
 def analyze_character(name: str, char_name: str, body: AnalyzeRequest | None = None):
     """Triggers AI analysis of a character across chapters. Returns suggestions."""
     svc, kb = _get_lore_sync(name)
@@ -806,7 +806,7 @@ def analyze_character(name: str, char_name: str, body: AnalyzeRequest | None = N
     ]
 
 
-@router.post("/{name}/analyze/location/{loc_name}")
+@router.post("/{name}/analyze/location/{loc_name:path}")
 def analyze_location(name: str, loc_name: str, body: AnalyzeRequest | None = None):
     """Triggers AI analysis of a location across chapters."""
     svc, kb = _get_lore_sync(name)
@@ -821,7 +821,7 @@ def analyze_location(name: str, loc_name: str, body: AnalyzeRequest | None = Non
     ]
 
 
-@router.post("/{name}/analyze/lore/{entry_name}")
+@router.post("/{name}/analyze/lore/{entry_name:path}")
 def analyze_lore_entry_sync(name: str, entry_name: str, body: AnalyzeRequest | None = None):
     """Triggers AI analysis of a lore entry across chapters."""
     svc, kb = _get_lore_sync(name)
@@ -909,7 +909,7 @@ def list_character_states(name: str):
     return result
 
 
-@router.get("/{name}/character-states/{char_name}")
+@router.get("/{name}/character-states/{char_name:path}")
 def get_character_states(name: str, char_name: str):
     """Returns state history for a specific character."""
     kb = load_kb(name)
@@ -939,7 +939,7 @@ def list_threads(name: str):
     return [NarrativeThreadResponse(**t.model_dump()) for t in kb.narrative_threads.values()]
 
 
-@router.get("/{name}/threads/{thread_name}")
+@router.get("/{name}/threads/{thread_name:path}")
 def get_thread(name: str, thread_name: str):
     kb = load_kb(name)
     if not kb:
@@ -961,7 +961,7 @@ def create_thread(name: str, req: NarrativeThreadRequest):
     return NarrativeThreadResponse(**thread.model_dump())
 
 
-@router.put("/{name}/threads/{thread_name}")
+@router.put("/{name}/threads/{thread_name:path}")
 def update_thread(name: str, thread_name: str, req: NarrativeThreadRequest):
     kb = load_kb(name)
     if not kb:
@@ -974,7 +974,7 @@ def update_thread(name: str, thread_name: str, req: NarrativeThreadRequest):
     return NarrativeThreadResponse(**thread.model_dump())
 
 
-@router.delete("/{name}/threads/{thread_name}", status_code=204)
+@router.delete("/{name}/threads/{thread_name:path}", status_code=204)
 def delete_thread(name: str, thread_name: str):
     kb = load_kb(name)
     if not kb:
