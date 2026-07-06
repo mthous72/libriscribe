@@ -1215,6 +1215,66 @@ Depth (single vs multi-pass). Persisted per session via `updateSession`; global 
 - Global defaults home (.env keys vs. a `brainstorm_prefs` file).
 - Latency/cost of multi-pass — mitigated by local-only default + progressive streaming.
 
+### Higher end-value output — organize, capture, feed-forward (detective pass, 2026-07-06)
+
+**Thesis.** A Gemma-12B reaches "Claude-like" *end value* not by being smarter but by **orchestration
++ organization + feed-forward**: decompose each turn into small focused passes (which a 12B nails),
+and turn the output into durable artifacts that seed the writing — instead of prose that dies in chat
+scrollback. This is the point of the whole epic; the switches (B23/B26/questioning) shape *the reply*,
+this section makes *the reply worth keeping*.
+
+**What the writing side already consumes** (so we know what to aim brainstorm output at) — from
+`services/context_builder.py`, all auto-injected into each scene prompt: `Scene`{summary, characters,
+setting, goal, emotional_beat, scene_type, target_word_count}; `ArcMilestone`{milestone_type,
+target_chapter, description, status}; `NarrativeThread`{thread_type, description, opened_chapter,
+target_resolution_chapter, status, characters_involved}; `Character`{motivations, character_arc,
+internal/external_conflicts} + `VoiceProfile`{speech_patterns, vocabulary_level, verbal_tics, avoids,
+example_dialogue}; `CharacterState` per chapter; `Location`/`LoreEntry`/`Worldbuilding` fields.
+
+**1. Emulate Claude by decomposing the turn (reuse proven local patterns).**
+- **draft → self-critique → refine** — `agents/concept_generator.py` already does exactly this in 3
+  small calls (generate JSON → plain-text critique → refine). Stream the draft first, fold the refined
+  version in. This single pattern is what makes a 12B read like one sharp Claude answer.
+- **options → judge/rank → recommend** — generate N options, a scoring pass ranks them, present the
+  ranked shortlist + a recommendation (mirror `fact_checker`'s per-item loop).
+- These ARE the epic's "multi-pass enrichment", now mapped to existing, local-friendly code.
+
+**2. Ground + stay consistent.** A consistency pass checks each new idea against established lore
+(retrieval + the focus record) and flags contradictions — reuse `fact_checker`'s extract-claims →
+check-each, pointed at lore instead of the web. (Small models drift; this anchors them.)
+
+**3. Capture the value — the GAP (session "Working Document").** Today only lore *entities* have a
+home; decisions, rationale, parked options, and open questions vanish into chat history. Add a
+persisted, structured **Working Document per session**: `decisions[]`, `open_questions[]`,
+`parked_ideas[]` (each with a one-line rationale), auto-populated by a small **capture pass** after
+substantive turns + user-editable. Feed settled `decisions` back into the system prompt so the 12B
+stops re-litigating them — a big consistency win for small models.
+
+**4. Feed-forward into writing — the payoff.** Generalize "Apply to lore" into **"Promote to
+&lt;structure&gt;"**: from a brainstorm turn, offer *typed* promotions that the writing pipeline already
+consumes — **arc milestone** (with target chapter), **narrative thread** (with resolution chapter),
+**scene beat**, **voice tic/profile**, **character field** — via the proven per-entity extractor
+(`lore_intake.llm_extract_for_type`) extended to these types + smart-merge. This is the highest end
+value: brainstorm output directly seeds outline/scene/chapter generation.
+
+**5. The capture pass is the organizing spine.** One small structured pass per substantive turn emits:
+Decisions, Open questions, and *promotable typed artifacts* ("reads like an arc milestone ~ch 7"; "this
+is a voice tic"). Surface as lightweight **accept-chips**; one click writes to the Working Document or
+promotes into the KB structure. Keeps the reply conversational (Claude-like) while continuously
+producing structured, feed-forward output on a side lane.
+
+**Reusable building blocks (code map):** `concept_generator` generate→critique→refine;
+`fact_checker` extract→check-each; `lore_intake.llm_extract_for_type` (per-entity, schema + example —
+the gold pattern for 12B); `lore_intake.merge_apply` smart upsert; `context_builder.TokenBudget`;
+`chat._manage_session_memory` rolling summary; `llm_client` structured-output + repair. All
+local-model-friendly.
+
+**Open decisions:** force structure on the chat reply vs. keep it conversational (lean: conversational
+reply + a separate capture/promote lane); Working Document auto-populated vs. user-curated (lean:
+auto-suggest → user confirm); which promotion targets ship first (lean: arc-milestone +
+narrative-thread + character-field — they most directly feed the writing). Extends B24 (focus-aware
+apply) and B25 (interconnection).
+
 ## Docs refresh (Docusaurus, **not a wiki**) — low-priority parallel track
 
 Decision (2026-07-01): we already have a **Docusaurus** site in `docs/` wired for GitHub
