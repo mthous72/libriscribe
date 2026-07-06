@@ -517,11 +517,17 @@ def existing_fields_for(kb, category: str, name: str) -> dict | None:
     return out or None
 
 
-def extract_focused(client, kb, focus_type: str, focus_name: str, text: str) -> dict:
+def extract_focused(client, kb, focus_type: str, focus_name: str, text: str,
+                    include_others: bool = False) -> dict:
     """Focus-aware brainstorm parse (B24). The session already knows the entity being developed,
     so decompose the reply into that KNOWN entity's FULL typed field set (pre-targeted to it,
-    augmenting its current fields) instead of re-discovering/re-classifying it — then still sweep
-    the reply for any OTHER entities and fold them in, deduped against the focus."""
+    augmenting its current fields) instead of re-discovering/re-classifying it.
+
+    By default this returns ONLY the focused entity — "develop Tya" should update Tya, not scrape
+    the whole conversation. The multi-entity discovery sweep is unreliable on brainstorm prose and
+    was inventing garbage character records, so it is OFF unless ``include_others`` is set. When on,
+    other entities are folded in but only if they ALREADY EXIST in the KB (never invent new ones),
+    and never duplicating the focused entity."""
     if client is None:
         return _empty_cats()
     category = TYPE_TO_CATEGORY.get(focus_type, focus_type)
@@ -534,12 +540,21 @@ def extract_focused(client, kb, focus_type: str, focus_name: str, text: str) -> 
     if fields and category in cats:
         cats[category].append({"name": focus_name, "fields": fields})
 
-    # Also catch other entities the reply introduces — but never duplicate the focused one.
+    if not include_others:
+        return cats
+
+    # Opt-in: fold in OTHER entities the reply mentions — but only known ones (no invented junk),
+    # and never the focused entity itself.
     others = extract_from_text(client, kb.genre, text, book_title=kb.title)
     target = (focus_name or "").strip().lower()
     for cat in ENTITY_CATEGORIES:
+        model_cls, attr = TYPE_MAP[CATEGORY_TO_TYPE[cat]]
+        known = {k.lower() for k in (getattr(kb, attr, {}) or {})}
         for rec in others.get(cat, []) or []:
-            if cat == category and str(rec.get("name", "")).strip().lower() == target:
+            rec_name = str(rec.get("name", "")).strip().lower()
+            if not rec_name or rec_name not in known:
+                continue  # only update entities that already exist; don't create from the sweep
+            if cat == category and rec_name == target:
                 continue
             cats[cat].append(rec)
     return cats
