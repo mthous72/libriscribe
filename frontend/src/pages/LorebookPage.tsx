@@ -16,7 +16,7 @@ import {
 } from '../api/client'
 import { useBrainstormStore } from '../store/brainstormSlice'
 import LoreProposalReview, { Proposal } from '../components/LoreProposalReview'
-import { Plus, Trash2, Search, Sparkles, Check, X, Edit3, AlertTriangle, Loader2, ChevronDown, ChevronRight, Upload } from 'lucide-react'
+import { Plus, Trash2, Search, Sparkles, Check, X, Edit3, AlertTriangle, Loader2, ChevronDown, ChevronRight, Upload, RefreshCw } from 'lucide-react'
 
 const TAB_TO_FOCUS: Record<string, string> = { Characters: 'character', Locations: 'location', Lore: 'lore', Arcs: 'arc' }
 import { useUiStore } from '../store/uiSlice'
@@ -266,7 +266,12 @@ export default function LorebookPage() {
           </div>
         </div>
       )}
-      <h1 className="text-2xl font-bold mb-4">Lorebook</h1>
+      <div className="flex items-center justify-between mb-4">
+        <h1 className="text-2xl font-bold">Lorebook</h1>
+        <button onClick={() => reload()} title="Refresh from the project (e.g. after applying lore from a brainstorm)" className="flex items-center gap-1.5 px-3 py-1.5 bg-gray-800 hover:bg-gray-700 rounded-lg text-sm text-gray-300">
+          <RefreshCw size={14} /> Refresh
+        </button>
+      </div>
       <div className="flex items-center justify-between mb-4 gap-2 flex-wrap">
         <div className="flex gap-1 flex-wrap">
           {TABS.map(t => (

@@ -26,6 +26,7 @@ class LorebookDeleteTests(unittest.TestCase):
         kb.add_character(Character(name="Maren"))            # simple
         kb.add_character(Character(name="Maren Vance"))       # space
         kb.add_character(Character(name="CEE — UNIT C-774"))  # unicode em-dash + hyphens
+        kb.add_character(Character(name="she/her (unnamed protagonist/android/appliance) own_role:"))  # slashes
         project_service.save_kb("demo", kb)
         self.client = TestClient(create_app())
 
@@ -40,10 +41,12 @@ class LorebookDeleteTests(unittest.TestCase):
             f"/api/projects/demo/characters/{urllib.parse.quote(char_name)}"
         ).status_code
 
-    def test_delete_simple_spaced_and_unicode_names(self):
+    def test_delete_simple_spaced_unicode_and_slashed_names(self):
         self.assertEqual(self._delete("Maren"), 204)
         self.assertEqual(self._delete("Maren Vance"), 204)
         self.assertEqual(self._delete("CEE — UNIT C-774"), 204)
+        # Slashes in the name (junk imports) route via the {char_name:path} converter.
+        self.assertEqual(self._delete("she/her (unnamed protagonist/android/appliance) own_role:"), 204)
         remaining = [c["name"] for c in self.client.get("/api/projects/demo/characters").json()]
         self.assertEqual(remaining, [])
 
