@@ -221,13 +221,16 @@ export default function LorebookPage() {
     if (!name || !confirm(`Delete "${item.name}"?`)) return
     try {
       if (tab === 'Characters') await deleteCharacter(name, item.name)
-      if (tab === 'Locations') await deleteLocation(name, item.name)
-      if (tab === 'Lore') await deleteLoreEntry(name, item.name)
-      if (tab === 'Arcs') await deleteArc(name, item.name)
-      if (tab === 'Threads') await deleteThread(name, item.name)
+      else if (tab === 'Locations') await deleteLocation(name, item.name)
+      else if (tab === 'Lore') await deleteLoreEntry(name, item.name)
+      else if (tab === 'Arcs') await deleteArc(name, item.name)
+      else if (tab === 'Threads') await deleteThread(name, item.name)
       setSelected(null)
-      reload()
-    } catch {}
+      await reload()
+    } catch (e: any) {
+      // Surface the real reason instead of silently doing nothing.
+      alert(`Couldn't delete "${item.name}": ${e?.response?.data?.detail || e?.message || 'request failed'}`)
+    }
   }
 
   const worldFields = Object.keys(world).filter(k => typeof world[k] === 'string')
