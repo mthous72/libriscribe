@@ -427,6 +427,19 @@ class ExpandedCharacterFieldsTests(unittest.TestCase):
         for f in ("internal_conflicts", "external_conflicts", "age"):
             self.assertIn(f, lore_intake.SMART_FIELDS["character"])
 
+    def test_character_field_set_includes_sex_and_orientation(self):
+        for f in ("sex", "sexual_orientation"):
+            self.assertIn(f, lore_intake.SMART_FIELDS["character"])
+            self.assertIn(f, lore_prompts.FIELD_DESCRIPTIONS)
+
+    def test_merge_applies_sex_and_orientation_to_character(self):
+        kb = _kb()
+        lore_intake.merge_apply(kb, {"characters": [{"name": "Maren", "fields": {
+            "sex": "female", "sexual_orientation": "bisexual"}}]})
+        m = kb.characters["Maren"]
+        self.assertEqual(m.sex, "female")
+        self.assertEqual(m.sexual_orientation, "bisexual")
+
     def test_merge_applies_conflict_fields_to_character(self):
         kb = _kb()
         lore_intake.merge_apply(kb, {"characters": [{"name": "Maren", "fields": {

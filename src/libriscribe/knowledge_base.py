@@ -20,6 +20,8 @@ class VoiceProfile(BaseModel):
 class Character(BaseModel):
     name: str
     age: str = ""
+    sex: str = ""
+    sexual_orientation: str = ""
     physical_description: str = ""
     personality_traits: str = ""
     background: str = ""

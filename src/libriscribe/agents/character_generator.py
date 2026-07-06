@@ -99,6 +99,8 @@ class CharacterGeneratorAgent(Agent):
                         character = Character(
                             name=flattened_char_data.get("name", ""),
                             age=str(flattened_char_data.get("age", "")),
+                            sex=flattened_char_data.get("sex", "") or flattened_char_data.get("gender", ""),
+                            sexual_orientation=flattened_char_data.get("sexual orientation", "") or flattened_char_data.get("sexual_orientation", ""),
                             physical_description=flattened_char_data.get("physical description", ""),
                             personality_traits=personality_traits,
                             background=flattened_char_data.get("background", "") or flattened_char_data.get("background/backstory", ""),
@@ -150,6 +152,8 @@ class CharacterGeneratorAgent(Agent):
 Character details:
 - Role: {character.role}
 - Age: {character.age}
+- Sex: {character.sex}
+- Sexual orientation: {character.sexual_orientation}
 - Personality: {character.personality_traits}
 - Background: {character.background}
 
