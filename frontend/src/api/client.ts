@@ -56,25 +56,25 @@ export const fetchProviderModels = (body: { provider: string, api_key?: string, 
 
 // ─── Lorebook ────────────────────────────────────────────────
 export const listCharacters = (name: string) => api.get(`/projects/${name}/characters`).then(r => r.data)
-export const getCharacter = (name: string, charName: string) => api.get(`/projects/${name}/characters/${charName}`).then(r => r.data)
+export const getCharacter = (name: string, charName: string) => api.get(`/projects/${name}/characters/${encodeURIComponent(charName)}`).then(r => r.data)
 export const createCharacter = (name: string, body: any) => api.post(`/projects/${name}/characters`, body).then(r => r.data)
-export const updateCharacter = (name: string, charName: string, body: any) => api.put(`/projects/${name}/characters/${charName}`, body).then(r => r.data)
-export const deleteCharacter = (name: string, charName: string) => api.delete(`/projects/${name}/characters/${charName}`)
+export const updateCharacter = (name: string, charName: string, body: any) => api.put(`/projects/${name}/characters/${encodeURIComponent(charName)}`, body).then(r => r.data)
+export const deleteCharacter = (name: string, charName: string) => api.delete(`/projects/${name}/characters/${encodeURIComponent(charName)}`)
 
 export const listLocations = (name: string) => api.get(`/projects/${name}/locations`).then(r => r.data)
 export const createLocation = (name: string, body: any) => api.post(`/projects/${name}/locations`, body).then(r => r.data)
-export const updateLocation = (name: string, locName: string, body: any) => api.put(`/projects/${name}/locations/${locName}`, body).then(r => r.data)
-export const deleteLocation = (name: string, locName: string) => api.delete(`/projects/${name}/locations/${locName}`)
+export const updateLocation = (name: string, locName: string, body: any) => api.put(`/projects/${name}/locations/${encodeURIComponent(locName)}`, body).then(r => r.data)
+export const deleteLocation = (name: string, locName: string) => api.delete(`/projects/${name}/locations/${encodeURIComponent(locName)}`)
 
 export const listLoreEntries = (name: string) => api.get(`/projects/${name}/lore`).then(r => r.data)
 export const createLoreEntry = (name: string, body: any) => api.post(`/projects/${name}/lore`, body).then(r => r.data)
-export const updateLoreEntry = (name: string, entryName: string, body: any) => api.put(`/projects/${name}/lore/${entryName}`, body).then(r => r.data)
-export const deleteLoreEntry = (name: string, entryName: string) => api.delete(`/projects/${name}/lore/${entryName}`)
+export const updateLoreEntry = (name: string, entryName: string, body: any) => api.put(`/projects/${name}/lore/${encodeURIComponent(entryName)}`, body).then(r => r.data)
+export const deleteLoreEntry = (name: string, entryName: string) => api.delete(`/projects/${name}/lore/${encodeURIComponent(entryName)}`)
 
 export const listArcs = (name: string) => api.get(`/projects/${name}/arcs`).then(r => r.data)
 export const createArc = (name: string, body: any) => api.post(`/projects/${name}/arcs`, body).then(r => r.data)
-export const updateArc = (name: string, arcName: string, body: any) => api.put(`/projects/${name}/arcs/${arcName}`, body).then(r => r.data)
-export const deleteArc = (name: string, arcName: string) => api.delete(`/projects/${name}/arcs/${arcName}`)
+export const updateArc = (name: string, arcName: string, body: any) => api.put(`/projects/${name}/arcs/${encodeURIComponent(arcName)}`, body).then(r => r.data)
+export const deleteArc = (name: string, arcName: string) => api.delete(`/projects/${name}/arcs/${encodeURIComponent(arcName)}`)
 
 export const importLore = (name: string, body: { data: any, smart?: boolean }) => api.post(`/projects/${name}/lore/import`, body).then(r => r.data)
 // Smart lore intake (B12 + B13): parse → review → merge
@@ -96,23 +96,23 @@ export const createScene = (name: string, chapterNum: number, body: any) => api.
 export const deleteScene = (name: string, chapterNum: number, sceneNum: number) => api.delete(`/projects/${name}/scenes/${chapterNum}/${sceneNum}`)
 
 // ─── Lore Sync / Analysis ────────────────────────────────
-export const analyzeCharacter = (name: string, charName: string, body?: any) => api.post(`/projects/${name}/analyze/character/${charName}`, body || {}).then(r => r.data)
-export const analyzeLocation = (name: string, locName: string, body?: any) => api.post(`/projects/${name}/analyze/location/${locName}`, body || {}).then(r => r.data)
-export const analyzeLoreEntry = (name: string, entryName: string, body?: any) => api.post(`/projects/${name}/analyze/lore/${entryName}`, body || {}).then(r => r.data)
+export const analyzeCharacter = (name: string, charName: string, body?: any) => api.post(`/projects/${name}/analyze/character/${encodeURIComponent(charName)}`, body || {}).then(r => r.data)
+export const analyzeLocation = (name: string, locName: string, body?: any) => api.post(`/projects/${name}/analyze/location/${encodeURIComponent(locName)}`, body || {}).then(r => r.data)
+export const analyzeLoreEntry = (name: string, entryName: string, body?: any) => api.post(`/projects/${name}/analyze/lore/${encodeURIComponent(entryName)}`, body || {}).then(r => r.data)
 export const checkContinuity = (name: string, body?: any) => api.post(`/projects/${name}/analyze/continuity`, body || {}).then(r => r.data)
 export const listSuggestions = (name: string, status: string = 'pending') => api.get(`/projects/${name}/suggestions`, { params: { status } }).then(r => r.data)
 export const acceptSuggestion = (name: string, idx: number) => api.put(`/projects/${name}/suggestions/${idx}/accept`).then(r => r.data)
 export const rejectSuggestion = (name: string, idx: number) => api.put(`/projects/${name}/suggestions/${idx}/reject`).then(r => r.data)
 export const editSuggestion = (name: string, idx: number, body: { proposed_value: string }) => api.put(`/projects/${name}/suggestions/${idx}/edit`, body).then(r => r.data)
 export const listCharacterStates = (name: string) => api.get(`/projects/${name}/character-states`).then(r => r.data)
-export const getCharacterStates = (name: string, charName: string) => api.get(`/projects/${name}/character-states/${charName}`).then(r => r.data)
+export const getCharacterStates = (name: string, charName: string) => api.get(`/projects/${name}/character-states/${encodeURIComponent(charName)}`).then(r => r.data)
 export const listContinuityNotes = (name: string) => api.get(`/projects/${name}/continuity-notes`).then(r => r.data)
 
 // ─── Narrative Threads ──────────────────────────────────
 export const listThreads = (name: string) => api.get(`/projects/${name}/threads`).then(r => r.data)
 export const createThread = (name: string, body: any) => api.post(`/projects/${name}/threads`, body).then(r => r.data)
-export const updateThread = (name: string, threadName: string, body: any) => api.put(`/projects/${name}/threads/${threadName}`, body).then(r => r.data)
-export const deleteThread = (name: string, threadName: string) => api.delete(`/projects/${name}/threads/${threadName}`)
+export const updateThread = (name: string, threadName: string, body: any) => api.put(`/projects/${name}/threads/${encodeURIComponent(threadName)}`, body).then(r => r.data)
+export const deleteThread = (name: string, threadName: string) => api.delete(`/projects/${name}/threads/${encodeURIComponent(threadName)}`)
 
 // ─── Outline Regeneration ───────────────────────────────
 export const regenerateOutline = (name: string, body: { locked_chapters: number[], regenerate_chapters: number[] }) => api.post(`/projects/${name}/regenerate-outline`, body).then(r => r.data)
