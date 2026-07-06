@@ -347,16 +347,18 @@ class StructuredOutputThreadingTests(unittest.TestCase):
         def __init__(self, obj):
             self._obj = obj
             self.last_kwargs = None
+            self.extract_schema = None   # json_schema of the primary (non-voice) extract call
         def generate_content_with_json_repair(self, prompt, **kw):
             self.last_kwargs = kw
+            if "DIALOGUE VOICE" not in prompt and kw.get("json_schema"):
+                self.extract_schema = kw["json_schema"]
             return "```json\n" + json.dumps(self._obj) + "\n```"
 
     def test_extract_for_type_passes_field_schema(self):
         client = self._SpyClient({"role": "technician"})
         lore_intake.llm_extract_for_type(client, "Sci-Fi", "Maren", "content", "characters")
-        schema = (client.last_kwargs or {}).get("json_schema")
-        self.assertIsNotNone(schema)
-        self.assertEqual(set(schema["properties"]), set(lore_intake.SMART_FIELDS["character"]))
+        self.assertIsNotNone(client.extract_schema)
+        self.assertEqual(set(client.extract_schema["properties"]), set(lore_intake.SMART_FIELDS["character"]))
 
     def test_classify_entry_passes_classify_schema(self):
         client = self._SpyClient({"category": "character", "fields": {"role": "technician"}})
@@ -473,6 +475,45 @@ class FocusAwareApplyTests(unittest.TestCase):
         self.assertEqual(lore_intake.existing_fields_for(kb, "characters", "tya")["role"], "rogue")
         self.assertEqual(lore_intake.existing_fields_for(kb, "character", "Tya")["motivations"], "freedom")
         self.assertIsNone(lore_intake.existing_fields_for(kb, "characters", "Nobody"))
+
+
+class VoiceProfileTests(unittest.TestCase):
+    """Character Apply-to-lore also captures the dialogue VoiceProfile (nested), via a dedicated
+    voice pass exposed as voice_* fields that merge assembles into voice_profile."""
+    class _C:
+        def generate_content_with_json_repair(self, prompt, **kw):
+            if "DIALOGUE VOICE" in prompt:  # the voice pass
+                return json.dumps({
+                    "speech_patterns": "clipped, terse", "vocabulary_level": "technical slang",
+                    "verbal_tics": "hums when thinking", "avoids": "small talk",
+                    "example_dialogue": ["Give me a wrench.", "Well, that is not my problem."],
+                })
+            return "```json\n" + json.dumps({"role": "technician"}) + "\n```"
+
+    def test_extract_adds_voice_fields_for_characters(self):
+        out = lore_intake.llm_extract_for_type(self._C(), "Sci-Fi", "Maren", "content", "characters")
+        self.assertEqual(out.get("role"), "technician")
+        self.assertEqual(out.get("voice_speech_patterns"), "clipped, terse")
+        self.assertIn("voice_example_dialogue", out)
+
+    def test_merge_assembles_voice_profile(self):
+        out = lore_intake.llm_extract_for_type(self._C(), "Sci-Fi", "Maren", "content", "characters")
+        kb = _kb()
+        lore_intake.merge_apply(kb, {"characters": [{"name": "Maren", "fields": out}]})
+        vp = kb.characters["Maren"].voice_profile
+        self.assertIsNotNone(vp)
+        self.assertEqual(vp.speech_patterns, "clipped, terse")
+        self.assertEqual(vp.verbal_tics, "hums when thinking")
+        # newline-split keeps commas inside a line intact
+        self.assertEqual(vp.example_dialogue, ["Give me a wrench.", "Well, that is not my problem."])
+
+    def test_locations_get_no_voice_pass(self):
+        class _L:
+            def generate_content_with_json_repair(self, prompt, **kw):
+                return "```json\n" + json.dumps({"description": "a hidden vault"}) + "\n```"
+        out = lore_intake.llm_extract_for_type(_L(), "Sci-Fi", "The Vault", "content", "locations")
+        self.assertEqual(out.get("description"), "a hidden vault")
+        self.assertFalse(any(k.startswith("voice_") for k in out))
 
 
 if __name__ == "__main__":

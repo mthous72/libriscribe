@@ -423,6 +423,45 @@ def llm_extract_for_type(
     result = _run(use_schema=True)
     if not result:
         result = _run(use_schema=False)
+
+    # For characters, also capture the dialogue VOICE (nested VoiceProfile) in a dedicated pass.
+    # Exposed as voice_* fields (editable in review); _upsert assembles them into `voice_profile`.
+    if type_key == "character":
+        for vk, vv in _extract_voice(client, genre, name, content, book_title=book_title).items():
+            result[f"voice_{vk}"] = vv
+    return result
+
+
+def _extract_voice(client, genre: str, name: str, content: str, book_title: str = "", existing_voice=None) -> dict:
+    """Extract a character's dialogue VoiceProfile sub-fields (speech_patterns, vocabulary_level,
+    verbal_tics, avoids, example_dialogue) — one small focused call; returns the non-empty fields."""
+    if client is None:
+        return {}
+    prompt = lore_prompts.build_voice_prompt(genre, book_title, name, content, existing_voice)
+    schema = structured_output.json_schema_for_fields(lore_prompts.VOICE_FIELDS)
+
+    def _run(use_schema: bool) -> dict:
+        try:
+            raw = client.generate_content_with_json_repair(
+                prompt, max_tokens=1000, temperature=0.3,
+                system_prompt=lore_prompts.BASE_SYSTEM_PROMPT,
+                json_schema=schema if use_schema else None,
+            )
+        except Exception:
+            return {}
+        data = parse_llm_json(raw)
+        if not isinstance(data, dict):
+            return {}
+        out = {}
+        for k, v in data.items():
+            if k not in lore_prompts.VOICE_FIELDS or v in (None, "", []):
+                continue
+            out[k] = "\n".join(str(x) for x in v) if isinstance(v, list) else str(v)
+        return out
+
+    result = _run(use_schema=True)
+    if not result:
+        result = _run(use_schema=False)
     return result
 
 
@@ -622,7 +661,24 @@ def _upsert(store: dict, name: str, model_cls, fields: dict) -> bool:
                 existing, key = v, k
                 break
     base = existing.model_dump() if existing is not None else {}
+
+    # Assemble voice_* fields into the nested voice_profile (VoiceProfile), augmenting any existing
+    # one. These aren't top-level model fields, so they'd otherwise be dropped by the loop below.
+    if "voice_profile" in model_cls.model_fields:
+        voice_updates = {k[len("voice_"):]: v for k, v in (fields or {}).items()
+                         if k.startswith("voice_") and str(v).strip()}
+        if voice_updates:
+            vp = dict(base.get("voice_profile") or {})
+            for vk, vv in voice_updates.items():
+                if vk == "example_dialogue":
+                    vp[vk] = [ln.strip() for ln in _to_display(vv).split("\n") if ln.strip()]
+                else:
+                    vp[vk] = _to_display(vv)
+            base["voice_profile"] = vp
+
     for fk, fv in (fields or {}).items():
+        if fk.startswith("voice_"):
+            continue  # handled above (assembled into voice_profile)
         f = FIELD_ALIASES.get(fk, fk)
         if f == "name" or f not in model_cls.model_fields:
             continue

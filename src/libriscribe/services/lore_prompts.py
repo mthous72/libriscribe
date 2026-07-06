@@ -29,6 +29,10 @@ TYPE_FIELDS = {
     "arc": ["arc_type", "description", "resolution_notes"],
 }
 
+# The character's dialogue VoiceProfile (nested on the model). Extracted by a dedicated pass and
+# assembled into `voice_profile` on merge — used by the chapter writer to keep dialogue in voice.
+VOICE_FIELDS = ["speech_patterns", "vocabulary_level", "verbal_tics", "avoids", "example_dialogue"]
+
 # One-line meaning for each field, shown in the prompt so content lands in the right place
 # (instead of everything collapsing into background/description).
 FIELD_DESCRIPTIONS = {
@@ -46,6 +50,12 @@ FIELD_DESCRIPTIONS = {
     "entry_type": "the kind of thing this is (e.g. faction, item, technology, concept, event, rule)",
     "arc_type": "the kind of arc (e.g. redemption, mystery, romance, coming-of-age)",
     "resolution_notes": "how the arc resolves, or is intended to resolve",
+    # Dialogue voice (VoiceProfile)
+    "speech_patterns": "how they structure sentences (e.g. short clipped sentences, formal with subordinate clauses, rambling with digressions)",
+    "vocabulary_level": "word-choice level (e.g. street slang, academic, plain and direct, archaic formal)",
+    "verbal_tics": "recurring speech habits (e.g. says 'right?' after statements, clears throat, uses nautical metaphors)",
+    "avoids": "words or patterns this character would NEVER use (e.g. never swears, avoids contractions, no slang)",
+    "example_dialogue": "2-3 example lines this character might actually say, one per line, demonstrating their voice",
 }
 
 BASE_SYSTEM_PROMPT = (
@@ -121,6 +131,28 @@ def build_extract_prompt(
         f"Fill these fields (every value is a plain string):\n{_field_lines(type_key)}"
         f"{existing}\n\n"
         f"Respond with ONLY a JSON object of exactly this shape:\n{json_example(type_key, name)}\n\n"
+        f"SOURCE:\n{(content or '')[:6000]}"
+    )
+
+
+def build_voice_prompt(genre: str, book_title: str, name: str, content: str, existing_voice: dict | None = None) -> str:
+    """User prompt to extract/infer a character's dialogue VoiceProfile from the source."""
+    field_lines = "\n".join(f"- {f}: {FIELD_DESCRIPTIONS.get(f, f)}" for f in VOICE_FIELDS)
+    example = "```json\n{\n" + ",\n".join(f'  "{f}": "<{f.replace("_", " ")}>"' for f in VOICE_FIELDS) + "\n}\n```"
+    existing = ""
+    if existing_voice:
+        existing = (
+            "\n\nEXISTING VOICE — augment, don't fight. Keep what's here and refine it from the source:\n"
+            + json.dumps(existing_voice, ensure_ascii=False, indent=2)
+        )
+    return (
+        f'Capture the DIALOGUE VOICE of the character "{name}" in a {genre} book{_book(book_title)} — '
+        f"how they actually speak. Base it on the SOURCE; you may make modest, consistent inferences "
+        f"from their personality/background, but do not contradict stated facts.\n\n"
+        f"{SORTER_INSTRUCTION}\n\n"
+        f"Fill these fields (plain strings; put each example line on its own line):\n{field_lines}"
+        f"{existing}\n\n"
+        f"Respond with ONLY a JSON object of exactly this shape:\n{example}\n\n"
         f"SOURCE:\n{(content or '')[:6000]}"
     )
 
