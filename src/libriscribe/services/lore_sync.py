@@ -188,6 +188,8 @@ class LoreSyncService:
         lines = [
             f"Name: {char.name}",
             f"Role: {char.role}",
+            f"Sex: {char.sex}",
+            f"Sexual Orientation: {char.sexual_orientation}",
             f"Personality: {char.personality_traits}",
             f"Background: {char.background}",
             f"Motivations: {char.motivations}",

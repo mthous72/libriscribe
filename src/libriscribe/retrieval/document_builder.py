@@ -157,6 +157,8 @@ class DocumentBuilder:
                 f"Name: {char.name}",
                 f"Role: {char.role}",
                 f"Age: {char.age}",
+                f"Sex: {char.sex}",
+                f"Sexual Orientation: {char.sexual_orientation}",
                 f"Physical Description: {char.physical_description}",
                 f"Personality Traits: {char.personality_traits}",
                 f"Background: {char.background}",

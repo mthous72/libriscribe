@@ -427,6 +427,19 @@ class ExpandedCharacterFieldsTests(unittest.TestCase):
         for f in ("internal_conflicts", "external_conflicts", "age"):
             self.assertIn(f, lore_intake.SMART_FIELDS["character"])
 
+    def test_character_field_set_includes_sex_and_orientation(self):
+        for f in ("sex", "sexual_orientation"):
+            self.assertIn(f, lore_intake.SMART_FIELDS["character"])
+            self.assertIn(f, lore_prompts.FIELD_DESCRIPTIONS)
+
+    def test_merge_applies_sex_and_orientation_to_character(self):
+        kb = _kb()
+        lore_intake.merge_apply(kb, {"characters": [{"name": "Maren", "fields": {
+            "sex": "female", "sexual_orientation": "bisexual"}}]})
+        m = kb.characters["Maren"]
+        self.assertEqual(m.sex, "female")
+        self.assertEqual(m.sexual_orientation, "bisexual")
+
     def test_merge_applies_conflict_fields_to_character(self):
         kb = _kb()
         lore_intake.merge_apply(kb, {"characters": [{"name": "Maren", "fields": {
@@ -456,18 +469,32 @@ class FocusAwareApplyTests(unittest.TestCase):
         self.assertEqual(f.get("internal_conflicts"), "guilt")
         self.assertEqual(f.get("external_conflicts"), "hunted")
 
-    def test_dedups_focus_and_keeps_other_entities(self):
-        class _C2:
-            def generate_content_with_json_repair(self, prompt, **kw):
-                if "brainstorming note" in prompt:  # discovery also surfaces Maren + a new one
-                    return json.dumps({"characters": [{"name": "Maren", "role": "tech"},
-                                                       {"name": "Tya", "role": "broker"}],
-                                       "locations": [], "lore": [], "arcs": []})
-                return "```json\n" + json.dumps({"motivations": "freedom"}) + "\n```"
-        cats = lore_intake.extract_focused(_C2(), _kb(), "character", "Maren", "...")
+    class _CSweep:
+        """extract-for-type returns Maren's fields; the discovery sweep surfaces Maren + others."""
+        def generate_content_with_json_repair(self, prompt, **kw):
+            if "brainstorming note" in prompt:  # discovery: focus dup, a KNOWN char, and a junk one
+                return json.dumps({"characters": [{"name": "Maren", "role": "tech"},
+                                                   {"name": "Tya", "role": "broker"},
+                                                   {"name": "Random Bystander", "role": "noise"}],
+                                   "locations": [], "lore": [], "arcs": []})
+            return "```json\n" + json.dumps({"motivations": "freedom"}) + "\n```"
+
+    def test_default_is_focus_only_no_discovery_sweep(self):
+        # The reported bug: focusing on Maren must NOT dump garbage extra character records.
+        kb = _kb()
+        kb.add_character(Character(name="Tya", role="broker"))
+        cats = lore_intake.extract_focused(self._CSweep(), kb, "character", "Maren", "...")
+        self.assertEqual([r["name"] for r in cats["characters"]], ["Maren"])
+
+    def test_include_others_folds_in_known_entities_only(self):
+        kb = _kb()
+        kb.add_character(Character(name="Tya", role="broker"))   # known -> may be updated
+        cats = lore_intake.extract_focused(self._CSweep(), kb, "character", "Maren", "...",
+                                           include_others=True)
         names = [r["name"] for r in cats["characters"]]
-        self.assertEqual(names.count("Maren"), 1)   # focused entity, not duplicated
-        self.assertIn("Tya", names)                 # other entity retained
+        self.assertEqual(names.count("Maren"), 1)         # focused entity, not duplicated
+        self.assertIn("Tya", names)                        # known other entity retained
+        self.assertNotIn("Random Bystander", names)        # invented junk dropped
 
     def test_existing_fields_for_accepts_plural_and_singular(self):
         kb = _kb()

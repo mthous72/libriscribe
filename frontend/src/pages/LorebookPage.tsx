@@ -194,7 +194,7 @@ export default function LorebookPage() {
 
   const threadFields = ['name', 'thread_type', 'description', 'opened_chapter', 'target_resolution_chapter', 'resolved_chapter', 'status', 'characters_involved']
 
-  const charFields = ['name', 'age', 'role', 'physical_description', 'personality_traits', 'background', 'motivations', 'internal_conflicts', 'external_conflicts', 'character_arc']
+  const charFields = ['name', 'age', 'sex', 'sexual_orientation', 'role', 'physical_description', 'personality_traits', 'background', 'motivations', 'internal_conflicts', 'external_conflicts', 'character_arc']
   const locFields = ['name', 'description', 'significance', 'associated_characters', 'first_appearance', 'tags']
   const loreFields = ['name', 'entry_type', 'description', 'significance', 'related_entities', 'first_appearance', 'tags']
   const arcFields = ['name', 'description', 'arc_type', 'chapters_involved', 'characters_involved', 'status', 'resolution_notes']

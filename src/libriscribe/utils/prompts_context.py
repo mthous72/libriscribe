@@ -249,6 +249,10 @@ Name: (Suggest a suitable name appropriate for the language and cultural context
 
 Age:
 
+Sex: (The character's sex or gender)
+
+Sexual Orientation: (The character's sexual orientation)
+
 Physical Description: (Detailed, including appearance, clothing style, etc.)
 
 Personality Traits: (Provide at least 3-5 distinct personality traits as a comma-separated string, for example: "Brave, Loyal, Impulsive, Intelligent, Compassionate")

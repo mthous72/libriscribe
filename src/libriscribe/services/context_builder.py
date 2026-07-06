@@ -92,6 +92,11 @@ class ContextBuilder:
                 continue
 
             lines = [f"**{char.name}** ({char.role})"]
+            identity = ", ".join(
+                x for x in [getattr(char, "sex", ""), getattr(char, "sexual_orientation", "")] if x
+            )
+            if identity:
+                lines.append(f"  Sex / orientation: {identity}")
             if char.personality_traits:
                 lines.append(f"  Personality: {char.personality_traits}")
             if char.motivations:
