@@ -118,5 +118,54 @@ class RollingMemoryTests(unittest.TestCase):
         self.assertEqual(s["summarized_upto"], 0)
 
 
+class BrainstormPrefsTests(unittest.TestCase):
+    """Per-session prefs foundation + verbosity (B23) + collaborator preamble / intent lens (B26)."""
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp())
+        self._orig = chat.get_projects_dir
+        chat.get_projects_dir = lambda: self.tmp
+        (self.tmp / "demo").mkdir(parents=True, exist_ok=True)
+
+    def tearDown(self):
+        chat.get_projects_dir = self._orig
+
+    def test_new_session_has_default_prefs(self):
+        self.assertEqual(chat._new_session("X")["prefs"], {"verbosity": "medium"})
+
+    def test_load_backfills_prefs_for_legacy_session(self):
+        s = chat._new_session("L")
+        del s["prefs"]                       # simulate a session saved before prefs existed
+        chat._save_session("demo", s)
+        self.assertEqual(chat._load_session("demo", s["id"])["prefs"], {"verbosity": "medium"})
+
+    def test_session_meta_includes_prefs(self):
+        self.assertEqual(chat._session_meta(chat._new_session("X"))["prefs"], {"verbosity": "medium"})
+
+    def test_verbosity_levels_map_to_token_caps(self):
+        self.assertEqual(chat._verbosity({"verbosity": "low"})["max_tokens"], 320)
+        self.assertEqual(chat._verbosity({"verbosity": "high"})["max_tokens"], 1500)
+        self.assertEqual(chat._verbosity(None)["max_tokens"], 700)            # default medium
+        self.assertEqual(chat._verbosity({"verbosity": "bogus"})["max_tokens"], 700)  # unknown -> medium
+
+    def test_prompts_carry_collaborator_and_verbosity_directive(self):
+        from types import SimpleNamespace
+        kb = SimpleNamespace(title="Book", genre="Sci-Fi")
+        low = chat._VERBOSITY["low"]["directive"]
+        gen = chat._system_prompt(kb, "(lore)", low)
+        self.assertIn("sharp creative collaborator", gen)
+        self.assertIn("ULTRA-CONCISE", gen)
+
+    def test_focus_prompt_carries_intent_lens(self):
+        from types import SimpleNamespace
+        kb = SimpleNamespace(title="Book", genre="Sci-Fi")
+        foc = chat._focus_system_prompt(kb, "character", "Maren", "(rec)", "(lore)", chat._VERBOSITY["high"]["directive"])
+        self.assertIn("sharp creative collaborator", foc)
+        self.assertIn("MOTIVATION", foc)     # character intent lens
+        # a different type gets a different lens
+        arc = chat._focus_system_prompt(kb, "arc", "Fall of X", "(rec)", "(lore)", chat._VERBOSITY["low"]["directive"])
+        self.assertIn("STAKES", arc)
+        self.assertNotIn("MOTIVATION", arc)
+
+
 if __name__ == "__main__":
     unittest.main()

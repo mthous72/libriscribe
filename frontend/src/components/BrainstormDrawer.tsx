@@ -15,6 +15,7 @@ export default function BrainstormDrawer({ projectName }: { projectName: string 
   const [sending, setSending] = useState(false)
   const [applyFor, setApplyFor] = useState<number | null>(null)
   const [useRefs, setUseRefs] = useState(true)
+  const [verbosity, setVerbosity] = useState<'low' | 'medium' | 'high'>('medium')
   const [ents, setEnts] = useState<{ character: string[], location: string[], lore: string[], arc: string[] }>({ character: [], location: [], lore: [], arc: [] })
   const [sessions, setSessions] = useState<any[]>([])
   const [activeId, setActiveId] = useState<string | null>(null)
@@ -51,6 +52,7 @@ export default function BrainstormDrawer({ projectName }: { projectName: string 
     getSession(projectName, activeId).then((s: any) => {
       setMessages(s.messages || [])
       setFocus(s.focus || null)
+      setVerbosity((s.prefs?.verbosity as any) || 'medium')
       setApplyFor(null)
     }).catch(() => {})
   }, [activeId, open, projectName])
@@ -70,7 +72,7 @@ export default function BrainstormDrawer({ projectName }: { projectName: string 
           copy[copy.length - 1] = { role: 'assistant', content: copy[copy.length - 1].content + tok }
           return copy
         })
-      }, focus, useRefs, activeId)
+      }, focus, useRefs, activeId, { verbosity })
     } catch (e: any) {
       setMessages(m => {
         const copy = m.slice()
@@ -81,6 +83,11 @@ export default function BrainstormDrawer({ projectName }: { projectName: string 
       setSending(false)
       refreshSessions()
     }
+  }
+
+  const changeVerbosity = (v: 'low' | 'medium' | 'high') => {
+    setVerbosity(v)
+    if (activeId) updateSession(projectName, activeId, { prefs: { verbosity: v } }).catch(() => {})
   }
 
   const clear = async () => {
@@ -180,6 +187,14 @@ export default function BrainstormDrawer({ projectName }: { projectName: string 
               </select>
             </label>
             {focus && <p className="text-[11px] text-indigo-400/80 mt-1">Developing {focus.type} "{focus.name}" — draws on the world, arcs &amp; connected lore as context, but only develops this.</p>}
+            <label className="text-xs text-gray-500 flex items-center gap-2 mt-2" title="How long and detailed brainstorm responses are">
+              Verbosity
+              <select value={verbosity} onChange={e => changeVerbosity(e.target.value as any)} className="flex-1 px-2 py-1 bg-gray-800 border border-gray-700 rounded text-xs">
+                <option value="low">Low — succinct</option>
+                <option value="medium">Medium — balanced</option>
+                <option value="high">High — detailed</option>
+              </select>
+            </label>
             <div className="flex items-center justify-between mt-2">
               <label className="flex items-center gap-1.5 text-[11px] text-gray-400" title="Include imported reference material (Lorebook → References) as background source">
                 <input type="checkbox" checked={useRefs} onChange={e => setUseRefs(e.target.checked)} />

@@ -81,11 +81,82 @@ _SUMMARY_BATCH = 4             # only (re)summarize once this many messages have
 _SUMMARY_CHAR_CAP = 4000       # keep the running summary compact
 
 
-def _new_session(title: str = "New chat", focus: dict | None = None) -> dict:
+# ─── Brainstorm preferences, verbosity & collaborator voice (B23 + B26) ───────
+
+def _default_prefs() -> dict:
+    """Per-session brainstorm preferences. Extensible — questioning/depth land in later slices."""
+    return {"verbosity": "medium"}   # low | medium | high
+
+
+# Each verbosity level = a response directive + an output-length cap.
+_VERBOSITY = {
+    "low": {
+        "max_tokens": 320,
+        "directive": (
+            "BE ULTRA-CONCISE: 1-2 sentences or 2-3 tight bullets. Just the ideas — no preamble, "
+            "no restating the question, no summary."
+        ),
+    },
+    "medium": {
+        "max_tokens": 700,
+        "directive": (
+            "BE CONCISE: a few sentences or a short, scannable list (3-5 bullets max). Lead with the "
+            "ideas — no long preamble, no restating, no closing summary. Offer a handful of focused "
+            "options, not everything. If the author wants depth on one, they'll ask."
+        ),
+    },
+    "high": {
+        "max_tokens": 1500,
+        "directive": (
+            "Be thorough and exploratory: develop each idea with brief reasoning, tradeoffs, and a "
+            "concrete example or two. Organize with short headers or bullets when it helps — but "
+            "still no filler, flattery, or restating the question."
+        ),
+    },
+}
+
+
+def _verbosity(prefs: dict | None) -> dict:
+    return _VERBOSITY.get((prefs or {}).get("verbosity", "medium"), _VERBOSITY["medium"])
+
+
+# Baseline "sharp collaborator" contract (B26) — shared by general and focused brainstorm.
+_COLLABORATOR = (
+    "You are a sharp creative collaborator for the author — not a sycophant. Build on their idea, be "
+    "specific and concrete, and cut filler, hedging, and flattery. Propose a few strong options rather "
+    "than everything possible, and name tradeoffs briefly. Clearly flag when something is NEW vs. "
+    "already established. If the request is genuinely ambiguous or a key decision is unspecified, ask "
+    "ONE targeted clarifying question before guessing."
+)
+
+# Per-focus-type "intent lens" (B26): what developing THIS kind of entity actually means.
+_INTENT_LENS = {
+    "character": (
+        "Developing a character means sharpening MOTIVATION (what they want vs. need, fears, drives), "
+        "VOICE (how they speak), the CONTRADICTIONS that make them feel real, key RELATIONSHIPS, and "
+        "their ARC."
+    ),
+    "location": (
+        "Developing a place means its ATMOSPHERE and sensory texture, its ROLE in the plot, and how "
+        "characters use it or are shaped by it."
+    ),
+    "lore": (
+        "Developing lore means INTERNAL CONSISTENCY, its IMPLICATIONS and second-order effects on the "
+        "world, and why it MATTERS to the story."
+    ),
+    "arc": (
+        "Developing an arc means STAKES, CAUSALITY (why each turn follows the last), TURNING POINTS, "
+        "and CONSEQUENCES that pay off in later chapters."
+    ),
+}
+
+
+def _new_session(title: str = "New chat", focus: dict | None = None, prefs: dict | None = None) -> dict:
     return {
         "id": uuid.uuid4().hex[:8],
         "title": (title or "New chat").strip() or "New chat",
         "focus": focus,
+        "prefs": prefs or _default_prefs(),
         "created_at": _now(),
         "updated_at": _now(),
         "messages": [],
@@ -105,7 +176,9 @@ def _load_session(name: str, sid: str) -> dict | None:
     if not path.exists():
         return None
     try:
-        return json.loads(path.read_text(encoding="utf-8"))
+        s = json.loads(path.read_text(encoding="utf-8"))
+        s.setdefault("prefs", _default_prefs())  # backfill legacy sessions
+        return s
     except Exception:
         return None
 
@@ -153,6 +226,7 @@ def _session_meta(s: dict) -> dict:
         "id": s["id"],
         "title": s.get("title", "Chat"),
         "focus": s.get("focus"),
+        "prefs": s.get("prefs") or _default_prefs(),
         "created_at": s.get("created_at"),
         "updated_at": s.get("updated_at"),
         "message_count": len(s.get("messages", [])),
@@ -209,17 +283,14 @@ def _build_lore_context(name: str, kb, query: str, max_tokens: int = 1800) -> st
     return "\n".join(parts)
 
 
-def _system_prompt(kb, context: str) -> str:
+def _system_prompt(kb, context: str, directive: str) -> str:
     return (
         f"You are a creative worldbuilding and brainstorming partner for the book "
         f"'{kb.title}' ({kb.genre}). Help the author explore ideas, plan story arcs, and "
         f"research before anything is finalized. Stay consistent with the established lore "
         f"below; when you propose something NEW (not already in the lore), say so clearly.\n\n"
-        f"BE CONCISE. This is a back-and-forth chat, not an essay. Default to a few sentences "
-        f"or a short, scannable list (3-5 bullets max). Lead with the ideas themselves — no "
-        f"long preamble, no restating the question, no exhaustive coverage, no closing "
-        f"summaries or disclaimers. Offer a handful of focused options, not everything "
-        f"possible. If the author wants more depth on one of them, they will ask.\n\n"
+        f"{_COLLABORATOR}\n\n"
+        f"{directive}\n\n"
         f"=== Established lore ===\n{context or '(none yet)'}\n=== end lore ==="
     )
 
@@ -301,6 +372,7 @@ class ChatRequest(BaseModel):
     focus_name: str | None = None
     use_references: bool = True
     session_id: str | None = None  # B18: which brainstorm session to append to
+    prefs: dict | None = None      # B23: {verbosity: low|medium|high}; falls back to the session's
 
 
 def _reference_context(name: str, kb, query: str, max_tokens: int = 800) -> str:
@@ -467,18 +539,21 @@ def _focus_context(kb, name: str, focus_type: str, focus_name: str, message: str
     return resolved, record, "\n".join(surrounding)
 
 
-def _focus_system_prompt(kb, focus_type: str, focus_name: str, record: str, surrounding: str) -> str:
+def _focus_system_prompt(kb, focus_type: str, focus_name: str, record: str, surrounding: str, directive: str) -> str:
+    lens = _INTENT_LENS.get(focus_type, "")
+    lens_block = f"{lens}\n\n" if lens else ""
     return (
-        f"You are a worldbuilding partner for the book '{kb.title}' ({kb.genre}). The author is "
+        f"You are a creative collaborator for the book '{kb.title}' ({kb.genre}). The author is "
         f"developing the {focus_type} '{focus_name}' and wants to deepen it using the surrounding "
         f"world as context.\n\n"
+        f"{_COLLABORATOR}\n\n"
+        f"{lens_block}"
         f"Use the SURROUNDING LORE below as background to inform and enrich '{focus_name}' — draw "
         f"on the world, arcs, and connected characters to ground your ideas and keep them "
         f"consistent. But keep EVERY suggestion about '{focus_name}' itself: do NOT develop, "
         f"rewrite, or brainstorm the other entities, and do NOT discuss how changes to "
         f"'{focus_name}' would affect them. They are fixed reference, not the subject.\n\n"
-        f"BE CONCISE: a few focused suggestions or a short list (3-5 max) — no preamble, no "
-        f"exhaustive coverage. If the author wants depth on one, they'll ask.\n\n"
+        f"{directive}\n\n"
         f"=== {focus_type.title()} being developed: {focus_name} ===\n{record or '(empty)'}\n\n"
         f"=== Surrounding lore (read-only context) ===\n{surrounding or '(none)'}\n=== end ==="
     )
@@ -507,11 +582,13 @@ def clear_chat(name: str):
 class SessionCreate(BaseModel):
     title: str | None = None
     focus: dict | None = None
+    prefs: dict | None = None
 
 
 class SessionUpdate(BaseModel):
     title: str | None = None
     focus: dict | None = None
+    prefs: dict | None = None
 
 
 @router.get("/{name}/chat/sessions")
@@ -525,7 +602,7 @@ def list_sessions(name: str):
 def create_session(name: str, body: SessionCreate):
     if not load_kb(name):
         raise HTTPException(status_code=404, detail="Project not found")
-    session = _new_session(body.title or "New chat", body.focus)
+    session = _new_session(body.title or "New chat", body.focus, body.prefs)
     _save_session(name, session)
     return _session_meta(session)
 
@@ -552,6 +629,8 @@ def update_session(name: str, sid: str, body: SessionUpdate):
         session["title"] = data["title"].strip()
     if "focus" in data:
         session["focus"] = data["focus"]
+    if "prefs" in data and isinstance(data["prefs"], dict):
+        session["prefs"] = {**(session.get("prefs") or _default_prefs()), **data["prefs"]}
     session["updated_at"] = _now()
     _save_session(name, session)
     return _session_meta(session)
@@ -581,17 +660,19 @@ def clear_session(name: str, sid: str):
     _save_session(name, session)
 
 
-def _assemble_system_prompt(name, kb, message, focus_type, focus_name, use_references) -> str:
+def _assemble_system_prompt(name, kb, message, focus_type, focus_name, use_references, directive: str | None = None) -> str:
     """Build the exact system prompt the brainstorm chat would send (focus/general + lore
-    context + optional reference band). Shared by the live chat and the preview (B15)."""
+    context + optional reference band). Shared by the live chat and the preview (B15).
+    `directive` is the verbosity response directive; defaults to Medium for previews."""
+    directive = directive or _VERBOSITY["medium"]["directive"]
     focus = None
     if focus_type and focus_name:
         focus = _focus_context(kb, name, focus_type, focus_name, message)
     if focus:
         resolved, record, related = focus
-        system_prompt = _focus_system_prompt(kb, focus_type, resolved, record, related)
+        system_prompt = _focus_system_prompt(kb, focus_type, resolved, record, related, directive)
     else:
-        system_prompt = _system_prompt(kb, _build_lore_context(name, kb, message))
+        system_prompt = _system_prompt(kb, _build_lore_context(name, kb, message), directive)
     if use_references:
         refs = _reference_context(name, kb, message)
         if refs:
@@ -626,6 +707,12 @@ def chat(name: str, body: ChatRequest):
         raise HTTPException(status_code=404, detail="Project not found")
 
     session = _resolve_session(name, body.session_id)
+    # Verbosity/preferences: prefer what the request sends, else the session's, else the default.
+    # Persist so the session remembers (the assistant _append_message below saves it).
+    prefs = body.prefs or session.get("prefs") or _default_prefs()
+    session["prefs"] = prefs
+    vb = _verbosity(prefs)
+
     _append_message(name, session, "user", body.message)
     history = session["messages"]
 
@@ -636,7 +723,8 @@ def chat(name: str, body: ChatRequest):
     memory, window_start = _manage_session_memory(name, kb, session, client)
 
     system_prompt = _assemble_system_prompt(
-        name, kb, body.message, body.focus_type, body.focus_name, body.use_references
+        name, kb, body.message, body.focus_type, body.focus_name, body.use_references,
+        directive=vb["directive"],
     )
     if memory:
         system_prompt += (
@@ -649,7 +737,7 @@ def chat(name: str, body: ChatRequest):
         chunks: list[str] = []
         try:
             for chunk in client.generate_content_streaming(
-                conversation, max_tokens=700, temperature=0.8, system_prompt=system_prompt
+                conversation, max_tokens=vb["max_tokens"], temperature=0.8, system_prompt=system_prompt
             ):
                 chunks.append(chunk)
                 yield chunk
