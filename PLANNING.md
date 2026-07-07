@@ -1402,6 +1402,26 @@ The sandbox is the spine — build it first, fill it from something that already
 
 **Reuses:** the `human_review_required` / `paused_for_review` / `submit_review_decision` gate; `save_project_data` per-stage checkpoints; Versions snapshot/restore for reset; existing entity/outline/chapter edit endpoints for hand-edits; the WS streaming bridge.
 
+## Epic: Guided story-seeding wizard (Q&A → generate lore → explore/edit) — **DESIGN (specced 2026-07-07, planning only; no code yet)**
+
+**Concept (user idea).** A separate, optional flow: the user answers targeted questions about their story, and the system **generates structured lorebook entities** (characters, locations, codex, arcs, worldbuilding, threads) from the answers, which the user then **explores and edits** in the lorebook. This is **world-seeding, not prose writing** — explicitly a whole separate function from Start-Generation.
+
+**Why separate.** Start-Generation writes chapters; this builds the world. Someone with just an idea answers a handful of questions and gets a rich, editable lorebook to start from — then uses step-by-step generation (the other epic) to write. It's the on-ramp for a new project, and it's the counterpart to lore-grounded generation: **the wizard fills the lorebook that the generator then builds on.**
+
+**Design.**
+- **Question set.** A short set of core questions (premise / logline, protagonist(s), antagonist or central conflict, setting/world, tone + genre, the central arc, key factions / items / rules). Optionally **adaptive follow-ups** — the LLM asks 1–2 clarifiers based on prior answers (ties to the brainstorm epic's "questioning" switches). Keep it short and **staged** (answer a few → generate → refine) rather than one giant form. The vestigial `dynamic_questions` KB field (currently stored-but-unused, `knowledge_base.py:207`) is the natural home for the answers.
+- **Generation.** From the answers, run focused passes per entity type — reuse `concept_generator` draft→critique→refine + `lore_intake.extract_from_text` / `llm_extract_for_type` + `merge_apply` — fanned out via `bounded_map` (B29), one pass per category. Produces typed candidates: characters (role/motivation/voice), locations, codex, arcs, threads, worldbuilding.
+- **Review + cherry-pick.** Stage the generated lore into the **B27 sandbox** (per-run) so the user accepts / rejects / edits before it lands in the KB — this makes the wizard the **first real seed strategy for the sandbox**; the two features reinforce each other. (Fallback if built before B27: the existing proposal-review + `merge_apply`.)
+- **Explore + edit.** Once applied, the user refines with the existing lorebook — editors, connections (B25), gaps (B28), brainstorm.
+
+**Relation to the rest.**
+- **Reuses:** `lore_intake` (extract/merge), `concept_generator` (draft→critique→refine), **B29** concurrency, **B27** sandbox (cherry-pick), the vestigial `dynamic_questions` field.
+- **Distinct from** the step-by-step *prose* generation epic (writes chapters); this seeds the world. They chain: **wizard → lorebook → step-by-step generation.**
+
+**Open decisions.** Fixed vs adaptive questions (lean: fixed core + optional 1–2 adaptive); where it lives — a New Project "guided" path vs a standalone "Seed my world" action on an existing/empty project (lean: **both**); direct-to-lorebook vs stage-in-sandbox (lean: sandbox once B27 exists, proposal-review before then); how many questions (lean: 6–8 core, staged).
+
+**Effort: M/L.** Best sequenced **after B27 slice A** (so it can stage into the sandbox), though the question UI + a direct-to-proposal generation could ship earlier.
+
 ## Docs refresh (Docusaurus, **not a wiki**) — low-priority parallel track
 
 Decision (2026-07-01): we already have a **Docusaurus** site in `docs/` wired for GitHub
