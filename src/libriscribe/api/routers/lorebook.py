@@ -38,6 +38,19 @@ from libriscribe.services.project_service import load_kb, save_kb, get_projects_
 router = APIRouter(prefix="/api/projects", tags=["lorebook"])
 
 
+# ─── Gap-finder (B28) ─────────────────────────────────────────────
+
+@router.get("/{name}/gaps")
+def get_gaps(name: str):
+    """Structural gap report — dangling references, out-of-range chapters, unresolved
+    arcs/threads, thin characters. Read-only; deterministic (no LLM)."""
+    kb = load_kb(name)
+    if not kb:
+        raise HTTPException(status_code=404, detail="Project not found")
+    from libriscribe.services import gap_finder
+    return gap_finder.find_gaps(kb)
+
+
 # ─── Characters ───────────────────────────────────────────────────
 
 @router.get("/{name}/characters")
