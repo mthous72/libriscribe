@@ -1275,6 +1275,60 @@ auto-suggest → user confirm); which promotion targets ship first (lean: arc-mi
 narrative-thread + character-field — they most directly feed the writing). Extends B24 (focus-aware
 apply) and B25 (interconnection).
 
+## Epic: Autonomous exploration ("Auto mode") → sandbox + gap-finder — **DESIGN (specced 2026-07-07, planning only; no code yet)**
+
+**One-liner.** A mode where the LLM *thinks*, then autonomously pulls threads across characters / codex / lore / arcs — going down rabbit holes — and stages every candidate into a **sandbox** (NOT the live KB) that the author reviews and **cherry-picks** (accept / reject / edit per item). A companion **gap-finder** seeds it with missing/dangling references. Runs several LLM calls **concurrently** (the user hosts on **LM Studio, which allows 4 concurrent predictions** for the selected model). This is the *autonomous head* of the "Claude-like brainstorming" epic and its "Higher end-value output" section — same passes (draft→critique→refine, consistency, capture, promote-to-structure), driven by an orchestrator instead of one turn at a time.
+
+**Why this is buildable on a 12B, locally:** every unit of work is a small focused pass the 12B already nails (per `lore_intake.llm_extract_for_type`, `concept_generator`, `fact_checker`); the *orchestrator* is deterministic Python (like `generation_service`), and the *sandbox* generalizes the existing per-item accept/reject proposal review. Nothing here needs a smarter model — it needs organization + concurrency + a review surface.
+
+### B27. Auto-explore orchestrator + sandbox — **effort: L (phase it)**
+- **Seed / scope** (what to explore): whole project · a focused entity · a category ("expand all thin characters") · the gap-finder's output (B28).
+- **Orchestrator loop** (deterministic control; the model only *thinks* inside each pass):
+  1. **Survey / think pass** — read a token-budgeted digest of current lore (retrieval + KB) and emit a *prioritized exploration plan*: a queue of "threads to pull" (e.g., "Tya's unexplained betrayal", "Codex names 'the Ashfall' but it's undefined", "no arc connects X and Y"). This is the "do some thinking first" step.
+  2. **Fan-out** — for each thread, up to the concurrency cap (B29), run a focused enrichment mini-pipeline: **draft → self-critique → refine** (`concept_generator` pattern) → **consistency check** against established lore (`fact_checker` extract-claims→check-each, pointed at retrieval + the focus record). Produces *typed candidate artifacts* (character fields, new codex/lore, arcs, narrative threads, voice, scene beats — the shapes the writing pipeline already consumes).
+  3. **De-dupe + annotate** — dedupe against the KB and against other candidates; tag each with source-thread, rationale, confidence, new-vs-update, provenance.
+  4. **Stage into the sandbox** — write candidates to a **persisted staging store** (`projects/<p>/sandbox/<run_id>.json`), never the KB. Multiple runs kept, listed, abandonable.
+  5. **Expand or stop** — threads discovered mid-pass (the "rabbit hole") get queued; stop when a stopping criterion trips (below).
+- **Review / cherry-pick UI** — a Sandbox panel: candidates grouped by category & source-thread; per-item **accept / reject / edit**; bulk accept-by-filter; **"Apply accepted"** → `lore_intake.merge_apply` into the KB. This is the core UX and it reuses `LoreProposalReview`'s accept/reject affordance, scaled up and persisted.
+- **Reuses:** `lore_intake.llm_extract_for_type` / `merge_apply` / `build_proposal`; `concept_generator` critique→refine; `fact_checker` consistency; retrieval (`search_service`, `document_builder`); the proposal-review component; `context_builder.TokenBudget`.
+
+**Stopping criteria (the user's "how do we present a stopping point?" — offer a few, combine):**
+- **Budget cap (primary, fits token-free local):** max LLM calls · max wall-clock · max tokens per run, with a **live counter + Stop button**. ("Explore for ~200 calls.")
+- **Queue-drain (natural convergence):** stop when no new threads/gaps surface.
+- **Diminishing returns (loop-until-dry backstop):** stop when the last K threads produced < X net-new candidates (dedupe/consistency rejection rate climbing).
+- **Structural caps:** N expansion rounds, M depth per thread, ≤N new items per entity/category (runaway guard).
+- Always a hard **Stop/cancel** + progress readout ("thread 12/40, 3/4 workers busy, 58 staged").
+
+### B28. Gap-finder — **effort: S (structural) + M (LLM)** — huge value, ships partly with **zero LLM**
+Finds what's *missing or dangling* and stages it into the same sandbox:
+- **Structural invariants (deterministic, no LLM — fast, precise, ship first):**
+  - Arcs / narrative threads opened but never resolved (`opened_chapter` set, `resolved_chapter` / resolution empty).
+  - `characters_involved` / `associated_characters` / `related_entities` naming entities that **don't exist** in the KB.
+  - `first_appearance` / target chapters that exceed `num_chapters` or point at missing chapters.
+  - "Thin entity" report — characters with empty writing-consumed fields (`motivations`, `character_arc`, `voice_profile`); locations/lore referenced in prose (via `cross_reference`) but with empty `description`/`significance`.
+- **Referenced-but-undefined pass (LLM):** extract named entities/proper nouns from prose + lore fields, diff against the KB, surface names referenced but unrecorded ("'the Ashfall Compact' appears 4×, no Codex entry").
+- **Connective-tissue pass (LLM, optional):** arcs with no turning points, threads with no involved characters, characters with no relationships.
+- **Output:** each gap → a staged candidate — either a *create-X stub* or an *enrich-X task* — with **evidence** (where it's referenced). Cherry-pick which gaps to fill; filling one hands off to a focused B27 generation. The `retrieval/cross_reference.py` index already maps entity references across chunks — the inverse (referenced-but-undefined) is the new pass.
+
+### B29. Bounded concurrency infrastructure (shared) — **effort: S/M**
+- `LLMClient` is sync; the pipeline already offloads via `asyncio.to_thread` (see `generation_service`). Add a **bounded parallel runner**: `asyncio.Semaphore(N)` over `asyncio.to_thread(client.call, …)` (or a `ThreadPoolExecutor(max_workers=N)`), `N` from a **per-provider `max_concurrency`** setting — **LM Studio default 4** (user's host), cloud higher, most others 1–2.
+- **Verify** the sync client is safe under concurrent use (its `requests`/`httpx` session); if not, one client per worker or a small pool. Fallback chain still applies per call.
+- **Progress** via the existing `EventCallback` → WebSocket bridge (reuse the generation streaming plumbing) so the sandbox UI shows live worker/stage counts.
+
+### Context + response-length expansion (user note)
+Auto mode leans on the **utility model** for structured passes and needs **bigger context + higher max_tokens** than interactive brainstorm: the survey pass ingests a large lore digest; enrichment passes emit long structured output. Add **per-mode overrides** (auto-mode context budget + response cap) distinct from the just-shipped interactive verbosity/`max_tokens` controls. **B21 (warm-up/keep-alive)** matters more here (many back-to-back calls).
+
+### Open decisions (resolve before building)
+- Sandbox granularity: one global vs **per-run** (lean: per-run, listed — compare/abandon runs).
+- Default stop: lean **budget-in-LLM-calls + live counter + Stop**, diminishing-returns backstop on.
+- Auto-accept: **never** — always human cherry-pick (matches the request).
+- Gap-finder placement: a **seed strategy** for Auto mode **and** a standalone quick report (structural part runs instantly).
+- Client thread-safety under 4-way concurrency (verify before relying on it).
+- Which model does the creative *refine* step — utility (structure) vs writing model (prose quality)? (lean: utility for structure, optional writing model for refine.)
+
+### Phasing / effort
+**B29** (concurrency infra, S/M) → **B28 structural gap-finder** (S, zero-LLM, immediate value) → **B28 LLM gap passes** (M) → **B27 orchestrator + sandbox + review UI** (L). Extends the "Higher end-value output" section, B24 (focus-aware apply), B25 (interconnection); the property-narrowed apply (just shipped) is the per-item extractor the fan-out reuses.
+
 ## Docs refresh (Docusaurus, **not a wiki**) — low-priority parallel track
 
 Decision (2026-07-01): we already have a **Docusaurus** site in `docs/` wired for GitHub
