@@ -9,7 +9,7 @@ interface Msg { role: string; content: string }
 
 export default function BrainstormDrawer({ projectName }: { projectName: string }) {
   const navigate = useNavigate()
-  const { open, focus, openBrainstorm, close, setFocus } = useBrainstormStore()
+  const { open, focus, openBrainstorm, close, setFocus, pendingFocus, pendingNonce, clearPending } = useBrainstormStore()
   const [messages, setMessages] = useState<Msg[]>([])
   const [input, setInput] = useState('')
   const [sending, setSending] = useState(false)
@@ -21,6 +21,8 @@ export default function BrainstormDrawer({ projectName }: { projectName: string 
   const [sessions, setSessions] = useState<any[]>([])
   const [activeId, setActiveId] = useState<string | null>(null)
   const [preview, setPreview] = useState<string | null>(null)
+  // "Same object as a prior brainstorm" prompt: continue the old one or start fresh.
+  const [focusPrompt, setFocusPrompt] = useState<{ focus: { type: string, name: string }, sessionId: string } | null>(null)
   const endRef = useRef<HTMLDivElement>(null)
 
   const focusKey = focus ? `${focus.type}:${focus.name}` : ''
@@ -43,9 +45,45 @@ export default function BrainstormDrawer({ projectName }: { projectName: string 
     })).catch(() => {})
     listSessions(projectName).then((ss: any[]) => {
       setSessions(ss || [])
-      setActiveId(prev => (prev && ss.some(s => s.id === prev)) ? prev : (ss[0]?.id || null))
+      // If the drawer was opened targeting a specific object, the pending-focus resolver below
+      // selects the session; don't pre-select the last active one (avoids a flash of the old chat).
+      if (!pendingFocus) {
+        setActiveId(prev => (prev && ss.some(s => s.id === prev)) ? prev : (ss[0]?.id || null))
+      }
     }).catch(() => {})
-  }, [open, projectName])
+  }, [open, projectName])  // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Resolve an explicitly-requested object (lorebook "Brainstorm" button) to a per-object session.
+  // Fires on every request (pendingNonce) even if the object equals the current focus.
+  useEffect(() => {
+    if (!open || !projectName || !pendingFocus) return
+    const pf = pendingFocus
+    let cancelled = false
+    ;(async () => {
+      const ss: any[] = await listSessions(projectName).catch(() => [])
+      if (cancelled) return
+      setSessions(ss || [])
+      const sameFocus = (s: any) => s.focus && s.focus.type === pf.type && s.focus.name === pf.name
+      const withHistory = (ss || []).filter(s => sameFocus(s) && (s.message_count || 0) > 0)
+      withHistory.sort((a, b) => String(b.updated_at || '').localeCompare(String(a.updated_at || '')))
+      if (withHistory.length > 0) {
+        // A prior brainstorm for this exact object exists → let the user continue it or start new.
+        setFocusPrompt({ focus: pf, sessionId: withHistory[0].id })
+      } else {
+        const empty = (ss || []).find(s => sameFocus(s))  // reuse an existing empty focused session
+        if (empty) {
+          setActiveId(empty.id)
+        } else {
+          const created = await createSession(projectName, { title: pf.name, focus: pf })
+          if (cancelled) return
+          await refreshSessions()
+          setActiveId(created.id)
+        }
+      }
+      clearPending()
+    })()
+    return () => { cancelled = true }
+  }, [pendingNonce, open, projectName])  // eslint-disable-line react-hooks/exhaustive-deps
 
   // Load the active session's messages + persisted focus.
   useEffect(() => {
@@ -104,6 +142,23 @@ export default function BrainstormDrawer({ projectName }: { projectName: string 
     refreshSessions()
   }
 
+  // Same-object prompt actions.
+  const continueFocused = () => {
+    if (focusPrompt) setActiveId(focusPrompt.sessionId)
+    setFocusPrompt(null)
+  }
+  const startNewFocused = async () => {
+    if (!focusPrompt) return
+    const pf = focusPrompt.focus
+    setFocusPrompt(null)
+    try {
+      const created = await createSession(projectName, { title: pf.name, focus: pf })
+      await refreshSessions()
+      setActiveId(created.id)
+      setMessages([])
+    } catch {}
+  }
+
   const newSession = async () => {
     const title = prompt('Name this session:', 'New chat')
     if (title === null) return
@@ -150,6 +205,21 @@ export default function BrainstormDrawer({ projectName }: { projectName: string 
 
   return (
     <>
+      {focusPrompt && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 p-4" onClick={() => setFocusPrompt(null)}>
+          <div className="bg-gray-900 border border-gray-700 rounded-xl w-full max-w-sm p-5 space-y-4" onClick={e => e.stopPropagation()}>
+            <div>
+              <h2 className="text-base font-bold">Continue brainstorm for "{focusPrompt.focus.name}"?</h2>
+              <p className="text-sm text-gray-400 mt-1">You already have a brainstorm for this {focusPrompt.focus.type}. Pick up where you left off, or start a fresh one (the old one stays in your session list).</p>
+            </div>
+            <div className="flex flex-col gap-2">
+              <button onClick={continueFocused} className="px-3 py-2 bg-indigo-600 hover:bg-indigo-500 rounded-lg text-sm font-medium">Continue previous</button>
+              <button onClick={startNewFocused} className="px-3 py-2 bg-gray-800 hover:bg-gray-700 rounded-lg text-sm">Start new</button>
+              <button onClick={() => setFocusPrompt(null)} className="px-3 py-1.5 text-xs text-gray-500 hover:text-gray-300">Cancel</button>
+            </div>
+          </div>
+        </div>
+      )}
       {!open && (
         <button
           onClick={() => openBrainstorm()}
