@@ -493,6 +493,16 @@ class LoreSyncService:
         # Build context from KB
         context_parts: list[str] = []
 
+        # B31/B32: canon rules first, marked inviolable — a violation is the highest-severity
+        # finding (note_type "canon_violation").
+        from libriscribe.services.lore_digest import canon_block
+        canon = canon_block(self.kb)
+        if canon:
+            context_parts.append(
+                canon + "\nIf any chapter text violates one of these CANON RULES, report it as "
+                "an issue with note_type \"canon_violation\" — these are the most serious findings."
+            )
+
         # Characters
         for char in self.kb.characters.values():
             context_parts.append(self._format_character_profile(char.name))

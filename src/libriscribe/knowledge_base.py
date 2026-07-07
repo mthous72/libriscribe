@@ -204,6 +204,10 @@ class ProjectKnowledgeBase(BaseModel):
     # Phase 1 (B30): 'step' runs ONE stage per request and stops for review (default);
     # 'auto' is the legacy run-everything behavior (opt-in escape hatch).
     generation_mode: str = "step"
+    # Phase 2 (B32): author-owned, one-line INVIOLABLE rules (tense/POV, fates, never-happens…).
+    # Injected into every generation prompt with binding phrasing; continuity treats violations
+    # as high severity. See PLANNING B32 for the seeded categories.
+    canon_rules: list[str] = Field(default_factory=list)
     llm_provider: str = "openai"
     model: str = ""  # the "Writing" model — prose, brainstorm chat, chapter generation
     utility_model: str = ""  # optional model for structured tasks (lore intake); blank ⇒ use `model`

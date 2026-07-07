@@ -64,12 +64,29 @@ def build_lore_digest(kb, max_tokens: int = 1600) -> str:
     return "\n\n".join(sections)
 
 
-def grounding_block(kb, max_tokens: int = 1600) -> str:
-    """The digest wrapped in the instruction that makes it binding. Empty if no lore exists."""
-    digest = build_lore_digest(kb, max_tokens)
-    if not digest.strip():
+def canon_block(kb) -> str:
+    """The author's INVIOLABLE canon rules (B32), phrased as binding constraints.
+    Empty string when no rules are set."""
+    rules = [str(r).strip() for r in (getattr(kb, "canon_rules", None) or []) if str(r).strip()]
+    if not rules:
         return ""
+    lines = "\n".join(f"- {r}" for r in rules)
     return (
+        "=== CANON RULES (INVIOLABLE — never contradict these) ===\n"
+        f"{lines}\n"
+        "=== end canon rules ===\n"
+        "These rules are absolute. Every line you write must comply with them."
+    )
+
+
+def grounding_block(kb, max_tokens: int = 1600) -> str:
+    """The digest wrapped in the instruction that makes it binding, plus the canon rules (B32).
+    Empty if no lore exists AND no canon rules are set."""
+    digest = build_lore_digest(kb, max_tokens)
+    canon = canon_block(kb)
+    if not digest.strip():
+        return canon  # canon rules apply even before any lore exists
+    lore = (
         "=== ESTABLISHED LORE (the author's world — build on it) ===\n"
         f"{digest}\n"
         "=== end established lore ===\n"
@@ -78,3 +95,4 @@ def grounding_block(kb, max_tokens: int = 1600) -> str:
         "them, rename them, or contradict them. Only introduce new elements where the "
         "established lore has gaps."
     )
+    return f"{canon}\n\n{lore}" if canon else lore
