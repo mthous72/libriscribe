@@ -1362,6 +1362,43 @@ The sandbox is the spine — build it first, fill it from something that already
 
 **Still-open at build time (unchanged):** default budget value; verify the sync client is safe under >1 workers *before* Slice B relies on parallel fan-out (Slice A is serial/LLM-light, so this can be verified in parallel with Slice A).
 
+## Epic: Human-directed, step-by-step generation — **DESIGN (specced 2026-07-07, planning only; no code yet)**
+
+**Problem (user).** "Start Generation" runs the whole book end-to-end with no pauses — no chance to check the story's direction, no stop at concept before outlining, no chapter-by-chapter control. Too much automation, not enough letting the human direct the story. It also **overwrites the user's story title** (and other metadata). Wanted: take the automation away, make each step explicit and human-directed, allow **reset**, and make generation only **suggest** metadata for approval.
+
+**Current state (investigated 2026-07-07, with seams).**
+- `STAGE_ORDER = concept → outline → characters → worldbuilding → chapters → formatting` runs unattended in one loop (`generation_service.py:75-84`); the only between-stage check is cancellation — **no inter-stage gate**. Each stage auto-saves + auto-advances (`project_manager.py:432-469`).
+- The ONE human gate is per-chapter and only when `review_preference="Human"` (default `"AI"`): a `threading.Event.wait(3600)` after each chapter (`project_manager.py:515-537`), two options (proceed / apply_ai_style), **no reject**.
+- Reusable HITL primitive: `human_review_required` event + `paused_for_review` status + `GenerationJob.review_threading_event`/`review_decision` + `submit_review_decision` (REST `/generate/resume` or WS) (`job_manager.py:66-72`).
+- **Title clobber:** `concept_generator.py:131-137` unconditionally overwrites `title`/`logline`/`description`, persisted at `project_manager.py:440`. `outliner.py` also overwrites `num_chapters` (recomputed/clamped, `:96,462,487,490,508`) and sometimes `description` (`:434`).
+- Frontend: free-form `jobStatus` string; one review panel with two "proceed" buttons (no reject/regenerate/reset); only Versions (save/restore) for "going back."
+
+**Decisions (from user, 2026-07-07).** Gate after **every** stage (explicit approve to advance; nothing auto-advances). Chapters: support **both** — one-at-a-time (outline→approve→write→approve→next) AND outline-all-then-write-chapter-by-chapter (user chooses, "depending on how much story I have in my head"). Per-stage actions: **edit + save**, **edit → use as guidance for a rewrite**, and **flat regenerate**. Concept **suggests** a title (never overwrites). Reset must be possible.
+
+**Design — a stepwise controller (nothing auto-advances).** Replace the fire-and-forget run: each stage runs only on request, then STOPS for review. Between steps the user edits the artifact with the existing editors (lorebook / outline / chapter) and chooses **Approve & continue**, **Regenerate** (optionally with a guidance note), **Edit → save → approve**, or **Reset** to an earlier step. Preferred implementation: **one-stage-per-request** (each step is its own short run that saves and stops) — avoids the fragile 3600 s blocking-thread model and makes "no automation" the literal default. Keep an optional **"run remaining automatically"** escape hatch for users who want the old behavior.
+
+**Slice A — stop the automation + stop clobbering metadata (MVP; addresses the core complaint).**
+- **Per-stage gate.** Add `generation_mode: 'step' | 'auto'` to the KB (default **step**). In step mode the controller runs exactly one stage then stops with a `stage_awaiting_approval` event; "Approve & continue" runs the next. Generalize the `human_review_required`/`submit_review_decision` plumbing to fire after each stage's `save_project_data()` (KB already persisted there — a natural checkpoint).
+- **Suggest, don't overwrite.** Concept writes `suggested_title` / `suggested_logline` / `suggested_description` (new KB fields) instead of the canonical fields; the review UI shows each with an **Apply** button. Guard the outliner: treat user `num_chapters` as a target/cap (suggest, don't silently replace) and skip the `:434` description overwrite when the user set one.
+- **Reset.** A "Reset to <stage>" control that snapshots (Versions) then marks that stage + downstream incomplete so the flow re-gates there.
+- Ships: generation stops after every stage, the title is never reset, and you can go back.
+
+**Slice B — per-stage review actions (edit / regenerate / guidance).**
+- Review panel per stage shows the produced artifact + actions: **Approve & continue**, **Regenerate**, **Edit → save → approve** (opens the relevant editor; save via existing endpoints), **Add guidance → regenerate** (a note like "darker, fewer characters" injected into that stage's agent prompt).
+- Backend: stage-run accepts optional `guidance`; regenerate re-runs the stage.
+
+**Slice C — chapter granularity (both modes).**
+- Choose per project/session: **outline-all-then-write** (full outline, then write chapters one at a time with approve each — reuses today's outliner + the existing per-chapter gate) OR **one chapter at a time** (outline a single chapter → approve → write → approve → next), which needs the outliner to support single-chapter outlining.
+- Per-chapter approve / regenerate / edit-with-guidance (generalize the existing chapter gate; add reject/regenerate).
+
+**Slice D — UI: step controller + typed state.**
+- Typed `jobStatus` (`idle | running_stage | awaiting_approval | stopped | completed | failed`); `pendingReview` carries the stage id + artifact.
+- Dashboard: a step controller — current step highlighted; **Run this step / Approve & continue / Regenerate / Reset to…**; artifact preview; suggestion-apply chips (title etc.). Wire the existing `getCurrentJob` to rehydrate on reload.
+
+**Open decisions (resolve at build).** step-only vs `step`/`auto` toggle (lean: default step, keep auto escape hatch); "Apply suggested title" one-click vs auto-apply only when the user's title is blank (lean: one-click, never auto); reset granularity — single stage vs stage+downstream (lean: offer both); where single-chapter outlining lives in the outliner (Slice C).
+
+**Reuses:** the `human_review_required` / `paused_for_review` / `submit_review_decision` gate; `save_project_data` per-stage checkpoints; Versions snapshot/restore for reset; existing entity/outline/chapter edit endpoints for hand-edits; the WS streaming bridge.
+
 ## Docs refresh (Docusaurus, **not a wiki**) — low-priority parallel track
 
 Decision (2026-07-01): we already have a **Docusaurus** site in `docs/` wired for GitHub
