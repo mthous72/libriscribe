@@ -498,9 +498,18 @@ export default function ProjectDashboard() {
       <div className="bg-gray-900 border border-gray-800 rounded-xl p-4 space-y-3">
         <h3 className="text-sm font-medium text-gray-400">Search (lore retrieval)</h3>
         <p className="text-xs text-gray-500">
-          How this book's lore is retrieved for brainstorming and generation. <b>Keyword</b> is
-          always available; <b>Semantic</b> and <b>Hybrid</b> need an embedding source (Settings →
-          Embeddings) and re-embed the project when applied.
+          How this book's lore is found and fed into brainstorming and generation.
+        </p>
+        <ul className="text-xs text-gray-500 space-y-1 list-none">
+          <li><b className="text-gray-300">Keyword</b> — matches exact words (BM25). Instant, no embedding model, always available.</li>
+          <li><b className="text-gray-300">Semantic</b> — matches by <i>meaning</i> using an embedding model, so it finds related lore even when the wording differs. Needs an embedding source (Settings → Embeddings).</li>
+          <li><b className="text-gray-300">Hybrid</b> — both, merged. Best recall, highest cost.</li>
+        </ul>
+        <p className="text-[11px] text-amber-400/70">
+          Running the LLM locally (e.g. LM Studio, one model loaded at a time)? Semantic/Hybrid load the
+          embedding model on each search and swap back to your writing model — slower. <b>Keyword</b> avoids
+          this. Brainstorm mitigates it too: it only uses semantic on a new session's first message, then
+          keyword for follow-ups.
         </p>
         <div className="flex items-end gap-3 flex-wrap">
           <label className="block">

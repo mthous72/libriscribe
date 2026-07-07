@@ -201,5 +201,42 @@ class BrainstormPrefsTests(unittest.TestCase):
         self.assertIn("MOTIVATION", allp)
 
 
+class BrainstormRetrievalModeTests(unittest.TestCase):
+    """Semantic retrieval runs only on a new session's first turn; follow-ups force keyword
+    so a local host doesn't swap in the embedding model every message."""
+
+    def _capture_force_flags(self, force_keyword):
+        from libriscribe.knowledge_base import ProjectKnowledgeBase
+        import libriscribe.services.retrieval_service as rs
+
+        flags = []
+
+        class FakeSvc:
+            def search(self, q, *, mode, top_k=6, filters=None, task_type=None, force=False):
+                flags.append(force)
+                return []
+            def search_cross_references(self, *a, **k):
+                return None
+
+        orig = rs.search_service_for
+        rs.search_service_for = lambda *a, **k: FakeSvc()
+        try:
+            kb = ProjectKnowledgeBase(project_name="t", title="B", genre="F")
+            chat._assemble_system_prompt("t", kb, "hello", None, None, True, force_keyword=force_keyword)
+        finally:
+            rs.search_service_for = orig
+        return flags
+
+    def test_follow_up_turn_forces_keyword(self):
+        flags = self._capture_force_flags(force_keyword=True)
+        self.assertTrue(flags)             # retrieval searches actually ran
+        self.assertTrue(all(flags))        # every one pinned to keyword
+
+    def test_first_turn_uses_configured_mode(self):
+        flags = self._capture_force_flags(force_keyword=False)
+        self.assertTrue(flags)
+        self.assertFalse(any(flags))       # none forced → project mode (e.g. semantic) wins
+
+
 if __name__ == "__main__":
     unittest.main()

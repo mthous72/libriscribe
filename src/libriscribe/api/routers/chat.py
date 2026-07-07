@@ -251,10 +251,11 @@ def _session_meta(s: dict) -> dict:
 
 # ─── RAG context ──────────────────────────────────────────────────────────────
 
-def _build_lore_context(name: str, kb, query: str, max_tokens: int = 1800) -> str:
+def _build_lore_context(name: str, kb, query: str, max_tokens: int = 1800, force_keyword: bool = False) -> str:
     """Assemble a token-bounded block of established lore relevant to `query`.
 
     Prefer the retrieval index; fall back to a compact dump of KB entities.
+    `force_keyword` pins retrieval to keyword (no embedding swap) on brainstorm follow-up turns.
     """
     from libriscribe.services.context_builder import TokenBudget
 
@@ -266,7 +267,7 @@ def _build_lore_context(name: str, kb, query: str, max_tokens: int = 1800) -> st
         from libriscribe.services.retrieval_service import search_service_for
 
         svc = search_service_for(project_dir, kb)
-        for r in svc.search(query, mode="keyword", top_k=6):
+        for r in svc.search(query, mode="keyword", top_k=6, force=force_keyword):
             text = (getattr(r, "text", "") or "").strip()
             if not text:
                 continue
@@ -392,7 +393,7 @@ class ChatRequest(BaseModel):
     prefs: dict | None = None      # B23: {verbosity: low|medium|high}; falls back to the session's
 
 
-def _reference_context(name: str, kb, query: str, max_tokens: int = 800) -> str:
+def _reference_context(name: str, kb, query: str, max_tokens: int = 800, force_keyword: bool = False) -> str:
     """A token-bounded block of imported reference material relevant to `query` (B19).
 
     Clearly labelled as source material, NOT canon lore, so the model treats it as
@@ -406,7 +407,7 @@ def _reference_context(name: str, kb, query: str, max_tokens: int = 800) -> str:
         from libriscribe.services.retrieval_service import search_service_for
 
         svc = search_service_for(project_dir, kb)
-        for r in svc.search(query, mode="keyword", top_k=5, filters={"source_type": "reference"}):
+        for r in svc.search(query, mode="keyword", top_k=5, filters={"source_type": "reference"}, force=force_keyword):
             text = (getattr(r, "text", "") or "").strip()
             if not text:
                 continue
@@ -466,7 +467,7 @@ def _entity_brief(kb, ename: str):
     return None
 
 
-def _focus_context(kb, name: str, focus_type: str, focus_name: str, message: str):
+def _focus_context(kb, name: str, focus_type: str, focus_name: str, message: str, force_keyword: bool = False):
     """Return (resolved_name, entity_record, surrounding_lore) for a focused entity.
 
     Surrounding lore = the entity's cross-referenced companions/connections, the arcs it
@@ -544,7 +545,7 @@ def _focus_context(kb, name: str, focus_type: str, focus_name: str, message: str
     # 4) Keyword-search supplement seeded by the entity + the question.
     if svc is not None and not budget.exhausted():
         try:
-            for r in svc.search(f"{resolved} {message}", mode="keyword", top_k=4):
+            for r in svc.search(f"{resolved} {message}", mode="keyword", top_k=4, force=force_keyword):
                 if budget.exhausted():
                     break
                 text = (getattr(r, "text", "") or "").strip()
@@ -703,21 +704,24 @@ def clear_session(name: str, sid: str):
 
 
 def _assemble_system_prompt(name, kb, message, focus_type, focus_name, use_references,
-                            directive: str | None = None, focus_aspect: str | None = None) -> str:
+                            directive: str | None = None, focus_aspect: str | None = None,
+                            force_keyword: bool = False) -> str:
     """Build the exact system prompt the brainstorm chat would send (focus/general + lore
     context + optional reference band). Shared by the live chat and the preview (B15).
-    `directive` is the verbosity response directive; defaults to Medium for previews."""
+    `directive` is the verbosity response directive; defaults to Medium for previews.
+    `force_keyword` pins retrieval to keyword so a brainstorm follow-up turn doesn't swap in the
+    embedding model (semantic runs only on a new session's first turn — set by the chat endpoint)."""
     directive = directive or _VERBOSITY["medium"]["directive"]
     focus = None
     if focus_type and focus_name:
-        focus = _focus_context(kb, name, focus_type, focus_name, message)
+        focus = _focus_context(kb, name, focus_type, focus_name, message, force_keyword=force_keyword)
     if focus:
         resolved, record, related = focus
         system_prompt = _focus_system_prompt(kb, focus_type, resolved, record, related, directive, focus_aspect)
     else:
-        system_prompt = _system_prompt(kb, _build_lore_context(name, kb, message), directive)
+        system_prompt = _system_prompt(kb, _build_lore_context(name, kb, message, force_keyword=force_keyword), directive)
     if use_references:
-        refs = _reference_context(name, kb, message)
+        refs = _reference_context(name, kb, message, force_keyword=force_keyword)
         if refs:
             system_prompt = system_prompt + "\n\n" + refs
     return system_prompt
@@ -758,6 +762,10 @@ def chat(name: str, body: ChatRequest):
     session["prefs"] = prefs
     vb = _verbosity(prefs)
 
+    # Semantic retrieval only on a NEW session's first turn (rich grounding, one embedding swap);
+    # every follow-up turn pins to keyword so LM Studio doesn't swap models each message.
+    is_first_turn = not (session.get("messages") or [])
+
     _append_message(name, session, "user", body.message)
     history = session["messages"]
 
@@ -770,6 +778,7 @@ def chat(name: str, body: ChatRequest):
     system_prompt = _assemble_system_prompt(
         name, kb, body.message, body.focus_type, body.focus_name, body.use_references,
         directive=vb["directive"], focus_aspect=body.focus_aspect,
+        force_keyword=not is_first_turn,
     )
     if memory:
         system_prompt += (
