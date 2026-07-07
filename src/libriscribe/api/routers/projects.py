@@ -500,6 +500,58 @@ def save_chapter(name: str, n: int, body: ChapterContent):
     }
 
 
+class ReviseRequest(BaseModel):
+    guidance: str = ""
+
+
+@router.post("/{name}/chapters/{n}/revise")
+def revise_chapter(name: str, n: int, body: ReviseRequest):
+    """B34: rewrite a chapter under the author's guidance. Returns {original, revised} WITHOUT
+    saving — the author reviews the diff (B35) and keeps or discards explicitly."""
+    kb = project_service.load_kb(name)
+    if not kb:
+        raise HTTPException(status_code=404, detail="Project not found")
+    from libriscribe.services import revision
+
+    client = project_service.create_llm_client(kb)  # prose -> writing model
+    result = revision.revise_chapter(client, kb, project_service.get_projects_dir() / name, n, body.guidance)
+    if result is None:
+        raise HTTPException(status_code=422, detail="Chapter not found or revision failed")
+    return result
+
+
+class TrackStatesRequest(BaseModel):
+    chapters: list[int] | None = None
+
+
+@router.post("/{name}/character-states/extract")
+def extract_character_states(name: str, body: TrackStatesRequest | None = None):
+    """B33: extract per-chapter character states + timeline events from written prose
+    (parallel, utility model). Idempotent per chapter."""
+    kb = project_service.load_kb(name)
+    if not kb:
+        raise HTTPException(status_code=404, detail="Project not found")
+    from libriscribe.services import char_state
+    from libriscribe.utils import parallel
+
+    client = project_service.create_utility_client(kb)
+    summary = char_state.track_states(
+        client, kb, project_service.get_projects_dir() / name,
+        chapters=(body.chapters if body else None),
+        max_workers=parallel.resolve_max_workers(kb),
+    )
+    project_service.save_kb(name, kb)
+    return summary
+
+
+@router.get("/{name}/timeline")
+def get_timeline(name: str):
+    kb = project_service.load_kb(name)
+    if not kb:
+        raise HTTPException(status_code=404, detail="Project not found")
+    return [e.model_dump() for e in (kb.timeline_events or [])]
+
+
 @router.get("/{name}/files", response_model=list[ProjectFile])
 def list_files(name: str):
     project_dir = project_service.get_projects_dir() / name

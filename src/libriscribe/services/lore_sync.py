@@ -503,6 +503,12 @@ class LoreSyncService:
                 "an issue with note_type \"canon_violation\" — these are the most serious findings."
             )
 
+        # B33 → B31: who-knows-what-when, for the "knows too early" check.
+        from libriscribe.services.char_state import knowledge_timeline_block
+        ktl = knowledge_timeline_block(self.kb)
+        if ktl:
+            context_parts.append(ktl)
+
         # Characters
         for char in self.kb.characters.values():
             context_parts.append(self._format_character_profile(char.name))

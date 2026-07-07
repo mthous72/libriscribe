@@ -156,6 +156,13 @@ class CharacterState(BaseModel):
     notes: str = ""
 
 
+class TimelineEvent(BaseModel):
+    """A key story event tied to a chapter (B33 lightweight timeline)."""
+    chapter_number: int
+    description: str = ""
+    characters_involved: list[str] = Field(default_factory=list)
+
+
 class ContinuityNote(BaseModel):
     """Flags continuity issues or story threads."""
     chapter_number: int
@@ -229,6 +236,7 @@ class ProjectKnowledgeBase(BaseModel):
     lore_entries: dict[str, LoreEntry] = Field(default_factory=dict)
     story_arcs: dict[str, StoryArc] = Field(default_factory=dict)
     character_states: dict[str, list[CharacterState]] = Field(default_factory=dict)
+    timeline_events: list[TimelineEvent] = Field(default_factory=list)  # B33 lightweight timeline
     continuity_notes: list[ContinuityNote] = Field(default_factory=list)
     lore_suggestions: list[LoreSuggestion] = Field(default_factory=list)
     narrative_threads: dict[str, NarrativeThread] = Field(default_factory=dict)

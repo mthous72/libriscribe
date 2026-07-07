@@ -50,6 +50,9 @@ export const resetGeneration = (name: string, toStage: string) => api.post(`/pro
 export const listChapters = (name: string) => api.get(`/projects/${name}/chapters`).then(r => r.data)
 export const getChapter = (name: string, n: number) => api.get(`/projects/${name}/chapters/${n}`).then(r => r.data)
 export const saveChapter = (name: string, n: number, body: any) => api.put(`/projects/${name}/chapters/${n}`, body).then(r => r.data)
+export const reviseChapter = (name: string, n: number, guidance: string): Promise<{ original: string, revised: string }> => api.post(`/projects/${name}/chapters/${n}/revise`, { guidance }, { timeout: 0 }).then(r => r.data)
+export const extractCharacterStates = (name: string, chapters?: number[]) => api.post(`/projects/${name}/character-states/extract`, { chapters: chapters || null }, { timeout: 0 }).then(r => r.data)
+export const getTimeline = (name: string) => api.get(`/projects/${name}/timeline`).then(r => r.data)
 
 // ─── Files ───────────────────────────────────────────────────
 export const listFiles = (name: string) => api.get(`/projects/${name}/files`).then(r => r.data)
