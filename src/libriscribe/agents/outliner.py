@@ -24,6 +24,10 @@ class OutlinerAgent(Agent):
         try:
             max_chapters = self._get_max_chapters(project_knowledge_base)
 
+            # Phase 0b: ground the outline in the author's established lore (if any).
+            from libriscribe.services.lore_digest import grounding_block
+            lore_block = grounding_block(project_knowledge_base)
+
             if project_knowledge_base.book_length == "Short Story":
                 initial_prompt = prompts.OUTLINE_PROMPT.format(**project_knowledge_base.model_dump())
                 initial_prompt += f"\n\nIMPORTANT: This is a SHORT STORY. Generate EXACTLY {max_chapters} chapters. Do not exceed this limit."
@@ -33,6 +37,9 @@ class OutlinerAgent(Agent):
             else:
                 initial_prompt = prompts.OUTLINE_PROMPT.format(**project_knowledge_base.model_dump())
                 initial_prompt += f"\n\nIMPORTANT: Generate at most {max_chapters} chapters."
+
+            if lore_block:
+                initial_prompt = f"{lore_block}\n\n{initial_prompt}"
 
             self.emit("log", {"level": "info", "message": "Creating chapter outline..."})
             initial_outline = self.llm_client.generate_content(initial_prompt, max_tokens=3000, temperature=0.5)

@@ -23,6 +23,12 @@ class ConceptGeneratorAgent(Agent):
     ) -> None:
         """Generates a book concept, with critique and refinement."""
         try:
+            # Phase 0b: ground the concept in the author's established lore (if any) so it
+            # extends THEIR world instead of inventing one. Empty lorebook -> no block.
+            from libriscribe.services.lore_digest import grounding_block
+
+            lore_block = grounding_block(project_knowledge_base)
+
             # --- Step 1: Initial Concept Generation (Simplified) ---
             if project_knowledge_base.book_length == "Short Story":
                 initial_prompt = f"""Generate a concise book concept for a {project_knowledge_base.genre} {project_knowledge_base.category} short story.
@@ -60,6 +66,9 @@ class ConceptGeneratorAgent(Agent):
                     "description": "..."
                 }}}}}}}}
                 ```"""
+
+            if lore_block:
+                initial_prompt = f"{lore_block}\n\n{initial_prompt}"
 
             self.emit("log", {"level": "info", "message": "Generating initial concept..."})
             initial_concept_md = self.llm_client.generate_content_with_json_repair(
@@ -115,6 +124,8 @@ class ConceptGeneratorAgent(Agent):
             }}}}}}}}
             ```
             """
+            if lore_block:
+                refine_prompt = f"{lore_block}\n\n{refine_prompt}"
             self.emit("log", {"level": "info", "message": "Refining concept..."})
             refined_concept_md = self.llm_client.generate_content_with_json_repair(
                 refine_prompt
