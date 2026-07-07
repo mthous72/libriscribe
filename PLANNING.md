@@ -1518,6 +1518,16 @@ Gaps surfaced by reviewing the whole plan set. Worked through with the user one 
 
 **Storage / wiring.** The intensity level stores on Scene/Chapter (+ a project default) and injects register/tone guidance into the generation prompt only when the feature is enabled. Per-scene granularity rides with the chapter/scene-granularity slice; a per-project default can ship earlier. The gating + age affirmation + disclaimer + neutral naming are built together with the control, not bolted on later. Pairs with the B32 content-boundary rules.
 
+### B37. Publish-ready export — DOCX → EPUB → PDF — **effort: M** — *APPROVED, delayed (2026-07-07)*
+
+**The gap.** Export today is only `.txt` (plain prose) + a re-importable JSON bundle — no format you can hand to a reader or an editor. The pipeline stops just short of "a finished book."
+
+**What it does.** Assemble the manuscript (chapters + title/author front matter + a table of contents + basic styling) into real documents, added as format options on the existing export UI. Pure **offline/local** assembly (no cloud conversion), per the local constraint.
+
+**Order (locked).** **DOCX first** (for beta readers / editors who use Word), **then EPUB** (the real ebook format — sections, TOC, front matter), **then PDF later** (heavier; explicitly delayed).
+
+**Notes.** Independent of everything else — no sequencing constraints beyond the internal DOCX→EPUB→PDF order; can slot in whenever. DOCX via a library or minimal OOXML; EPUB is a zip of XHTML + manifest (doable without heavy deps). A satisfying "get a real book out" item to interleave with the heavier work. Marked **delayed** — build after the higher-priority consistency/generation work.
+
 ## Docs refresh (Docusaurus, **not a wiki**) — low-priority parallel track
 
 Decision (2026-07-01): we already have a **Docusaurus** site in `docs/` wired for GitHub
