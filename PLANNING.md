@@ -3,7 +3,35 @@
 Living planning doc. Features are specced here **before** implementation. Nothing
 in "Backlog" is built until it has been promoted to a full spec and approved.
 
-Last updated: 2026-06-29
+Last updated: 2026-07-07
+
+> **B-numbers are stable historical IDs, not build order.** The build order is the **Roadmap** below. Detailed specs keep their original B-number wherever they already live in this doc.
+
+---
+
+## Roadmap — incremental build sequence (consolidated 2026-07-07)
+
+Each phase is a **shippable win that builds on the previous one** and plugs into the current codebase. Ordered so early phases unblock later ones and nothing is built before its foundation.
+
+**Shipped (current software).** Web app (FastAPI + React), lorebook with smart import, brainstorm sessions (focus + per-property aspect, verbosity/length, conversational tone, voice profiles), retrieval (keyword/semantic; brainstorm pinned to keyword after a session's first turn), **B25** entity connections (navigable + pickable + auto-suggest), **B28** gap-finder (structural + AI referenced-but-undefined), **B29** bounded concurrency, edit-project-meta, non-loopback bind, releases through v0.12.0.
+
+**Phase 0 — Stop the bleeding (urgent, small; first).** Generation currently overwrites the user's title/description and shrinks chapter count, and ignores the lorebook. Fix inside `concept_generator` + `outliner`: **suggest-don't-overwrite** metadata (write `suggested_*`, never clobber) and **lore-ground concept + outline** (inject a KB digest so it builds on the user's world). *Win: generation stops destroying projects and starts using your lore — valuable even before the full redesign.* → foundation for everything generation-related. (Epic **B30**, Slice A subset.)
+
+**Phase 1 — Human-directed generation (**B30**).** Per-stage gates (stop after every stage), reset, suggestion-apply UI, typed job state, step controller. Builds on Phase 0 (the now-safe, lore-grounded stages get gated). *Win: you direct the story stage by stage.*
+
+**Phase 2 — Consistency guardrails (**B32** → **B31**).** **B32** canon lock (slim `canon_rules` + seeded categories) injected into the now-grounded/gated stages; **B31** continuity guard checks written chapters against canon+lore (on-demand, Gaps-style report). Builds on Phase 0 (grounding) + Phase 1 (per-stage/chapter flow to hook checks into). *Win: the story stays consistent; canon is enforced.*
+
+**Phase 3 — Actionable staging (**B27** Slice A).** Sandbox spine (per-run) + review/cherry-pick + **gap→sandbox** seed, so B28 gaps and B25 "unlinked" names become **createable**. Independent of generation. *Win: cherry-pick gap/undefined candidates into the lorebook.* → foundation the wizard stages into.
+
+**Phase 4 — World-seeding wizard (**B38**).** LLM-authored, project-tailored questions → gather the user's specifics → **elaborate** into lore (never invent) → stage into the B27 sandbox → explore/edit. Two modes: seed a new project / overall-brainstorm an existing one. Builds on Phase 3 (sandbox) + Phase 0 (shared lore digest) + B25/B28. *Win: guided project seeding and whole-project brainstorm.*
+
+**Phase 5 — Revision & deeper consistency (**B34** + **B35** + **B33**).** **B34** human-directed revision loop (rewrite existing chapters with the Phase-1 controls) + **B35** diff-on-regenerate (cross-cutting, also retro-fits Phase 1) + **B33** character-state/timeline (unlocks B31's "knows-too-early" check + time-aware context). Builds on Phase 1 (shared UX) + Phase 2 (canon/continuity). *Win: human-directed rewriting; the story tracks who-knows-what-when.*
+
+**Phase 6 — Content controls & finishing (**B36** + **B37**; delayed/independent).** **B36** gated content-intensity controls (rides the chapter/scene granularity from B30 Slice C) + **B37** export DOCX→EPUB→PDF-later. No hard dependencies; interleave when wanted. *Win: dial content per scene; get a real book out.*
+
+**Parallel / back-burner tracks.** "Claude-like" brainstorming + Higher-end-value output (capture/feed-forward; some already shipped as B23/B26) — enrich the brainstorm side independently. **B21** model warm-up/keep-alive (helps local load times). Story-structure/pacing analysis (parked). Docs refresh. Cloud storage (held).
+
+**Dependency summary.** `Phase 0 → 1 → 2` and `Phase 3 → 4` are the two spines; Phase 5 needs 1+2; Phase 6 is independent. Phase 0 is the urgent entry point.
 
 ---
 
@@ -1362,7 +1390,7 @@ The sandbox is the spine — build it first, fill it from something that already
 
 **Still-open at build time (unchanged):** default budget value; verify the sync client is safe under >1 workers *before* Slice B relies on parallel fan-out (Slice A is serial/LLM-light, so this can be verified in parallel with Slice A).
 
-## Epic: Human-directed, step-by-step generation — **DESIGN (specced 2026-07-07, planning only; no code yet)**
+## Epic B30: Human-directed, step-by-step generation — **DESIGN (specced 2026-07-07, planning only; no code yet)**
 
 **Problem (user).** "Start Generation" runs the whole book end-to-end with no pauses — no chance to check the story's direction, no stop at concept before outlining, no chapter-by-chapter control. Too much automation, not enough letting the human direct the story. It also **overwrites the user's story title** (and other metadata). Wanted: take the automation away, make each step explicit and human-directed, allow **reset**, and make generation only **suggest** metadata for approval.
 
@@ -1402,7 +1430,7 @@ The sandbox is the spine — build it first, fill it from something that already
 
 **Reuses:** the `human_review_required` / `paused_for_review` / `submit_review_decision` gate; `save_project_data` per-stage checkpoints; Versions snapshot/restore for reset; existing entity/outline/chapter edit endpoints for hand-edits; the WS streaming bridge.
 
-## Epic: Guided story-seeding wizard (Q&A → generate lore → explore/edit) — **DESIGN (specced 2026-07-07, planning only; no code yet)**
+## Epic B38: Guided story-seeding wizard (Q&A → generate lore → explore/edit) — **DESIGN (specced 2026-07-07, planning only; no code yet)**
 
 **Concept (user idea).** A separate, optional flow that **gathers the user's specific information** through structured questions — e.g. *how many main characters*, each character's info, *the high-level story arcs*, the setting — and then **elaborates those specifics into full lorebook records** (characters, locations, codex, arcs, worldbuilding, threads) the user explores and edits. This is **world-seeding, not prose writing** — explicitly a whole separate function from Start-Generation.
 
