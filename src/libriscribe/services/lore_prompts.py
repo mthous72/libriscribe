@@ -25,9 +25,9 @@ TYPE_FIELDS = {
         "personality_traits", "background", "motivations", "internal_conflicts",
         "external_conflicts", "character_arc",
     ],
-    "location": ["description", "significance"],
-    "lore": ["entry_type", "description", "significance"],
-    "arc": ["arc_type", "description", "resolution_notes"],
+    "location": ["description", "significance", "associated_characters", "first_appearance", "tags"],
+    "lore": ["entry_type", "description", "significance", "related_entities", "first_appearance", "tags"],
+    "arc": ["arc_type", "description", "resolution_notes", "chapters_involved", "characters_involved", "status"],
 }
 
 # The character's dialogue VoiceProfile (nested on the model). Extracted by a dedicated pass and
@@ -53,6 +53,14 @@ FIELD_DESCRIPTIONS = {
     "entry_type": "the kind of thing this is (e.g. faction, item, technology, concept, event, rule)",
     "arc_type": "the kind of arc (e.g. redemption, mystery, romance, coming-of-age)",
     "resolution_notes": "how the arc resolves, or is intended to resolve",
+    # Relational / meta fields (lists → comma-separated; chapters → numbers)
+    "associated_characters": "characters connected to this place — comma-separated names",
+    "related_entities": "other entities this connects to (characters, places, factions, items) — comma-separated names",
+    "first_appearance": "the chapter number where this first appears — infer your best guess from the source; leave empty only if there's truly no basis",
+    "tags": "short freeform keywords/labels for this entry — comma-separated",
+    "chapters_involved": "chapter numbers this arc spans — comma-separated numbers",
+    "characters_involved": "characters who take part in this arc — comma-separated names",
+    "status": "the arc's status (e.g. active, resolved, abandoned, planned)",
     # Dialogue voice (VoiceProfile)
     "speech_patterns": "how they structure sentences (e.g. short clipped sentences, formal with subordinate clauses, rambling with digressions)",
     "vocabulary_level": "word-choice level (e.g. street slang, academic, plain and direct, archaic formal)",
