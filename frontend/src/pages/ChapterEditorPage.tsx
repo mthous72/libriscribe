@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { getChapter, saveChapter, previewContext } from '../api/client'
+import { getChapter, saveChapter, previewContext, reviseChapter } from '../api/client'
 import { useUiStore } from '../store/uiSlice'
-import { ArrowLeft, Save, Eye, X, Loader2 } from 'lucide-react'
+import { ArrowLeft, Save, Eye, X, Loader2, Wand2 } from 'lucide-react'
+import DiffView from '../components/DiffView'
 
 export default function ChapterEditorPage() {
   const { name, n } = useParams<{ name: string; n: string }>()
@@ -13,6 +14,31 @@ export default function ChapterEditorPage() {
   const [dirty, setDirty] = useState(false)
   const [ctx, setCtx] = useState<any | null>(null)
   const [loadingCtx, setLoadingCtx] = useState(false)
+  // B34/B35: guided revision with a keep/discard diff — never saves without your choice.
+  const [showRevise, setShowRevise] = useState(false)
+  const [guidance, setGuidance] = useState('')
+  const [revising, setRevising] = useState(false)
+  const [revision, setRevision] = useState<{ original: string, revised: string } | null>(null)
+  const [revErr, setRevErr] = useState('')
+
+  const runRevision = async () => {
+    if (!name || !n) return
+    setRevising(true); setRevErr(''); setRevision(null)
+    try { setRevision(await reviseChapter(name, parseInt(n), guidance)) }
+    catch (e: any) { setRevErr(e?.response?.data?.detail || 'Revision failed') }
+    finally { setRevising(false) }
+  }
+
+  const keepRevision = async () => {
+    if (!revision || !name || !n) return
+    setContent(revision.revised)
+    setDirty(false)
+    try {
+      await saveChapter(name, parseInt(n), { chapter_number: parseInt(n), title, content: revision.revised, word_count: revision.revised.split(/\s+/).length })
+      useUiStore.getState().markClean()
+    } catch { alert('Failed to save the revision') }
+    setRevision(null); setShowRevise(false)
+  }
 
   const previewCtx = async () => {
     if (!name || !n) return
@@ -60,6 +86,9 @@ export default function ChapterEditorPage() {
           <button onClick={previewCtx} disabled={loadingCtx} title="See the lore/context the AI would receive to write this chapter (no LLM call)" className="flex items-center gap-1 px-3 py-1.5 bg-gray-800 hover:bg-gray-700 rounded-lg text-sm disabled:opacity-50">
             {loadingCtx ? <Loader2 size={14} className="animate-spin" /> : <Eye size={14} />} Preview AI context
           </button>
+          <button onClick={() => setShowRevise(!showRevise)} title="Give revision notes; the AI rewrites the chapter and shows you a diff — you keep or discard" className="flex items-center gap-1 px-3 py-1.5 bg-gray-800 hover:bg-gray-700 rounded-lg text-sm">
+            <Wand2 size={14} /> Revise with AI
+          </button>
           <button onClick={handleSave} disabled={saving} className="flex items-center gap-1 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 rounded-lg text-sm disabled:opacity-50">
             <Save size={14} /> {saving ? 'Saving...' : 'Save'}
           </button>
@@ -78,6 +107,31 @@ export default function ChapterEditorPage() {
             </div>
             <pre className="flex-1 min-h-0 overflow-auto text-[11px] text-gray-300 whitespace-pre-wrap bg-gray-900 border border-gray-800 rounded p-2">{ctx.context || '(no context assembled — add lore, or write earlier chapters)'}</pre>
           </div>
+        </div>
+      )}
+
+      {showRevise && (
+        <div className="bg-gray-900 border border-gray-800 rounded-xl p-4 space-y-3">
+          <div className="flex items-center gap-2">
+            <input value={guidance} onChange={e => setGuidance(e.target.value)}
+              placeholder='Revision notes — e.g. "tighten the middle", "more tension in the confrontation"…'
+              onKeyDown={e => { if (e.key === 'Enter') runRevision() }}
+              className="flex-1 px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-sm" />
+            <button onClick={runRevision} disabled={revising} className="flex items-center gap-1 px-3 py-2 bg-indigo-600 hover:bg-indigo-500 rounded-lg text-sm disabled:opacity-50">
+              {revising ? <Loader2 size={14} className="animate-spin" /> : <Wand2 size={14} />} {revising ? 'Revising…' : 'Revise'}
+            </button>
+          </div>
+          {revErr && <div className="text-xs text-red-400">{revErr}</div>}
+          {revision && (
+            <>
+              <p className="text-[11px] text-gray-500">Review the changes — <span className="text-green-400">green = added</span>, <span className="text-red-400 line-through">red = removed</span>. Nothing is saved until you keep it.</p>
+              <DiffView oldText={revision.original} newText={revision.revised} />
+              <div className="flex gap-2">
+                <button onClick={keepRevision} className="px-3 py-1.5 bg-green-700 hover:bg-green-600 rounded-lg text-sm">Keep revision</button>
+                <button onClick={() => setRevision(null)} className="px-3 py-1.5 bg-gray-800 hover:bg-gray-700 rounded-lg text-sm">Discard</button>
+              </div>
+            </>
+          )}
         </div>
       )}
 

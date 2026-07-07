@@ -15,6 +15,7 @@ import {
   listReferences, uploadReference, deleteReference,
   getGaps, deepScanGaps, getProject, getConnections, getConnectionSuggestions,
   listSandboxRuns, getSandboxRun, deleteSandboxRun, patchSandboxCandidate, applySandboxRun, stageGapsToSandbox,
+  extractCharacterStates, getTimeline,
 } from '../api/client'
 import { useBrainstormStore } from '../store/brainstormSlice'
 import LoreProposalReview, { Proposal } from '../components/LoreProposalReview'
@@ -380,6 +381,9 @@ export default function LorebookPage() {
       .catch(() => { if (!cancelled) setLinkSuggestions([]) })
     return () => { cancelled = true }
   }, [name, tab, selected?._origName, loreVersion])
+  const [timelineEvents, setTimelineEvents] = useState<any[]>([])
+  const [tlBusy, setTlBusy] = useState(false)
+  useEffect(() => { if (tab === 'Graph' && name) getTimeline(name).then(setTimelineEvents).catch(() => {}) }, [tab, name])
   const [gaps, setGaps] = useState<{ gaps: any[], counts: any } | null>(null)
   const [gapsLoading, setGapsLoading] = useState(false)
   const [deepGaps, setDeepGaps] = useState<any[] | null>(null)
@@ -763,6 +767,27 @@ export default function LorebookPage() {
                   {e.referenced_in_chapters?.length > 0 && <div className="text-gray-500 mt-0.5">Ch: {e.referenced_in_chapters.join(', ')}</div>}
                 </div>
               ))}
+              {/* B33: lightweight story timeline (populated by Extract states) */}
+              <div className="pt-2 border-t border-gray-800">
+                <div className="flex items-center justify-between mb-1.5">
+                  <h3 className="text-xs uppercase tracking-wide text-gray-500">Timeline</h3>
+                  <button onClick={async () => {
+                    setTlBusy(true)
+                    try { await extractCharacterStates(name!); setTimelineEvents(await getTimeline(name!)) }
+                    catch {} finally { setTlBusy(false) }
+                  }} disabled={tlBusy} title="AI pass over written chapters: per-character states + key events (parallel)"
+                    className="flex items-center gap-1 px-2 py-1 bg-indigo-600 hover:bg-indigo-500 rounded text-[11px] disabled:opacity-50">
+                    {tlBusy ? <Loader2 size={11} className="animate-spin" /> : <Sparkles size={11} />} Extract states (AI)
+                  </button>
+                </div>
+                {timelineEvents.map((e: any, i: number) => (
+                  <div key={i} className="text-xs text-gray-400 py-0.5">
+                    <span className="text-gray-500">Ch {e.chapter_number}:</span> {e.description}
+                    {e.characters_involved?.length > 0 && <span className="text-gray-600"> — {e.characters_involved.join(', ')}</span>}
+                  </div>
+                ))}
+                {timelineEvents.length === 0 && <p className="text-[11px] text-gray-600">No timeline yet — click Extract states after writing chapters.</p>}
+              </div>
             </div>
           )}
           {tab === 'World' && (
