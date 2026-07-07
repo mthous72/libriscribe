@@ -93,6 +93,7 @@ export const extractFieldsDebug = (name: string, body: { name: string, content: 
 export const getWorldbuilding = (name: string) => api.get(`/projects/${name}/worldbuilding`).then(r => r.data)
 export const updateWorldbuilding = (name: string, body: any) => api.put(`/projects/${name}/worldbuilding`, body).then(r => r.data)
 
+export const getGaps = (name: string): Promise<{ gaps: any[], counts: { total: number, warn: number, info: number } }> => api.get(`/projects/${name}/gaps`).then(r => r.data)
 export const listXref = (name: string) => api.get(`/projects/${name}/xref`).then(r => r.data)
 export const searchProject = (name: string, body: any) => api.post(`/projects/${name}/search`, body).then(r => r.data)
 
