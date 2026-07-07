@@ -13,7 +13,7 @@ import {
   listThreads, createThread, updateThread, deleteThread,
   parseLore,
   listReferences, uploadReference, deleteReference,
-  getGaps,
+  getGaps, deepScanGaps,
 } from '../api/client'
 import { useBrainstormStore } from '../store/brainstormSlice'
 import LoreProposalReview, { Proposal } from '../components/LoreProposalReview'
@@ -95,6 +95,9 @@ export default function LorebookPage() {
   const lastLoreVersion = useRef(loreVersion)
   const [gaps, setGaps] = useState<{ gaps: any[], counts: any } | null>(null)
   const [gapsLoading, setGapsLoading] = useState(false)
+  const [deepGaps, setDeepGaps] = useState<any[] | null>(null)
+  const [deepScanning, setDeepScanning] = useState(false)
+  const [deepInfo, setDeepInfo] = useState('')
 
   const loadGaps = async () => {
     if (!name) return
@@ -102,8 +105,20 @@ export default function LorebookPage() {
     try { setGaps(await getGaps(name)) } catch { setGaps({ gaps: [], counts: { total: 0 } }) }
     finally { setGapsLoading(false) }
   }
-  // (Re)load the gap report when the tab opens or lore changes.
-  useEffect(() => { if (tab === 'Gaps') loadGaps() }, [tab, name, loreVersion])
+  const runDeepScan = async () => {
+    if (!name) return
+    setDeepScanning(true); setDeepInfo('')
+    try {
+      const r = await deepScanGaps(name)
+      setDeepGaps(r.gaps || [])
+      setDeepInfo(r.detail || `Scanned ${r.scanned} source${r.scanned === 1 ? '' : 's'}${r.truncated ? ' (top matches shown)' : ''}.`)
+    } catch (e: any) {
+      setDeepInfo(e?.response?.data?.detail || 'Deep scan failed.')
+    } finally { setDeepScanning(false) }
+  }
+  // (Re)load the gap report when the tab opens or lore changes. Deep-scan results are cleared
+  // (they're LLM-derived and can go stale after edits) — the user re-runs when they want them.
+  useEffect(() => { if (tab === 'Gaps') { loadGaps(); setDeepGaps(null); setDeepInfo('') } }, [tab, name, loreVersion])
 
   const TAB_FOR_TYPE: Record<string, string> = { character: 'Characters', location: 'Locations', lore: 'Lore', arc: 'Arcs', thread: 'Threads' }
   const openEntity = (target: { type: string, name: string }) => {
@@ -331,56 +346,77 @@ export default function LorebookPage() {
 
       {tab === 'References' && <ReferencesPanel name={name!} />}
 
-      {tab === 'Gaps' && (
+      {tab === 'Gaps' && (() => {
+        const allGaps = [...(gaps?.gaps || []), ...(deepGaps || [])]
+        const LABELS: Record<string, string> = {
+          dangling_reference: 'Dangling references', out_of_range_chapter: 'Chapters out of range',
+          thin_character: 'Thin characters', unresolved_arc: 'Unresolved arcs',
+          unresolved_thread: 'Open threads', missing_voice: 'Missing voice profiles',
+          undefined_entity: 'Referenced but undefined (AI)',
+        }
+        const ORDER = ['dangling_reference', 'out_of_range_chapter', 'thin_character', 'undefined_entity', 'unresolved_arc', 'unresolved_thread', 'missing_voice'] as const
+        return (
         <div className="space-y-4">
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between gap-2">
             <div className="text-sm text-gray-400">
               {gaps?.counts?.total ? (
                 <span><span className="text-amber-400 font-medium">{gaps.counts.warn}</span> to fix · <span className="text-gray-400">{gaps.counts.info}</span> to consider</span>
               ) : 'Structural checks on your lore — no LLM.'}
             </div>
-            <button onClick={loadGaps} disabled={gapsLoading} className="flex items-center gap-1 px-2 py-1 bg-gray-800 hover:bg-gray-700 rounded text-xs disabled:opacity-50">
-              {gapsLoading ? <Loader2 size={13} className="animate-spin" /> : <RefreshCw size={13} />} Refresh
-            </button>
+            <div className="flex items-center gap-2 shrink-0">
+              <button onClick={runDeepScan} disabled={deepScanning} title="Use the AI to scan prose + lore for names that have no record. Costs LLM calls; runs at your Max concurrent requests." className="flex items-center gap-1 px-2 py-1 bg-indigo-600 hover:bg-indigo-500 rounded text-xs disabled:opacity-50">
+                {deepScanning ? <Loader2 size={13} className="animate-spin" /> : <Sparkles size={13} />} Deep scan (uses AI)
+              </button>
+              <button onClick={loadGaps} disabled={gapsLoading} className="flex items-center gap-1 px-2 py-1 bg-gray-800 hover:bg-gray-700 rounded text-xs disabled:opacity-50">
+                {gapsLoading ? <Loader2 size={13} className="animate-spin" /> : <RefreshCw size={13} />} Refresh
+              </button>
+            </div>
           </div>
+          {(deepScanning || deepInfo) && (
+            <div className="text-[11px] text-gray-500 flex items-center gap-2">
+              {deepScanning ? <><Loader2 size={12} className="animate-spin" /> AI is scanning prose &amp; lore for undefined names…</> : deepInfo}
+            </div>
+          )}
           {gapsLoading && !gaps ? (
             <div className="text-gray-500 text-sm flex items-center gap-2"><Loader2 size={15} className="animate-spin" /> Scanning…</div>
-          ) : (gaps && gaps.gaps.length === 0) ? (
+          ) : (allGaps.length === 0) ? (
             <div className="text-center text-gray-500 py-10">
               <Check size={28} className="mx-auto mb-2 text-green-500" />
-              No structural gaps found. Your references, chapters, and core fields all check out.
+              No structural gaps found. Try <span className="text-indigo-400">Deep scan</span> to hunt for referenced-but-undefined names.
             </div>
           ) : (
-            (['dangling_reference', 'out_of_range_chapter', 'thin_character', 'unresolved_arc', 'unresolved_thread', 'missing_voice'] as const).map(type => {
-              const group = (gaps?.gaps || []).filter(g => g.type === type)
+            ORDER.map(type => {
+              const group = allGaps.filter(g => g.type === type)
               if (group.length === 0) return null
-              const LABELS: Record<string, string> = {
-                dangling_reference: 'Dangling references', out_of_range_chapter: 'Chapters out of range',
-                thin_character: 'Thin characters', unresolved_arc: 'Unresolved arcs',
-                unresolved_thread: 'Open threads', missing_voice: 'Missing voice profiles',
-              }
               return (
                 <div key={type}>
                   <h3 className="text-xs uppercase tracking-wide text-gray-500 mb-1.5">{LABELS[type]} ({group.length})</h3>
                   <div className="space-y-1.5">
-                    {group.map(g => (
-                      <button key={g.id} onClick={() => openEntity(g.target)}
-                        className="w-full text-left flex items-start gap-2 px-3 py-2 bg-gray-800/60 hover:bg-gray-700 rounded-lg">
-                        <span className={`mt-1 shrink-0 w-2 h-2 rounded-full ${g.severity === 'warn' ? 'bg-amber-400' : 'bg-gray-500'}`} />
-                        <span className="min-w-0">
-                          <span className="text-sm"><span className="font-medium">{g.entity_name}</span> <span className="text-gray-500 capitalize">· {g.entity_type}</span></span>
-                          <span className="block text-xs text-gray-400">{g.message}</span>
-                          {g.evidence && <span className="block text-[11px] text-gray-600">{g.evidence}</span>}
-                        </span>
-                      </button>
-                    ))}
+                    {group.map(g => {
+                      const inner = (
+                        <>
+                          <span className={`mt-1 shrink-0 w-2 h-2 rounded-full ${g.severity === 'warn' ? 'bg-amber-400' : 'bg-gray-500'}`} />
+                          <span className="min-w-0">
+                            <span className="text-sm"><span className="font-medium">{g.entity_name}</span> <span className="text-gray-500 capitalize">· {g.entity_type}{g.target ? '' : ' (not in lorebook)'}</span></span>
+                            <span className="block text-xs text-gray-400">{g.message}</span>
+                            {g.evidence && <span className="block text-[11px] text-gray-600">{g.evidence}</span>}
+                          </span>
+                        </>
+                      )
+                      return g.target ? (
+                        <button key={g.id} onClick={() => openEntity(g.target)} className="w-full text-left flex items-start gap-2 px-3 py-2 bg-gray-800/60 hover:bg-gray-700 rounded-lg">{inner}</button>
+                      ) : (
+                        <div key={g.id} className="flex items-start gap-2 px-3 py-2 bg-gray-800/40 rounded-lg">{inner}</div>
+                      )
+                    })}
                   </div>
                 </div>
               )
             })
           )}
         </div>
-      )}
+        )
+      })()}
 
       <div className={`grid grid-cols-1 lg:grid-cols-3 gap-4 ${(tab === 'References' || tab === 'Gaps') ? 'hidden' : ''}`}>
         {/* List */}

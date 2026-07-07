@@ -51,6 +51,26 @@ def get_gaps(name: str):
     return gap_finder.find_gaps(kb)
 
 
+@router.post("/{name}/gaps/deep-scan")
+def deep_scan_gaps(name: str):
+    """AI pass (opt-in, costs LLM calls): scan prose + lore free-text for named entities that have
+    no lorebook record. Fans out at the project's max_concurrency (B29)."""
+    kb = load_kb(name)
+    if not kb:
+        raise HTTPException(status_code=404, detail="Project not found")
+    from libriscribe.services import gap_finder
+    from libriscribe.utils import parallel
+
+    project_dir = get_projects_dir() / name
+    texts = gap_finder.gather_source_texts(kb, project_dir)
+    if not texts:
+        return {"gaps": [], "scanned": 0, "truncated": False,
+                "detail": "No prose or lore text to scan yet."}
+    client = create_utility_client(kb)
+    workers = parallel.resolve_max_workers(kb)
+    return gap_finder.find_undefined_entities(client, kb, texts, workers)
+
+
 # ─── Characters ───────────────────────────────────────────────────
 
 @router.get("/{name}/characters")

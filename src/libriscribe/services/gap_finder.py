@@ -21,6 +21,7 @@ Each gap is a plain dict:
 """
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
 
 # Statuses that mean an arc/thread is finished (case-insensitive).
@@ -161,6 +162,140 @@ def _check_thin_characters(gaps: list[dict], kb) -> None:
                  entity_type="character", entity_name=name,
                  message="No Voice Profile yet — dialogue won't have a distinct voice.",
                  evidence="voice_profile empty", detail="voice")
+
+
+# ─── AI pass: referenced-but-undefined entities (B28 slice 2) ─────────────────
+# Opt-in, LLM-backed: scan prose + lore free-text for named entities that have no KB record.
+# Fanned out through the bounded parallel runner at the project's max_concurrency (B29).
+
+_TEXT_CAP = 6000  # per-source char cap fed to the model (matches the other extract prompts)
+
+
+def gather_source_texts(kb, project_dir) -> list[tuple[str, str]]:
+    """(label, text) pairs to scan: chapter prose files + every lore free-text field."""
+    texts: list[tuple[str, str]] = []
+
+    pd = Path(project_dir) if project_dir else None
+    if pd and pd.exists():
+        best: dict[int, tuple[bool, str]] = {}  # chapter -> (is_revised, text); prefer revised
+        for path in pd.glob("chapter_*.md"):
+            fn = path.name
+            if fn.endswith("_original.md"):
+                continue
+            try:
+                ch = int(fn.split("_")[1].split(".")[0])
+                t = path.read_text(encoding="utf-8")
+            except (ValueError, IndexError, OSError):
+                continue
+            if not t.strip():
+                continue
+            revised = "revised" in fn
+            prev = best.get(ch)
+            if prev is None or (revised and not prev[0]):
+                best[ch] = (revised, t)
+        for ch in sorted(best):
+            texts.append((f"Chapter {ch}", best[ch][1]))
+
+    def blob(*parts: str) -> str:
+        return "\n".join(p for p in (str(x or "") for x in parts) if p.strip())
+
+    for name, c in (kb.characters or {}).items():
+        b = blob(c.background, c.physical_description, c.personality_traits, c.motivations,
+                 c.internal_conflicts, c.external_conflicts, c.character_arc)
+        if b.strip():
+            texts.append((f"character:{name}", b))
+    for name, loc in (kb.locations or {}).items():
+        b = blob(loc.description, loc.significance)
+        if b.strip():
+            texts.append((f"location:{name}", b))
+    for name, e in (kb.lore_entries or {}).items():
+        b = blob(e.description, e.significance)
+        if b.strip():
+            texts.append((f"lore:{name}", b))
+    for name, a in (kb.story_arcs or {}).items():
+        b = blob(a.description, a.resolution_notes)
+        if b.strip():
+            texts.append((f"arc:{name}", b))
+    wb = getattr(kb, "worldbuilding", None)
+    if wb:
+        vals = [str(v) for v in wb.model_dump().values() if isinstance(v, str) and v.strip()]
+        if vals:
+            texts.append(("worldbuilding", "\n".join(vals)))
+    return texts
+
+
+def _extract_named_entities(client, genre: str, text: str) -> list[dict]:
+    """One small NER pass over a passage → [{name, type}, ...] (empty on any failure)."""
+    from libriscribe.services import lore_prompts
+    from libriscribe.utils.file_utils import parse_llm_json
+
+    prompt = lore_prompts.build_named_entity_prompt(genre, text)
+    try:
+        raw = client.generate_content_with_json_repair(
+            prompt, max_tokens=800, temperature=0.1,
+            system_prompt=lore_prompts.BASE_SYSTEM_PROMPT,
+        )
+    except Exception:
+        return []
+    data = parse_llm_json(raw)
+    if isinstance(data, dict) and isinstance(data.get("entities"), list):
+        return data["entities"]
+    return []
+
+
+def find_undefined_entities(client, kb, texts, max_workers: int,
+                            on_progress=None, limit: int = 60) -> dict:
+    """Referenced-but-undefined pass: NER over each source (in parallel), aggregate names not in
+    the KB, rank by mention count. Returns gaps (type=undefined_entity) + scan metadata."""
+    from libriscribe.utils.parallel import bounded_map
+
+    if client is None or not texts:
+        return {"gaps": [], "scanned": 0, "truncated": False}
+
+    known = _all_entity_names_lower(kb)
+
+    def _scan(pair: tuple[str, str]):
+        label, text = pair
+        return (label, _extract_named_entities(client, getattr(kb, "genre", ""), text[:_TEXT_CAP]))
+
+    results = bounded_map(_scan, texts, max_workers, on_progress)
+
+    agg: dict[str, dict] = {}
+    for r in results:
+        if not r:
+            continue
+        label, ents = r
+        for ne in ents or []:
+            nm = str((ne or {}).get("name", "")).strip()
+            if len(nm) < 2 or nm.lower() in known:
+                continue
+            e = agg.get(nm.lower())
+            if e is None:
+                e = agg[nm.lower()] = {"name": nm, "type": str((ne or {}).get("type", "") or "").strip().lower(),
+                                       "mentions": 0, "sources": []}
+            e["mentions"] += 1
+            if label not in e["sources"]:
+                e["sources"].append(label)
+
+    ranked = sorted(agg.values(), key=lambda x: (-x["mentions"], x["name"].lower()))
+    truncated = len(ranked) > limit
+    ranked = ranked[:limit]
+
+    gaps = []
+    for e in ranked:
+        etype = e["type"] if e["type"] in ("character", "location", "lore", "arc") else "lore"
+        srcs = ", ".join(e["sources"][:5]) + ("…" if len(e["sources"]) > 5 else "")
+        gaps.append({
+            "id": f"undefined_entity:{e['name'].lower()}",
+            "type": "undefined_entity",
+            "severity": "warn",
+            "entity_type": etype,  # SUGGESTED type — the entity has no record yet
+            "entity_name": e["name"],
+            "message": f"Mentioned {e['mentions']}× but has no lore record (looks like a {etype}).",
+            "evidence": f"in: {srcs}",
+            "target": None,  # nothing to open — creating it comes with the Auto-mode sandbox (B27)
+        })
+    return {"gaps": gaps, "scanned": len(texts), "truncated": truncated}
 
 
 def find_gaps(kb) -> dict:
