@@ -111,5 +111,61 @@ class GapFinderTests(unittest.TestCase):
         self.assertEqual(sev, sorted(sev, key=lambda s: 0 if s == "warn" else 1))
 
 
+class DeepScanTests(unittest.TestCase):
+    """AI referenced-but-undefined pass (uses a fake client — no network)."""
+
+    class _NER:
+        """Fake client: returns named entities parsed from the passage via a fixed map."""
+        def __init__(self, by_text):
+            self.by_text = by_text
+            self.calls = 0
+        def generate_content_with_json_repair(self, prompt, **kw):
+            import json
+            self.calls += 1
+            # The passage text is appended after "TEXT:\n" in the prompt.
+            body = prompt.split("TEXT:\n", 1)[-1]
+            ents = []
+            for needle, entity in self.by_text.items():
+                if needle in body:
+                    ents.append(entity)
+            return json.dumps({"entities": ents})
+
+    def test_undefined_entity_surfaced_known_one_ignored(self):
+        kb = _kb()
+        kb.add_character(Character(name="Maren", motivations="x", character_arc="y",
+                                   voice_profile=VoiceProfile(speech_patterns="s")))
+        # Two source texts; "Ashfall" appears in both (undefined), "Maren" is known → ignored.
+        texts = [("Chapter 1", "Maren fled toward the Ashfall."),
+                 ("Chapter 2", "The Ashfall glowed.")]
+        client = self._NER({"Ashfall": {"name": "the Ashfall", "type": "lore"},
+                            "Maren": {"name": "Maren", "type": "character"}})
+        out = gap_finder.find_undefined_entities(client, kb, texts, max_workers=2)
+        names = [g["entity_name"] for g in out["gaps"]]
+        self.assertEqual(names, ["the Ashfall"])
+        g = out["gaps"][0]
+        self.assertEqual(g["type"], "undefined_entity")
+        self.assertEqual(g["entity_type"], "lore")
+        self.assertIn("2×", g["message"])   # counted across both chapters
+        self.assertIsNone(g["target"])
+        self.assertEqual(out["scanned"], 2)
+
+    def test_no_client_or_no_texts_is_empty(self):
+        kb = _kb()
+        self.assertEqual(gap_finder.find_undefined_entities(None, kb, [("a", "b")], 2)["gaps"], [])
+        self.assertEqual(gap_finder.find_undefined_entities(object(), kb, [], 2)["gaps"], [])
+
+    def test_gather_source_texts_includes_lore_freetext(self):
+        kb = _kb()
+        kb.add_character(Character(name="Maren", background="Raised in the Deepvault.",
+                                   motivations="m", character_arc="a"))
+        kb.add_location(Location(name="Keep", description="A stone tower.", significance="s"))
+        texts = gap_finder.gather_source_texts(kb, project_dir=None)  # no prose dir
+        labels = [t[0] for t in texts]
+        self.assertIn("character:Maren", labels)
+        self.assertIn("location:Keep", labels)
+        joined = "\n".join(t[1] for t in texts)
+        self.assertIn("Deepvault", joined)
+
+
 if __name__ == "__main__":
     unittest.main()

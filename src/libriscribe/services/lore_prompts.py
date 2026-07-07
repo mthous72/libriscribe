@@ -228,3 +228,23 @@ def build_extract_from_text_prompt(genre: str, book_title: str, text: str) -> st
         f"Respond with ONLY a JSON object of this shape:\n{example}\n\n"
         "NOTE:\n" + text
     )
+
+
+def build_named_entity_prompt(genre: str, text: str) -> str:
+    """User prompt to list the NAMED ENTITIES (proper nouns) present in a passage — used by the
+    gap-finder to spot names referenced in prose/lore that have no lorebook record."""
+    example = (
+        "```json\n{\n"
+        '  "entities": [{"name": "<proper noun as written>", "type": "character|location|lore"}]\n'
+        "}\n```"
+    )
+    return (
+        f"From the {genre} story text below, list the NAMED ENTITIES it mentions — proper nouns "
+        "that name a specific character (a person or being), location (a place), or piece of lore "
+        "(a faction, organization, item, technology, concept, or event).\n\n"
+        "Rules: include ONLY real proper nouns actually present in the text; do NOT invent; ignore "
+        "pronouns, common nouns, and generic phrases. List each distinct name once, spelled as it "
+        "appears, with your best guess of its type.\n\n"
+        f"Respond with ONLY a JSON object of this shape:\n{example}\n\n"
+        f"TEXT:\n{(text or '')[:6000]}"
+    )
