@@ -1504,6 +1504,25 @@ Gaps surfaced by reviewing the whole plan set. Worked through with the user one 
 
 **Fit.** Makes the human-directed loop trustworthy: "regenerate" stops being a scary silent overwrite and becomes an informed choice — same theme as suggest-don't-overwrite and reset.
 
+### B36. Adult-content controls — vocabulary/content meter + scene intent — **effort: S/M** — *APPROVED (2026-07-07)*
+
+**The gap.** The user writes adult/NSFW fiction on local uncensored models — the whole reason for the fork — yet nothing in the plans steers **content intensity or vocabulary** explicitly. Today it's implicit in whatever the prompt happens to say, with no per-scene control.
+
+**Headline: a vocabulary/content meter (tame → raunchy/lewd).** A first-class **diction control** — it sets the model's *word-choice register and explicitness together*, not just "how on-page." Five levels:
+1. **Tame** — euphemistic, fade-to-black, soft/clinical or implied.
+2. **Suggestive** — sensual and tasteful; more implied than shown.
+3. **Steamy** — on-page and direct, but not crude.
+4. **Explicit** — graphic, direct/anatomical language.
+5. **Raunchy / Lewd** — crude, vulgar, dirty-talk vocabulary.
+
+The chosen level injects register + explicitness guidance into the scene/chapter generation prompt. Set **per scene**, with a **per-chapter/project default**. Purely a generation steer — it changes prompts, nothing else; **no filtering/censoring** (the local model does what it does).
+
+**Also:** optional secondary intensity dials (violence, darkness/tone) on the same idea; **scene-intent tags** ("intimate", "confrontation", "aftermath") so generation aims correctly — leans on the existing `Scene.scene_type`. Pairs with **B32 content-boundary canon rules** (e.g. "consenting adults only", "violence off-page").
+
+**Fit / storage.** Makes the actual workflow first-class instead of prompt-wrestling; human-directed (dial per scene), lore-aware (respects voice/relationships). Store on Scene/Chapter (reuse `scene_type`) + a project default; sensible defaults so it's invisible if unused.
+
+**Sequencing.** The **per-scene** version rides with the chapter/scene-granularity slice (step-by-step gen, Slice C); a **per-chapter/project default meter** can ship earlier and cheaply.
+
 ## Docs refresh (Docusaurus, **not a wiki**) — low-priority parallel track
 
 Decision (2026-07-01): we already have a **Docusaurus** site in `docs/` wired for GitHub
