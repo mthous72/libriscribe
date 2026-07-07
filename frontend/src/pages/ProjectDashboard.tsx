@@ -66,6 +66,18 @@ export default function ProjectDashboard() {
     setEditingMeta(true)
   }
 
+  const [canonText, setCanonText] = useState('')
+  const [canonSaved, setCanonSaved] = useState(false)
+  useEffect(() => { setCanonText((project?.canon_rules || []).join('\n')) }, [project?.canon_rules])
+  const saveCanon = async () => {
+    if (!name) return
+    try {
+      await updateProjectMeta(name, { canon_rules: canonText.split('\n').map(s => s.trim()).filter(Boolean) } as any)
+      setCanonSaved(true); setTimeout(() => setCanonSaved(false), 1500)
+      refresh()
+    } catch { alert('Failed to save canon rules') }
+  }
+
   const actSuggestion = async (action: 'apply' | 'dismiss', fields: string[]) => {
     if (!name) return
     try { await actOnSuggestions(name, action, fields); refresh() } catch {}
@@ -300,6 +312,27 @@ export default function ProjectDashboard() {
           </div>
         </div>
       )}
+
+      {/* Canon rules (B32) — inviolable constraints every generation stage must respect */}
+      <details className="bg-gray-900 border border-gray-800 rounded-xl">
+        <summary className="px-4 py-3 text-sm font-medium text-gray-400 cursor-pointer hover:bg-gray-800/50 rounded-xl">
+          Canon rules {project.canon_rules?.length ? <span className="text-indigo-400">({project.canon_rules.length})</span> : <span className="text-gray-600">(none set)</span>}
+        </summary>
+        <div className="px-4 pb-4 space-y-2">
+          <p className="text-xs text-gray-500">
+            One rule per line. These are <b>inviolable</b> — injected into every generation stage, and continuity
+            checks flag violations at the highest severity. Examples: tense/POV ("Past tense, third-person limited — Maren's
+            POV only"), fates ("Maren dies in Ch. 12 and never reappears"), world limits ("Magic can't raise the dead"),
+            never-happens ("The villain is never redeemed", "No modern slang"), terminology ("Always 'the Ashfall Compact'").
+          </p>
+          <textarea rows={5} value={canonText} onChange={e => setCanonText(e.target.value)}
+            placeholder={"Past tense throughout.\nThird-person limited — no head-hopping.\nNo deus-ex-machina rescues."}
+            className="w-full px-2 py-1.5 bg-gray-800 border border-gray-700 rounded text-sm font-mono" />
+          <button onClick={saveCanon} className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 rounded-lg text-sm">
+            {canonSaved ? 'Saved ✓' : 'Save canon rules'}
+          </button>
+        </div>
+      </details>
 
       {/* Edit story details modal */}
       {editingMeta && (

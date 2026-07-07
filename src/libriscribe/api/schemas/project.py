@@ -57,6 +57,7 @@ class ProjectDetail(BaseModel):
     utility_model: str = ""
     max_concurrency: int = 4
     generation_mode: str = "step"
+    canon_rules: list[str] = Field(default_factory=list)
     suggested_title: str = ""
     suggested_logline: str = ""
     suggested_description: str = ""

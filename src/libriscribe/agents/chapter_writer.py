@@ -118,6 +118,12 @@ class ChapterWriterAgent(Agent):
 
                 scene_prompt += f"\n\nIMPORTANT: Begin the scene with the title: **{scene_title}**"
 
+                # B32: the author's inviolable canon rules bind every scene.
+                from libriscribe.services.lore_digest import canon_block
+                canon = canon_block(project_knowledge_base)
+                if canon:
+                    scene_prompt = f"{canon}\n\n{scene_prompt}"
+
                 sys_prompt = self._get_system_prompt(project_knowledge_base)
                 scene_content = self.llm_client.generate_content(scene_prompt, max_tokens=max_gen_tokens, system_prompt=sys_prompt)
                 if not scene_content:

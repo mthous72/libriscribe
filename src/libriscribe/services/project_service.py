@@ -145,6 +145,7 @@ def get_project_detail(project_name: str) -> dict[str, Any] | None:
         "utility_model": kb.utility_model,
         "max_concurrency": kb.max_concurrency,
         "generation_mode": kb.generation_mode,
+        "canon_rules": kb.canon_rules,
         "suggested_title": kb.suggested_title,
         "suggested_logline": kb.suggested_logline,
         "suggested_description": kb.suggested_description,

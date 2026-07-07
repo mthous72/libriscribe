@@ -201,6 +201,7 @@ class UpdateProjectMeta(BaseModel):
     tone: str | None = None
     target_audience: str | None = None
     book_length: str | None = None
+    canon_rules: list[str] | None = None  # B32: one-line inviolable rules
 
 
 class SuggestionAction(BaseModel):
