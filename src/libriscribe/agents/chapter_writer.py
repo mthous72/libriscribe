@@ -124,6 +124,17 @@ class ChapterWriterAgent(Agent):
                 if canon:
                     scene_prompt = f"{canon}\n\n{scene_prompt}"
 
+                # B36 (gated): optional prose-register directive — only when the feature is
+                # enabled in Advanced settings AND the project sets a level.
+                try:
+                    from libriscribe.settings import Settings
+                    from libriscribe.utils.style_register import active_register_directive
+                    reg = active_register_directive(project_knowledge_base, Settings())
+                    if reg:
+                        scene_prompt = f"{reg}\n\n{scene_prompt}"
+                except Exception:
+                    pass
+
                 sys_prompt = self._get_system_prompt(project_knowledge_base)
                 scene_content = self.llm_client.generate_content(scene_prompt, max_tokens=max_gen_tokens, system_prompt=sys_prompt)
                 if not scene_content:
