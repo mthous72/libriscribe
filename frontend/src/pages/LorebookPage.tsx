@@ -14,6 +14,7 @@ import {
   parseLore,
   listReferences, uploadReference, deleteReference,
   getGaps, deepScanGaps, getProject, getConnections, getConnectionSuggestions,
+  listSandboxRuns, getSandboxRun, deleteSandboxRun, patchSandboxCandidate, applySandboxRun, stageGapsToSandbox,
 } from '../api/client'
 import { useBrainstormStore } from '../store/brainstormSlice'
 import LoreProposalReview, { Proposal } from '../components/LoreProposalReview'
@@ -22,7 +23,7 @@ import { Plus, Trash2, Search, Sparkles, Check, X, Edit3, AlertTriangle, Loader2
 const TAB_TO_FOCUS: Record<string, string> = { Characters: 'character', Locations: 'location', Lore: 'lore', Arcs: 'arc' }
 import { useUiStore } from '../store/uiSlice'
 
-const TABS = ['Characters', 'Locations', 'Lore', 'Arcs', 'Threads', 'World', 'Graph', 'References', 'Gaps']
+const TABS = ['Characters', 'Locations', 'Lore', 'Arcs', 'Threads', 'World', 'Graph', 'References', 'Gaps', 'Sandbox']
 // Display labels (the internal tab key stays 'Lore' so routing/backend keys are unchanged).
 const TAB_LABELS: Record<string, string> = { Lore: 'Codex' }
 
@@ -217,6 +218,114 @@ function ConnectionsPanel({ projectName, entityType, entityName, version, onOpen
           {conn.incoming.map((l, i) => chip(l, 1000 + i, true))}
         </div>
       )}
+    </div>
+  )
+}
+
+// B27 Slice A: per-run staged candidates with human cherry-pick. Nothing merges until the
+// author accepts candidates and clicks Apply.
+function SandboxPanel({ projectName, onApplied }: { projectName: string, onApplied: () => void }) {
+  const [runs, setRuns] = useState<any[]>([])
+  const [run, setRun] = useState<any>(null)
+  const [busy, setBusy] = useState(false)
+  const [info, setInfo] = useState('')
+
+  const refreshRuns = () => listSandboxRuns(projectName).then(setRuns).catch(() => setRuns([]))
+  useEffect(() => { refreshRuns() }, [projectName])
+
+  const openRun = (id: string) => getSandboxRun(projectName, id).then(setRun).catch(() => {})
+  const setStatus = async (cid: string, status: string) => {
+    try {
+      await patchSandboxCandidate(projectName, run.id, cid, { status })
+      setRun({ ...run, candidates: run.candidates.map((c: any) => c.id === cid ? { ...c, status } : c) })
+    } catch {}
+  }
+  const rename = async (cid: string, newName: string) => {
+    try {
+      await patchSandboxCandidate(projectName, run.id, cid, { name: newName })
+      setRun({ ...run, candidates: run.candidates.map((c: any) => c.id === cid ? { ...c, name: newName } : c) })
+    } catch {}
+  }
+  const applyRun = async () => {
+    const n = run.candidates.filter((c: any) => c.status === 'accepted').length
+    if (!n) { setInfo('Accept at least one candidate first.'); return }
+    if (!confirm(`Merge ${n} accepted candidate${n === 1 ? '' : 's'} into the lorebook?`)) return
+    setBusy(true)
+    try {
+      const r = await applySandboxRun(projectName, run.id)
+      setInfo(`Applied ${r.applied} candidate${r.applied === 1 ? '' : 's'}.`)
+      setRun(null); refreshRuns(); onApplied()
+    } catch (e: any) { setInfo(e?.response?.data?.detail || 'Apply failed') }
+    finally { setBusy(false) }
+  }
+  const removeRun = async (id: string) => {
+    if (!confirm('Delete this run and its staged candidates?')) return
+    try { await deleteSandboxRun(projectName, id); if (run?.id === id) setRun(null); refreshRuns() } catch {}
+  }
+
+  const SEED_LABEL: Record<string, string> = { gap_scan: 'Gap scan', manual: 'Manual', wizard: 'Story wizard' }
+  const statusCls: Record<string, string> = { accepted: 'border-green-700 bg-green-900/20', rejected: 'border-red-900 bg-red-950/20 opacity-60', pending: 'border-gray-700 bg-gray-800/50' }
+
+  if (run) {
+    const cats = ['characters', 'locations', 'lore', 'arcs']
+    return (
+      <div className="space-y-3">
+        <div className="flex items-center justify-between">
+          <button onClick={() => setRun(null)} className="text-xs text-gray-400 hover:text-gray-200">← All runs</button>
+          <div className="flex gap-2">
+            <button onClick={applyRun} disabled={busy || run.status === 'applied'} className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 rounded text-xs font-medium disabled:opacity-50">
+              {busy ? 'Applying…' : run.status === 'applied' ? 'Applied' : 'Apply accepted'}
+            </button>
+            <button onClick={() => removeRun(run.id)} className="px-3 py-1.5 bg-gray-800 hover:bg-red-900 rounded text-xs">Delete run</button>
+          </div>
+        </div>
+        {info && <div className="text-[11px] text-gray-400">{info}</div>}
+        {cats.map(cat => {
+          const group = run.candidates.filter((c: any) => c.category === cat)
+          if (!group.length) return null
+          return (
+            <div key={cat}>
+              <h3 className="text-xs uppercase tracking-wide text-gray-500 mb-1.5">{cat === 'lore' ? 'Codex' : cat} ({group.length})</h3>
+              <div className="space-y-1.5">
+                {group.map((c: any) => (
+                  <div key={c.id} className={`border rounded-lg px-3 py-2 ${statusCls[c.status] || statusCls.pending}`}>
+                    <div className="flex items-center gap-2">
+                      <input value={c.name} onChange={e => rename(c.id, e.target.value)}
+                        className="flex-1 bg-transparent border-b border-transparent focus:border-gray-600 text-sm font-medium outline-none" />
+                      <span className={`text-[10px] px-1.5 py-0.5 rounded ${c.op === 'new' ? 'bg-green-900/60 text-green-300' : 'bg-blue-900/60 text-blue-300'}`}>{c.op}</span>
+                      <button onClick={() => setStatus(c.id, c.status === 'accepted' ? 'pending' : 'accepted')} title="Accept"
+                        className={`p-1.5 rounded ${c.status === 'accepted' ? 'bg-green-700 text-white' : 'bg-gray-700 text-gray-300 hover:bg-green-800'}`}><Check size={13} /></button>
+                      <button onClick={() => setStatus(c.id, c.status === 'rejected' ? 'pending' : 'rejected')} title="Reject"
+                        className={`p-1.5 rounded ${c.status === 'rejected' ? 'bg-red-800 text-white' : 'bg-gray-700 text-gray-300 hover:bg-red-900'}`}><X size={13} /></button>
+                    </div>
+                    {c.rationale && <div className="text-xs text-gray-400 mt-1">{c.rationale}</div>}
+                    {c.evidence && <div className="text-[11px] text-gray-600">{c.evidence}</div>}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )
+        })}
+      </div>
+    )
+  }
+
+  return (
+    <div className="space-y-2">
+      <p className="text-xs text-gray-500">Staged candidates from gap scans (and, later, auto-explore and the story wizard). Nothing merges into the lorebook until you accept it and apply the run.</p>
+      {runs.map(r => (
+        <div key={r.id} className="flex items-center justify-between px-3 py-2 bg-gray-800 rounded-lg hover:bg-gray-700 cursor-pointer" onClick={() => openRun(r.id)}>
+          <div>
+            <span className="text-sm">{SEED_LABEL[r.seed?.kind] || r.seed?.kind || 'Run'} · {new Date(r.created_at).toLocaleString()}</span>
+            <span className="block text-[11px] text-gray-500">
+              {r.candidate_count} candidate{r.candidate_count === 1 ? '' : 's'} — {r.counts?.accepted || 0} accepted · {r.counts?.rejected || 0} rejected · {r.counts?.pending || 0} pending
+              {r.status === 'applied' && <span className="text-green-500"> · applied</span>}
+            </span>
+          </div>
+          <button onClick={e => { e.stopPropagation(); removeRun(r.id) }} className="text-gray-600 hover:text-red-400 p-2"><Trash2 size={14} /></button>
+        </div>
+      ))}
+      {runs.length === 0 && <p className="text-gray-500 text-sm py-6 text-center">No sandbox runs yet. Run a Deep scan on the Gaps tab and stage the results.</p>}
     </div>
   )
 }
@@ -525,6 +634,8 @@ export default function LorebookPage() {
 
       {tab === 'References' && <ReferencesPanel name={name!} />}
 
+      {tab === 'Sandbox' && <SandboxPanel projectName={name!} onApplied={() => { reload(); }} />}
+
       {tab === 'Gaps' && (() => {
         const allGaps = [...(gaps?.gaps || []), ...(deepGaps || [])]
         const LABELS: Record<string, string> = {
@@ -549,6 +660,18 @@ export default function LorebookPage() {
               <button onClick={loadGaps} disabled={gapsLoading} className="flex items-center gap-1 px-2 py-1 bg-gray-800 hover:bg-gray-700 rounded text-xs disabled:opacity-50">
                 {gapsLoading ? <Loader2 size={13} className="animate-spin" /> : <RefreshCw size={13} />} Refresh
               </button>
+              {allGaps.length > 0 && (
+                <button onClick={async () => {
+                  try {
+                    const r = await stageGapsToSandbox(name!, allGaps)
+                    setDeepInfo(`Staged ${r.candidates?.length ?? allGaps.length} candidates — review them in the Sandbox tab.`)
+                    setTab('Sandbox')
+                  } catch (e: any) { setDeepInfo(e?.response?.data?.detail || 'Staging failed') }
+                }} title="Stage these findings as sandbox candidates you can accept/reject and merge"
+                  className="flex items-center gap-1 px-2 py-1 bg-gray-800 hover:bg-gray-700 rounded text-xs">
+                  <Upload size={13} /> Stage into sandbox
+                </button>
+              )}
             </div>
           </div>
           {(deepScanning || deepInfo) && (
@@ -597,7 +720,7 @@ export default function LorebookPage() {
         )
       })()}
 
-      <div className={`grid grid-cols-1 lg:grid-cols-3 gap-4 ${(tab === 'References' || tab === 'Gaps') ? 'hidden' : ''}`}>
+      <div className={`grid grid-cols-1 lg:grid-cols-3 gap-4 ${(tab === 'References' || tab === 'Gaps' || tab === 'Sandbox') ? 'hidden' : ''}`}>
         {/* List */}
         <div className="lg:col-span-1 space-y-2">
           <button onClick={handleCreate} className="w-full flex items-center justify-center gap-1 px-3 py-1.5 bg-gray-800 hover:bg-gray-700 rounded-lg text-sm"><Plus size={14} /> Add</button>
