@@ -563,10 +563,17 @@ def extract_focused(client, kb, focus_type: str, focus_name: str, text: str,
 # ─── Proposal (annotate, no write) ────────────────────────────────────────────
 
 def _clean_fields(model_cls, fields: dict) -> dict:
+    # Models with a nested voice_profile receive flat voice_* keys (from the dedicated voice pass);
+    # keep them through proposal-building so the review panel shows them and _upsert can assemble
+    # them into voice_profile. Without this they'd be dropped here (not literal model fields) and
+    # never reach the merge.
+    has_voice = "voice_profile" in model_cls.model_fields
     out: dict[str, str] = {}
     for k, v in (fields or {}).items():
         key = FIELD_ALIASES.get(k, k)
-        if key == "name" or key not in model_cls.model_fields:
+        if key == "name":
+            continue
+        if key not in model_cls.model_fields and not (has_voice and key.startswith("voice_")):
             continue
         s = _to_display(v)
         if s.strip():
