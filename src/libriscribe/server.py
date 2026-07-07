@@ -26,7 +26,26 @@ from pathlib import Path
 
 import uvicorn
 
-HOST = "127.0.0.1"
+HOST = "127.0.0.1"  # loopback — used for local probes, port checks, and auto-opening the browser
+# Bind address for uvicorn. Defaults to loopback (unchanged behavior). Set LIBRISCRIBE_HOST to
+# "0.0.0.0" (all interfaces) or a specific interface IP (e.g. a Tailscale 100.x.y.z address) to
+# reach the server from other devices. Loopback still works for the local probes below even when
+# uvicorn is bound to 0.0.0.0 or a Tailscale IP.
+BIND_HOST = os.environ.get("LIBRISCRIBE_HOST", HOST)
+
+
+def _local_host_for(bind_host: str) -> str:
+    """Address to reach THIS server locally (health probe + auto-open browser).
+
+    All-interfaces binds (0.0.0.0 / ::, or empty) include loopback, so 127.0.0.1 is reachable.
+    A specific interface IP (e.g. a Tailscale 100.x address) means uvicorn listens ONLY there and
+    loopback is refused, so we must probe/open that same IP.
+    """
+    return HOST if bind_host in ("0.0.0.0", "::", "") else bind_host
+
+
+# Host used for the health probe and auto-opening the browser (see _local_host_for).
+LOCAL_HOST = _local_host_for(BIND_HOST)
 PORT_CANDIDATES = list(range(8000, 8011))  # 8000..8010 inclusive
 
 
@@ -93,7 +112,7 @@ def _probe_health(port: int, timeout: float = 0.4) -> str | None:
     Returns "libriscribe" if a LibriScribe instance answers, "" if something else
     answers, or None if nothing is listening / the probe fails.
     """
-    url = f"http://{HOST}:{port}/api/health"
+    url = f"http://{LOCAL_HOST}:{port}/api/health"
     try:
         with urllib.request.urlopen(url, timeout=timeout) as resp:
             data = json.loads(resp.read().decode("utf-8"))
@@ -108,7 +127,7 @@ def _port_is_free(port: int) -> bool:
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
         s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         try:
-            s.bind((HOST, port))
+            s.bind((BIND_HOST, port))  # test the exact address uvicorn will bind
             return True
         except OSError:
             return False
@@ -136,7 +155,7 @@ def _choose_port() -> tuple[int | None, int | None]:
 
 
 def _open_browser(port: int) -> None:
-    webbrowser.open(f"http://{HOST}:{port}")
+    webbrowser.open(f"http://{LOCAL_HOST}:{port}")
 
 
 def _update_splash(text: str) -> None:
@@ -280,7 +299,7 @@ def main() -> None:
     config = uvicorn.Config(
         "libriscribe.api.app:create_app",
         factory=True,
-        host=HOST,
+        host=BIND_HOST,
         port=bind_port,
         reload=False,
         log_config=None,  # no colorized formatter (windowed builds have no tty)
