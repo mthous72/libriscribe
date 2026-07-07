@@ -22,7 +22,7 @@ class OutlinerAgent(Agent):
     def execute(self, project_knowledge_base: ProjectKnowledgeBase, output_path: Optional[str] = None) -> None:
         """Generates a chapter outline and then iterates to generate scene outlines."""
         try:
-            max_chapters = self._get_max_chapters(project_knowledge_base.book_length)
+            max_chapters = self._get_max_chapters(project_knowledge_base)
 
             if project_knowledge_base.book_length == "Short Story":
                 initial_prompt = prompts.OUTLINE_PROMPT.format(**project_knowledge_base.model_dump())
@@ -77,7 +77,20 @@ class OutlinerAgent(Agent):
             self.emit("log", {"level": "error", "message": f"Failed to generate outline: {e}"})
 
 
-    def _get_max_chapters(self, book_length: str) -> int:
+    def _get_max_chapters(self, project_knowledge_base: ProjectKnowledgeBase) -> int:
+        # Phase 0: respect the user's requested chapter count — do NOT shrink it to a book-length
+        # cap. The user's number is the target/cap; the book-length default only applies when they
+        # didn't specify one.
+        nc = project_knowledge_base.num_chapters
+        if isinstance(nc, (tuple, list)) and nc:
+            nc = max(nc)
+        try:
+            nc = int(nc)
+        except (TypeError, ValueError):
+            nc = 0
+        if nc > 1:
+            return nc
+        book_length = project_knowledge_base.book_length
         if book_length == "Short Story":
             return 2
         elif book_length == "Novella":
@@ -431,7 +444,14 @@ class OutlinerAgent(Agent):
                         book_summary_lines.append(lines[j].strip())
                     j += 1
                 if book_summary_lines:
-                    project_knowledge_base.description = "\n".join(book_summary_lines)
+                    summary = "\n".join(book_summary_lines)
+                    # Phase 0: only fill the description if the user left it blank/default; otherwise
+                    # record it as a suggestion rather than overwriting their words.
+                    _default_desc = ("", "No description provided.")
+                    if (project_knowledge_base.description or "").strip() in _default_desc:
+                        project_knowledge_base.description = summary
+                    else:
+                        project_knowledge_base.suggested_description = summary
             elif current_chapter and ("Summary" in line or line.startswith("Summary")):
                 if current_chapter:
                     current_section = "summary"

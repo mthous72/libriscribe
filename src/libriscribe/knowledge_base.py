@@ -195,6 +195,12 @@ class ProjectKnowledgeBase(BaseModel):
     num_chapters: int | tuple[int, int] = 1
     num_chapters_str: str = ""
     target_word_count: int | None = None  # project-level word-count goal (per-chapter targets live on Chapter)
+    # Generation SUGGESTS these instead of overwriting the user's values (Phase 0). The UI shows them
+    # with an Apply button; the canonical fields above are never clobbered by an agent.
+    suggested_title: str = ""
+    suggested_logline: str = ""
+    suggested_description: str = ""
+    suggested_num_chapters: int | None = None
     llm_provider: str = "openai"
     model: str = ""  # the "Writing" model — prose, brainstorm chat, chapter generation
     utility_model: str = ""  # optional model for structured tasks (lore intake); blank ⇒ use `model`

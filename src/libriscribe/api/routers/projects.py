@@ -200,6 +200,43 @@ class UpdateProjectMeta(BaseModel):
     book_length: str | None = None
 
 
+class SuggestionAction(BaseModel):
+    action: str  # "apply" | "dismiss"
+    fields: list[str]  # subset of: title, logline, description, num_chapters
+
+
+# suggested_* field -> canonical field it applies to.
+_SUGGESTION_MAP = {
+    "title": ("suggested_title", "title"),
+    "logline": ("suggested_logline", "logline"),
+    "description": ("suggested_description", "description"),
+    "num_chapters": ("suggested_num_chapters", "num_chapters"),
+}
+
+
+@router.post("/{name}/suggestions", response_model=ProjectDetail)
+def act_on_suggestions(name: str, body: SuggestionAction):
+    """Apply or dismiss the generation-suggested metadata (Phase 0). Apply copies the suggestion
+    onto the canonical field; both actions then clear the suggestion. The user's values are only
+    ever changed by an explicit apply here — never by an agent."""
+    kb = project_service.load_kb(name)
+    if not kb:
+        raise HTTPException(status_code=404, detail="Project not found")
+    apply = body.action == "apply"
+    for f in body.fields:
+        pair = _SUGGESTION_MAP.get(f)
+        if not pair:
+            continue
+        sug_field, canon_field = pair
+        value = getattr(kb, sug_field, None)
+        if apply and value not in (None, ""):
+            setattr(kb, canon_field, value)
+        # Clear the suggestion whether applied or dismissed.
+        setattr(kb, sug_field, "" if sug_field != "suggested_num_chapters" else None)
+    project_service.save_kb(name, kb)
+    return project_service.get_project_detail(name)
+
+
 @router.put("/{name}/meta", response_model=ProjectDetail)
 def update_project_meta(name: str, body: UpdateProjectMeta):
     """Update a project's primary story details (title, genre, targets, creative brief)."""

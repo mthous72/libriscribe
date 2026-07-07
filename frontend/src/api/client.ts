@@ -18,6 +18,7 @@ export const importProject = (body: { bundle: any, target_name?: string }) => ap
 export const getProjectProgress = (name: string) => api.get(`/projects/${name}/progress`).then(r => r.data)
 export const updateProjectSettings = (name: string, body: { llm_provider?: string, model?: string, utility_model?: string, fallback_chain?: string[], max_concurrency?: number }) => api.put(`/projects/${name}/settings`, body).then(r => r.data)
 export const updateProjectMeta = (name: string, body: { title?: string, genre?: string, category?: string, language?: string, description?: string, num_chapters?: number | string, target_word_count?: number | null, logline?: string, tone?: string, target_audience?: string, book_length?: string }) => api.put(`/projects/${name}/meta`, body).then(r => r.data)
+export const actOnSuggestions = (name: string, action: 'apply' | 'dismiss', fields: string[]) => api.post(`/projects/${name}/suggestions`, { action, fields }).then(r => r.data)
 export const getActiveModel = (name: string): Promise<{ provider: string, model: string, source: string, configured: boolean, utility_model: string, utility_source: string }> => api.get(`/projects/${name}/active-model`).then(r => r.data)
 export const listVersions = (name: string) => api.get(`/projects/${name}/versions`).then(r => r.data)
 export const saveVersion = (name: string, body: { label?: string }) => api.post(`/projects/${name}/versions`, body).then(r => r.data)
