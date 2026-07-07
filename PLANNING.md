@@ -1330,7 +1330,37 @@ Auto mode leans on the **utility model** for structured passes and needs **bigge
 - **Verify** the sync client is safe under concurrent use before relying on >1 workers (if not, one client per worker / small pool).
 
 ### Phasing / effort
-**B29** (concurrency infra, S/M) → **B28 structural gap-finder** (S, zero-LLM, immediate value) → **B28 LLM gap passes** (M) → **B27 orchestrator + sandbox + review UI** (L). Extends the "Higher end-value output" section, B24 (focus-aware apply), B25 (interconnection); the property-narrowed apply (just shipped) is the per-item extractor the fan-out reuses.
+**B29** ✅ (concurrency infra) → **B28 structural gap-finder** ✅ (zero-LLM) → **B28 LLM gap passes** ✅ (referenced-but-undefined, parallel) → **B27 orchestrator + sandbox + review UI** (L, sliced below). Extends the "Higher end-value output" section, B24 (focus-aware apply), B25 (interconnection); the property-narrowed apply is the per-item extractor the fan-out reuses.
+
+### B27 — detailed slicing (planned 2026-07-07; build in order, each slice ships independently)
+
+The sandbox is the spine — build it first, fill it from something that already produces candidates (the gap scan), and only then add the autonomous engine. Each slice is independently shippable, testable, and useful.
+
+**Shared data model (fixed up front so slices don't churn it).**
+- `projects/<p>/sandbox/<run_id>.json` — one file per run (per-run granularity, locked).
+- **Run**: `{ id, created_at, seed: {kind, ...}, status: complete|running|cancelled, applied_at, candidates: [Candidate] }`.
+- **Candidate**: `{ id, category: characters|locations|lore|arcs|threads, name, op: new|update, fields: {...}, status: pending|accepted|rejected, source: str, rationale: str, confidence: float|null, evidence: str }`.
+- `fields` reuses the exact shape `lore_intake.merge_apply` already consumes (incl. `voice_*`), so **Apply = merge_apply over accepted candidates grouped by category** — no new merge logic.
+
+**Slice A — Sandbox store + review UI + gap→sandbox seed (NO orchestrator, minimal LLM).** *effort: M*
+- `services/sandbox.py` (pure/testable): `create_run`, `list_runs`, `get_run`, `set_candidate_status`, `edit_candidate`, `delete_run`, `apply_accepted(kb, run)` → builds cats from accepted candidates → `merge_apply` → marks run applied. **Never auto-accepts** (locked).
+- Endpoints: `GET/POST /projects/{p}/sandbox`, `GET/DELETE …/{run_id}`, `PATCH …/{run_id}/candidates/{cid}` (status/fields), `POST …/{run_id}/apply`.
+- **First filler (closes the gap→act loop):** `POST /projects/{p}/gaps/to-sandbox` — stage the deep-scan's `undefined_entity` findings as **create-candidates** (name + suggested category + evidence). This makes B28's AI output *actionable* without the orchestrator: find gap → stage → cherry-pick → merge.
+- UI: a **Sandbox** surface (Lorebook tab or its own page) — run list; open a run; per-candidate accept/reject/edit; bulk accept-by-filter; **Apply accepted**. New/update badges reuse the proposal-review affordance.
+- Ships: a persisted, reviewable staging area you fill from gaps and cherry-pick into the KB. Tests: store CRUD; `apply_accepted` merges ONLY accepted; gap→candidate mapping.
+
+**Slice B — Auto-explore orchestrator writing into a sandbox run.** *effort: L*
+- `services/auto_explore.py` (deterministic loop, mirrors `generation_service` to_thread + EventCallback): **survey/think pass** → prioritized thread queue → **fan-out enrichment** per thread (`concept_generator` draft→critique→refine + `fact_checker`-style consistency vs retrieval/focus) via `bounded_map` at `max_concurrency` → dedupe vs KB + siblings → **stage candidates** into a new run (utility model only, locked).
+- **Stop:** budget in LLM-calls with a live counter + hard **Stop/cancel** (primary); queue-drain; diminishing-returns backstop; per-entity caps. Progress via the WS bridge.
+- Endpoints: `POST …/sandbox/auto-explore` (seed + budget → starts a run), cancel; run appears in Slice A's list and is reviewed there.
+- Tests: loop with a fake client — thread queue drains, budget stop trips, candidates land, cancel halts. Ships: the autonomous "rabbit hole" → sandbox; review/apply reuse Slice A.
+
+**Slice C — Seeds, quality, and create-from-gap generation.** *effort: M*
+- More seed strategies: focus entity, category ("expand all thin characters"), and **gap-driven** (feed B28's thin-character/undefined findings straight in as threads).
+- **Create-from-gap (direct):** a gap → focused generation → staged candidate (bridges B28 ↔ B27 beyond the raw stub from Slice A).
+- Consistency/provenance polish: show source-thread + rationale + confidence per candidate; diminishing-returns tuning; per-entity caps surfaced in the UI.
+
+**Still-open at build time (unchanged):** default budget value; verify the sync client is safe under >1 workers *before* Slice B relies on parallel fan-out (Slice A is serial/LLM-light, so this can be verified in parallel with Slice A).
 
 ## Docs refresh (Docusaurus, **not a wiki**) — low-priority parallel track
 
