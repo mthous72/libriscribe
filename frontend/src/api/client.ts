@@ -16,7 +16,7 @@ export const getProject = (name: string) => api.get(`/projects/${name}`).then(r 
 export const deleteProject = (name: string) => api.delete(`/projects/${name}`)
 export const importProject = (body: { bundle: any, target_name?: string }) => api.post('/projects/import', body).then(r => r.data)
 export const getProjectProgress = (name: string) => api.get(`/projects/${name}/progress`).then(r => r.data)
-export const updateProjectSettings = (name: string, body: { llm_provider?: string, model?: string, utility_model?: string, fallback_chain?: string[], max_concurrency?: number }) => api.put(`/projects/${name}/settings`, body).then(r => r.data)
+export const updateProjectSettings = (name: string, body: { llm_provider?: string, model?: string, utility_model?: string, fallback_chain?: string[], max_concurrency?: number, generation_mode?: string, prose_register?: number }) => api.put(`/projects/${name}/settings`, body).then(r => r.data)
 export const updateProjectMeta = (name: string, body: { title?: string, genre?: string, category?: string, language?: string, description?: string, num_chapters?: number | string, target_word_count?: number | null, logline?: string, tone?: string, target_audience?: string, book_length?: string }) => api.put(`/projects/${name}/meta`, body).then(r => r.data)
 export const actOnSuggestions = (name: string, action: 'apply' | 'dismiss', fields: string[]) => api.post(`/projects/${name}/suggestions`, { action, fields }).then(r => r.data)
 export const getActiveModel = (name: string): Promise<{ provider: string, model: string, source: string, configured: boolean, utility_model: string, utility_source: string }> => api.get(`/projects/${name}/active-model`).then(r => r.data)
@@ -53,6 +53,8 @@ export const saveChapter = (name: string, n: number, body: any) => api.put(`/pro
 export const reviseChapter = (name: string, n: number, guidance: string): Promise<{ original: string, revised: string }> => api.post(`/projects/${name}/chapters/${n}/revise`, { guidance }, { timeout: 0 }).then(r => r.data)
 export const extractCharacterStates = (name: string, chapters?: number[]) => api.post(`/projects/${name}/character-states/extract`, { chapters: chapters || null }, { timeout: 0 }).then(r => r.data)
 export const getTimeline = (name: string) => api.get(`/projects/${name}/timeline`).then(r => r.data)
+export const getAdvancedSettings = (): Promise<{ prose_register_enabled: boolean, disclaimer: string }> => api.get('/settings/advanced').then(r => r.data)
+export const setAdvancedSettings = (body: { enable: boolean, confirm_age?: boolean, accept_terms?: boolean }) => api.post('/settings/advanced', body).then(r => r.data)
 
 // ─── Files ───────────────────────────────────────────────────
 export const listFiles = (name: string) => api.get(`/projects/${name}/files`).then(r => r.data)

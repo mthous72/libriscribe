@@ -107,6 +107,25 @@ def export_story(name: str):
     )
 
 
+@router.get("/{name}/export/docx")
+def export_docx(name: str):
+    """B37 slice 1: download the manuscript as a .docx (title page + chapters, offline assembly)."""
+    from fastapi.responses import Response
+    from libriscribe.services import exporter
+
+    kb = project_service.load_kb(name)
+    if not kb:
+        raise HTTPException(status_code=404, detail="Project not found")
+    data = exporter.build_docx(kb, project_service.get_projects_dir() / name)
+    if data is None:
+        raise HTTPException(status_code=422, detail="No chapters written yet")
+    return Response(
+        content=data,
+        media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        headers={"Content-Disposition": f'attachment; filename="{name}.docx"'},
+    )
+
+
 class SaveVersionRequest(BaseModel):
     label: str | None = None
 
@@ -142,6 +161,7 @@ class UpdateProjectSettings(BaseModel):
     fallback_chain: list[str] | None = None
     max_concurrency: int | None = None  # cap on concurrent LLM calls (1 = serial)
     generation_mode: str | None = None  # 'step' (one stage per run, default) | 'auto' (legacy full run)
+    prose_register: int | None = None  # B36 gated; 0/None clears
 
 
 @router.put("/{name}/settings", response_model=ProjectDetail)
@@ -166,6 +186,8 @@ def update_project_settings(name: str, body: UpdateProjectSettings):
         kb.max_concurrency = max(1, int(body.max_concurrency))
     if body.generation_mode is not None and body.generation_mode in ("step", "auto"):
         kb.generation_mode = body.generation_mode
+    if body.prose_register is not None:
+        kb.prose_register = body.prose_register if 1 <= int(body.prose_register) <= 5 else None
     project_service.save_kb(name, kb)
     return project_service.get_project_detail(name)
 

@@ -48,6 +48,10 @@ class Settings(BaseSettings):
 
     writing_system_prompt: str = ""
 
+    # Advanced (gated) features — see routers/settings.py: enabling requires explicit opt-in,
+    # an age affirmation, and acknowledgment of the usage disclaimer.
+    prose_register_enabled: bool = False
+
     model_config = SettingsConfigDict(
         env_file=str(get_default_env_path()),
         extra="ignore",

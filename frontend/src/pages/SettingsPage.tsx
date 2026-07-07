@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { getSettings, updateSettings, getProviders, fetchProviderModels } from '../api/client'
+import { getSettings, updateSettings, getProviders, fetchProviderModels , getAdvancedSettings, setAdvancedSettings } from '../api/client'
 import ModelPicker from '../components/ModelPicker'
 import { Save, Check, X, Loader2, RefreshCw } from 'lucide-react'
 
@@ -29,6 +29,12 @@ function normalizeBaseUrl(url: string): string {
 
 export default function SettingsPage() {
   const [settings, setSettings] = useState<any>({})
+  // Advanced (gated) — hidden, opt-in features. Loaded lazily when the section is opened.
+  const [adv, setAdv] = useState<{ prose_register_enabled: boolean, disclaimer: string } | null>(null)
+  const [advAge, setAdvAge] = useState(false)
+  const [advTerms, setAdvTerms] = useState(false)
+  const [advMsg, setAdvMsg] = useState('')
+  const loadAdv = () => getAdvancedSettings().then(setAdv).catch(() => {})
   const [providers, setProviders] = useState<any[]>([])
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
@@ -304,6 +310,48 @@ export default function SettingsPage() {
           <Save size={14} /> {saving ? 'Saving...' : saved ? 'Saved!' : 'Save'}
         </button>
       </div>
+
+      {/* Advanced — intentionally unobtrusive; features here are gated and off by default. */}
+      <details className="border border-gray-800/60 rounded-xl" onToggle={e => { if ((e.target as HTMLDetailsElement).open && !adv) loadAdv() }}>
+        <summary className="px-4 py-2 text-[11px] text-gray-600 cursor-pointer hover:text-gray-400">Advanced</summary>
+        <div className="px-4 pb-4 space-y-3">
+          {!adv ? <p className="text-xs text-gray-500">Loading…</p> : (
+            <>
+              <h3 className="text-sm font-medium text-gray-400">Prose register control</h3>
+              <p className="text-xs text-gray-500">
+                Adds an optional per-project intensity dial (1–5) that adjusts how frank and unrestrained
+                generated prose may be. Off by default; when disabled, nothing changes anywhere in the app.
+              </p>
+              {adv.prose_register_enabled ? (
+                <div className="space-y-2">
+                  <p className="text-xs text-green-500">Enabled. Set a level on a project's dashboard (AI card).</p>
+                  <button onClick={async () => { await setAdvancedSettings({ enable: false }); loadAdv() }}
+                    className="px-3 py-1.5 bg-gray-800 hover:bg-gray-700 rounded-lg text-xs">Disable</button>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  <p className="text-[11px] text-gray-500 border border-gray-800 rounded p-2 bg-gray-950">{adv.disclaimer}</p>
+                  <label className="flex items-center gap-2 text-xs text-gray-400">
+                    <input type="checkbox" checked={advAge} onChange={e => setAdvAge(e.target.checked)} />
+                    I confirm I am 18 years of age or older.
+                  </label>
+                  <label className="flex items-center gap-2 text-xs text-gray-400">
+                    <input type="checkbox" checked={advTerms} onChange={e => setAdvTerms(e.target.checked)} />
+                    I have read and accept the notice above.
+                  </label>
+                  <button disabled={!advAge || !advTerms}
+                    onClick={async () => {
+                      try { await setAdvancedSettings({ enable: true, confirm_age: advAge, accept_terms: advTerms }); setAdvMsg(''); loadAdv() }
+                      catch (e: any) { setAdvMsg(e?.response?.data?.detail || 'Failed') }
+                    }}
+                    className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 rounded-lg text-xs disabled:opacity-40">Enable</button>
+                  {advMsg && <p className="text-xs text-red-400">{advMsg}</p>}
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      </details>
     </div>
   )
 }

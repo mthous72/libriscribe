@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { useProject } from '../hooks/useProject'
 import { useWebSocket } from '../hooks/useWebSocket'
 import { useGenerationStore } from '../store/generationSlice'
-import { startGeneration, cancelGeneration, resumeGeneration, resetGeneration, listChapters, getCost, updateProjectSettings, updateProjectMeta, actOnSuggestions, fetchProviderModels, getActiveModel, listVersions, saveVersion, restoreVersion, getRetrieval, setRetrieval, getStats } from '../api/client'
+import { startGeneration, cancelGeneration, resumeGeneration, resetGeneration, listChapters, getCost, updateProjectSettings, updateProjectMeta, actOnSuggestions, fetchProviderModels, getActiveModel, listVersions, saveVersion, restoreVersion, getRetrieval, setRetrieval, getStats, getAdvancedSettings } from '../api/client'
 import ModelPicker from '../components/ModelPicker'
 import { Play, Square, BookOpen, Map, FileText, Download, Save, RefreshCw, Loader2, RotateCcw, Pencil, Sparkles } from 'lucide-react'
 
@@ -66,6 +66,8 @@ export default function ProjectDashboard() {
     setEditingMeta(true)
   }
 
+  const [advEnabled, setAdvEnabled] = useState(false)
+  useEffect(() => { getAdvancedSettings().then(a => setAdvEnabled(!!a.prose_register_enabled)).catch(() => {}) }, [])
   const [canonText, setCanonText] = useState('')
   const [canonSaved, setCanonSaved] = useState(false)
   useEffect(() => { setCanonText((project?.canon_rules || []).join('\n')) }, [project?.canon_rules])
@@ -582,6 +584,18 @@ export default function ProjectDashboard() {
               Set to <span className="font-medium">1</span> to disable parallelism (e.g. rate-limited free models).
             </p>
           </label>
+          {advEnabled && (
+            <label className="block">
+              <span className="text-xs text-gray-400">Prose register</span>
+              <select value={project.prose_register ?? ''}
+                onChange={async e => { try { await updateProjectSettings(name!, { prose_register: e.target.value ? Number(e.target.value) : 0 }); refresh() } catch {} }}
+                className="w-40 mt-1 px-2 py-1.5 bg-gray-800 border border-gray-700 rounded text-sm block">
+                <option value="">Off</option>
+                {[1, 2, 3, 4, 5].map(v => <option key={v} value={v}>{v}</option>)}
+              </select>
+              <p className="mt-1 text-xs text-gray-500">Project default intensity for generated prose (1 restrained … 5 unrestrained).</p>
+            </label>
+          )}
         </div>
         {activeModel && (
           <div className="text-xs space-y-0.5">
@@ -767,6 +781,7 @@ export default function ProjectDashboard() {
           <a href={`/api/projects/${name}/export`} className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 rounded-lg text-sm flex items-center gap-1" title="Full project bundle (lossless) — re-importable">
             <Download size={14} /> Export Project (.json)
           </a>
+          <a href={`/api/projects/${name}/export/docx`} className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 rounded-lg text-sm flex items-center gap-1" title="The manuscript as a Word document (title page + chapters)"><FileText size={14} /> DOCX</a>
           <a href={`/api/projects/${name}/export/story`} className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 rounded-lg text-sm flex items-center gap-1" title="The story as plain text (chapters as they stand)">
             <Download size={14} /> Export Story (.txt)
           </a>

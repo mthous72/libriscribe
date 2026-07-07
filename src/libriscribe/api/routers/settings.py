@@ -158,6 +158,58 @@ def update_settings(body: dict):
     return get_settings_response()
 
 
+# ─── Advanced (gated) features ────────────────────────────────────────────────
+
+ADVANCED_DISCLAIMER = (
+    "This software cannot control the output of local or third-party language models, nor how "
+    "you use them. You are solely responsible for ensuring any generated content complies with "
+    "the laws, ratings, and requirements of your jurisdiction, and you must be of legal age "
+    "(18+). No responsibility or liability is assumed or implied for improper use or for content "
+    "that violates your local laws."
+)
+
+
+class AdvancedToggleRequest(BaseModel):
+    enable: bool
+    confirm_age: bool = False     # affirmation: user is 18+
+    accept_terms: bool = False    # acknowledgment of ADVANCED_DISCLAIMER
+
+
+def _write_env_key(key: str, value: str) -> None:
+    env_path = get_default_env_path()
+    existing: dict[str, str] = {}
+    if env_path.exists():
+        for line in env_path.read_text(encoding="utf-8").splitlines():
+            line = line.strip()
+            if line and not line.startswith("#") and "=" in line:
+                k, _, v = line.partition("=")
+                existing[k.strip()] = v.strip()
+    existing[key] = value
+    env_path.parent.mkdir(parents=True, exist_ok=True)
+    env_path.write_text("\n".join(f"{k}={v}" for k, v in existing.items()) + "\n", encoding="utf-8")
+    from libriscribe.api.dependencies import get_settings
+    get_settings.cache_clear()
+
+
+@router.get("/advanced")
+def get_advanced():
+    from libriscribe.settings import Settings
+    return {"prose_register_enabled": bool(Settings().prose_register_enabled),
+            "disclaimer": ADVANCED_DISCLAIMER}
+
+
+@router.post("/advanced")
+def set_advanced(body: AdvancedToggleRequest):
+    """Enable/disable the gated prose-register feature. Enabling REQUIRES the age affirmation
+    and terms acknowledgment; disabling is always allowed."""
+    if body.enable and not (body.confirm_age and body.accept_terms):
+        raise HTTPException(status_code=400,
+                            detail="Enabling requires the age affirmation and acceptance of the terms.")
+    _write_env_key("PROSE_REGISTER_ENABLED", "true" if body.enable else "false")
+    from libriscribe.settings import Settings
+    return {"prose_register_enabled": bool(Settings().prose_register_enabled)}
+
+
 # ─── Model listing (B6) ──────────────────────────────────────────────────────
 
 class ModelListRequest(BaseModel):
