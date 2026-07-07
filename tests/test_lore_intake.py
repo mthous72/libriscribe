@@ -488,6 +488,27 @@ class FocusAwareApplyTests(unittest.TestCase):
         self.assertEqual(f.get("internal_conflicts"), "guilt")
         self.assertEqual(f.get("external_conflicts"), "hunted")
 
+    def test_aspect_narrows_to_a_single_field(self):
+        # aspect="motivations" -> keep ONLY that field (and never run the voice pass).
+        cats = lore_intake.extract_focused(self._C(), _kb(), "character", "Maren", "...", aspect="motivations")
+        f = cats["characters"][0]["fields"]
+        self.assertEqual(set(f), {"motivations"})
+        self.assertNotIn("internal_conflicts", f)
+        self.assertFalse(any(k.startswith("voice_") for k in f))
+
+    def test_aspect_voice_runs_only_the_voice_pass(self):
+        class _CVoice:
+            def generate_content_with_json_repair(self, prompt, **kw):
+                if "DIALOGUE VOICE" in prompt:  # build_voice_prompt
+                    return json.dumps({"speech_patterns": "clipped", "verbal_tics": "says 'aye'"})
+                return json.dumps({"role": "broker", "motivations": "freedom"})  # general pass — must NOT be used
+        cats = lore_intake.extract_focused(_CVoice(), _kb(), "character", "Maren", "how she talks", aspect="voice")
+        f = cats["characters"][0]["fields"]
+        self.assertEqual(f.get("voice_speech_patterns"), "clipped")
+        self.assertEqual(f.get("voice_verbal_tics"), "says 'aye'")
+        self.assertNotIn("role", f)          # general fields not captured under the voice aspect
+        self.assertNotIn("motivations", f)
+
     class _CSweep:
         """extract-for-type returns Maren's fields; the discovery sweep surfaces Maren + others."""
         def generate_content_with_json_repair(self, prompt, **kw):

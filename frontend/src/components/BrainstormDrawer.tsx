@@ -7,6 +7,38 @@ import { MessageSquarePlus, X, Send, Trash2, Loader2, Sparkles, Plus, Pencil, Ey
 
 interface Msg { role: string; content: string }
 
+// Properties you can narrow a focused brainstorm to (per entity type). '' = the whole entity.
+const ASPECTS: Record<string, { value: string, label: string }[]> = {
+  character: [
+    { value: 'role', label: 'Role' },
+    { value: 'age', label: 'Age' },
+    { value: 'sex', label: 'Sex' },
+    { value: 'sexual_orientation', label: 'Sexual orientation' },
+    { value: 'physical_description', label: 'Physical description' },
+    { value: 'personality_traits', label: 'Personality' },
+    { value: 'background', label: 'Background' },
+    { value: 'motivations', label: 'Motivations' },
+    { value: 'internal_conflicts', label: 'Internal conflicts' },
+    { value: 'external_conflicts', label: 'External conflicts' },
+    { value: 'character_arc', label: 'Character arc' },
+    { value: 'voice', label: 'Voice Profile' },
+  ],
+  location: [
+    { value: 'description', label: 'Description' },
+    { value: 'significance', label: 'Significance' },
+  ],
+  lore: [
+    { value: 'entry_type', label: 'Type' },
+    { value: 'description', label: 'Description' },
+    { value: 'significance', label: 'Significance' },
+  ],
+  arc: [
+    { value: 'arc_type', label: 'Arc type' },
+    { value: 'description', label: 'Description' },
+    { value: 'resolution_notes', label: 'Resolution notes' },
+  ],
+}
+
 export default function BrainstormDrawer({ projectName }: { projectName: string }) {
   const navigate = useNavigate()
   const { open, focus, openBrainstorm, close, setFocus, pendingFocus, pendingNonce, clearPending } = useBrainstormStore()
@@ -190,7 +222,7 @@ export default function BrainstormDrawer({ projectName }: { projectName: string 
 
   const doPreview = async () => {
     try {
-      const r = await previewChat(projectName, { message: input, focus_type: focus?.type || null, focus_name: focus?.name || null, use_references: useRefs })
+      const r = await previewChat(projectName, { message: input, focus_type: focus?.type || null, focus_name: focus?.name || null, focus_aspect: focus?.aspect || null, use_references: useRefs })
       setPreview(r.system_prompt || '(empty)')
     } catch (e: any) {
       setPreview(`[Preview failed: ${e?.response?.data?.detail || e?.message || 'error'}]`)
@@ -199,6 +231,13 @@ export default function BrainstormDrawer({ projectName }: { projectName: string 
 
   const changeFocus = (v: string) => {
     const nf = v ? { type: v.slice(0, v.indexOf(':')), name: v.slice(v.indexOf(':') + 1) } : null
+    setFocus(nf)
+    if (activeId) updateSession(projectName, activeId, { focus: nf }).catch(() => {})
+  }
+
+  const changeAspect = (v: string) => {
+    if (!focus) return
+    const nf = { ...focus, aspect: v || undefined }
     setFocus(nf)
     if (activeId) updateSession(projectName, activeId, { focus: nf }).catch(() => {})
   }
@@ -263,7 +302,22 @@ export default function BrainstormDrawer({ projectName }: { projectName: string 
                 {ents.arc.length > 0 && <optgroup label="Arcs">{ents.arc.map(n => <option key={'arc:' + n} value={'arc:' + n}>{n}</option>)}</optgroup>}
               </select>
             </label>
-            {focus && <p className="text-[11px] text-indigo-400/80 mt-1">Developing {focus.type} "{focus.name}" — draws on the world, arcs &amp; connected lore as context, but only develops this.</p>}
+            {focus && (
+              <label className="text-xs text-gray-500 flex items-center gap-2 mt-2" title="Narrow the brainstorm (and Apply) to one property of this entity">
+                Property
+                <select value={focus.aspect || ''} onChange={e => changeAspect(e.target.value)} className="flex-1 px-2 py-1 bg-gray-800 border border-gray-700 rounded text-xs">
+                  <option value="">Any / All</option>
+                  {(ASPECTS[focus.type] || []).map(a => <option key={a.value} value={a.value}>{a.label}</option>)}
+                </select>
+              </label>
+            )}
+            {focus && (
+              <p className="text-[11px] text-indigo-400/80 mt-1">
+                {focus.aspect
+                  ? <>Developing only the <span className="font-medium">{(ASPECTS[focus.type] || []).find(a => a.value === focus.aspect)?.label || focus.aspect}</span> of {focus.type} "{focus.name}".</>
+                  : <>Developing {focus.type} "{focus.name}" — draws on the world, arcs &amp; connected lore as context, but only develops this.</>}
+              </p>
+            )}
             <label className="text-xs text-gray-500 flex items-center gap-2 mt-2" title="How long and detailed brainstorm responses are">
               Verbosity
               <select value={verbosity} onChange={e => changeVerbosity(e.target.value as any)} className="flex-1 px-2 py-1 bg-gray-800 border border-gray-700 rounded text-xs">
@@ -353,7 +407,7 @@ export default function BrainstormDrawer({ projectName }: { projectName: string 
 
 // Parse a brainstorm reply into a multi-category proposal, then review & smart-merge it.
 // When a Focus is active, the reply is decomposed straight into that entity's full field set (B24).
-function ParseApply({ projectName, text, focus, onDone, onView }: { projectName: string, text: string, focus?: { type: string, name: string } | null, onDone: () => void, onView: () => void }) {
+function ParseApply({ projectName, text, focus, onDone, onView }: { projectName: string, text: string, focus?: { type: string, name: string, aspect?: string } | null, onDone: () => void, onView: () => void }) {
   const [proposal, setProposal] = useState<Proposal | null>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
@@ -363,7 +417,7 @@ function ParseApply({ projectName, text, focus, onDone, onView }: { projectName:
   const parse = async () => {
     setBusy(true); setError(''); setProposal(null); setDebug(null)
     try {
-      const r = await parseChat(projectName, { text, focus_type: focus?.type || null, focus_name: focus?.name || null })
+      const r = await parseChat(projectName, { text, focus_type: focus?.type || null, focus_name: focus?.name || null, focus_aspect: focus?.aspect || null })
       setProposal(r.proposal)
     } catch (e: any) {
       setError(e?.response?.data?.detail || 'Could not parse this reply.')
@@ -375,7 +429,7 @@ function ParseApply({ projectName, text, focus, onDone, onView }: { projectName:
   const runDebug = async () => {
     setDebug({ loading: true })
     try {
-      const r = await parseChatDebug(projectName, { text, focus_type: focus?.type || null, focus_name: focus?.name || null })
+      const r = await parseChatDebug(projectName, { text, focus_type: focus?.type || null, focus_name: focus?.name || null, focus_aspect: focus?.aspect || null })
       // eslint-disable-next-line no-console
       console.log('[brainstorm apply debug]', r)
       setDebug(r)
