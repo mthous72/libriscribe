@@ -62,6 +62,16 @@ def get_connections(name: str, entity_type: str, entity_name: str):
     return connections.entity_connections(kb, entity_type, entity_name)
 
 
+@router.get("/{name}/connection-suggestions/{entity_type}/{entity_name:path}")
+def get_connection_suggestions(name: str, entity_type: str, entity_name: str):
+    """Auto-suggested links from cross-reference co-occurrence (B25) — not already linked."""
+    kb = load_kb(name)
+    if not kb:
+        raise HTTPException(status_code=404, detail="Project not found")
+    from libriscribe.services import connections
+    return connections.suggest_connections(kb, get_projects_dir() / name, entity_type, entity_name)
+
+
 @router.post("/{name}/gaps/deep-scan")
 def deep_scan_gaps(name: str):
     """AI pass (opt-in, costs LLM calls): scan prose + lore free-text for named entities that have

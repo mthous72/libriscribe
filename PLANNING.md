@@ -3,7 +3,35 @@
 Living planning doc. Features are specced here **before** implementation. Nothing
 in "Backlog" is built until it has been promoted to a full spec and approved.
 
-Last updated: 2026-06-29
+Last updated: 2026-07-07
+
+> **B-numbers are stable historical IDs, not build order.** The build order is the **Roadmap** below. Detailed specs keep their original B-number wherever they already live in this doc.
+
+---
+
+## Roadmap — incremental build sequence (consolidated 2026-07-07)
+
+Each phase is a **shippable win that builds on the previous one** and plugs into the current codebase. Ordered so early phases unblock later ones and nothing is built before its foundation.
+
+**Shipped (current software).** Web app (FastAPI + React), lorebook with smart import, brainstorm sessions (focus + per-property aspect, verbosity/length, conversational tone, voice profiles), retrieval (keyword/semantic; brainstorm pinned to keyword after a session's first turn), **B25** entity connections (navigable + pickable + auto-suggest), **B28** gap-finder (structural + AI referenced-but-undefined), **B29** bounded concurrency, edit-project-meta, non-loopback bind, releases through v0.12.0.
+
+**Phase 0 — Stop the bleeding (urgent, small; first).** Generation currently overwrites the user's title/description and shrinks chapter count, and ignores the lorebook. Fix inside `concept_generator` + `outliner`: **suggest-don't-overwrite** metadata (write `suggested_*`, never clobber) and **lore-ground concept + outline** (inject a KB digest so it builds on the user's world). *Win: generation stops destroying projects and starts using your lore — valuable even before the full redesign.* → foundation for everything generation-related. (Epic **B30**, Slice A subset.)
+
+**Phase 1 — Human-directed generation (**B30**).** Per-stage gates (stop after every stage), reset, suggestion-apply UI, typed job state, step controller. Builds on Phase 0 (the now-safe, lore-grounded stages get gated). *Win: you direct the story stage by stage.*
+
+**Phase 2 — Consistency guardrails (**B32** → **B31**).** **B32** canon lock (slim `canon_rules` + seeded categories) injected into the now-grounded/gated stages; **B31** continuity guard checks written chapters against canon+lore (on-demand, Gaps-style report). Builds on Phase 0 (grounding) + Phase 1 (per-stage/chapter flow to hook checks into). *Win: the story stays consistent; canon is enforced.*
+
+**Phase 3 — Actionable staging (**B27** Slice A).** Sandbox spine (per-run) + review/cherry-pick + **gap→sandbox** seed, so B28 gaps and B25 "unlinked" names become **createable**. Independent of generation. *Win: cherry-pick gap/undefined candidates into the lorebook.* → foundation the wizard stages into.
+
+**Phase 4 — World-seeding wizard (**B38**).** LLM-authored, project-tailored questions → gather the user's specifics → **elaborate** into lore (never invent) → stage into the B27 sandbox → explore/edit. Two modes: seed a new project / overall-brainstorm an existing one. Builds on Phase 3 (sandbox) + Phase 0 (shared lore digest) + B25/B28. *Win: guided project seeding and whole-project brainstorm.*
+
+**Phase 5 — Revision & deeper consistency (**B34** + **B35** + **B33**).** **B34** human-directed revision loop (rewrite existing chapters with the Phase-1 controls) + **B35** diff-on-regenerate (cross-cutting, also retro-fits Phase 1) + **B33** character-state/timeline (unlocks B31's "knows-too-early" check + time-aware context). Builds on Phase 1 (shared UX) + Phase 2 (canon/continuity). *Win: human-directed rewriting; the story tracks who-knows-what-when.*
+
+**Phase 6 — Content controls & finishing (**B36** + **B37**; delayed/independent).** **B36** gated content-intensity controls (rides the chapter/scene granularity from B30 Slice C) + **B37** export DOCX→EPUB→PDF-later. No hard dependencies; interleave when wanted. *Win: dial content per scene; get a real book out.*
+
+**Parallel / back-burner tracks.** "Claude-like" brainstorming + Higher-end-value output (capture/feed-forward; some already shipped as B23/B26) — enrich the brainstorm side independently. **B21** model warm-up/keep-alive (helps local load times). Story-structure/pacing analysis (parked). Docs refresh. Cloud storage (held).
+
+**Dependency summary.** `Phase 0 → 1 → 2` and `Phase 3 → 4` are the two spines; Phase 5 needs 1+2; Phase 6 is independent. Phase 0 is the urgent entry point.
 
 ---
 
@@ -1361,6 +1389,176 @@ The sandbox is the spine — build it first, fill it from something that already
 - Consistency/provenance polish: show source-thread + rationale + confidence per candidate; diminishing-returns tuning; per-entity caps surfaced in the UI.
 
 **Still-open at build time (unchanged):** default budget value; verify the sync client is safe under >1 workers *before* Slice B relies on parallel fan-out (Slice A is serial/LLM-light, so this can be verified in parallel with Slice A).
+
+## Epic B30: Human-directed, step-by-step generation — **DESIGN (specced 2026-07-07, planning only; no code yet)**
+
+**Problem (user).** "Start Generation" runs the whole book end-to-end with no pauses — no chance to check the story's direction, no stop at concept before outlining, no chapter-by-chapter control. Too much automation, not enough letting the human direct the story. It also **overwrites the user's story title** (and other metadata). Wanted: take the automation away, make each step explicit and human-directed, allow **reset**, and make generation only **suggest** metadata for approval.
+
+**Current state (investigated 2026-07-07, with seams).**
+- `STAGE_ORDER = concept → outline → characters → worldbuilding → chapters → formatting` runs unattended in one loop (`generation_service.py:75-84`); the only between-stage check is cancellation — **no inter-stage gate**. Each stage auto-saves + auto-advances (`project_manager.py:432-469`).
+- The ONE human gate is per-chapter and only when `review_preference="Human"` (default `"AI"`): a `threading.Event.wait(3600)` after each chapter (`project_manager.py:515-537`), two options (proceed / apply_ai_style), **no reject**.
+- Reusable HITL primitive: `human_review_required` event + `paused_for_review` status + `GenerationJob.review_threading_event`/`review_decision` + `submit_review_decision` (REST `/generate/resume` or WS) (`job_manager.py:66-72`).
+- **Title clobber:** `concept_generator.py:131-137` unconditionally overwrites `title`/`logline`/`description`, persisted at `project_manager.py:440`. `outliner.py` also overwrites `num_chapters` (recomputed/clamped, `:96,462,487,490,508`) and sometimes `description` (`:434`).
+- Frontend: free-form `jobStatus` string; one review panel with two "proceed" buttons (no reject/regenerate/reset); only Versions (save/restore) for "going back."
+
+**Decisions (from user, 2026-07-07).** Gate after **every** stage (explicit approve to advance; nothing auto-advances). Chapters: support **both** — one-at-a-time (outline→approve→write→approve→next) AND outline-all-then-write-chapter-by-chapter (user chooses, "depending on how much story I have in my head"). Per-stage actions: **edit + save**, **edit → use as guidance for a rewrite**, and **flat regenerate**. Concept **suggests** a title (never overwrites). Reset must be possible.
+
+**Lore-grounded generation (core pillar — every stage builds on the lorebook).** *Verified 2026-07-07:* the concept and outline stages are **blind to the lorebook** — `concept_generator.py` reads none of the KB entities (it invents from the description alone), and `outliner.py` only parses character names out of *its own* generated outline; neither injects the user's characters / locations / codex / arcs / threads / worldbuilding. The lore-injecting `context_builder` is used **only** in chapter writing. This is why generation produced a random world instead of the user's. **Fix:** build a compact **lorebook digest** (KB entities — characters with role/motivation/arc, locations, codex, arcs, threads, worldbuilding) and inject it into **every** stage's prompt so the model *extends the user's world* rather than inventing one. Reuse `context_builder` + a KB summary with keyword retrieval (no embedding swap). The character/worldbuilding stages must **augment** existing records (merge-by-name dedupe), never duplicate or overwrite them. This applies across all slices below.
+
+**Design — a stepwise controller (nothing auto-advances).** Replace the fire-and-forget run: each stage runs only on request, then STOPS for review. Between steps the user edits the artifact with the existing editors (lorebook / outline / chapter) and chooses **Approve & continue**, **Regenerate** (optionally with a guidance note), **Edit → save → approve**, or **Reset** to an earlier step. Preferred implementation: **one-stage-per-request** (each step is its own short run that saves and stops) — avoids the fragile 3600 s blocking-thread model and makes "no automation" the literal default. Keep an optional **"run remaining automatically"** escape hatch for users who want the old behavior.
+
+**Slice A — stop the automation + stop clobbering metadata (MVP; addresses the core complaint).**
+- **Per-stage gate.** Add `generation_mode: 'step' | 'auto'` to the KB (default **step**). In step mode the controller runs exactly one stage then stops with a `stage_awaiting_approval` event; "Approve & continue" runs the next. Generalize the `human_review_required`/`submit_review_decision` plumbing to fire after each stage's `save_project_data()` (KB already persisted there — a natural checkpoint).
+- **Suggest, don't overwrite.** Concept writes `suggested_title` / `suggested_logline` / `suggested_description` (new KB fields) instead of the canonical fields; the review UI shows each with an **Apply** button. Guard the outliner: treat user `num_chapters` as a target/cap (suggest, don't silently replace) and skip the `:434` description overwrite when the user set one.
+- **Lore-grounded from the first stage.** Inject the lorebook digest into the concept + outline prompts so the story is built from the user's characters/world, not invented. (Full grounding across all stages is the core pillar above; concept + outline are the highest-impact and land here in Slice A.)
+- **Reset.** A "Reset to <stage>" control that snapshots (Versions) then marks that stage + downstream incomplete so the flow re-gates there.
+- Ships: generation stops after every stage, the title is never reset, generation builds on your lore, and you can go back.
+
+**Slice B — per-stage review actions (edit / regenerate / guidance).**
+- Review panel per stage shows the produced artifact + actions: **Approve & continue**, **Regenerate**, **Edit → save → approve** (opens the relevant editor; save via existing endpoints), **Add guidance → regenerate** (a note like "darker, fewer characters" injected into that stage's agent prompt).
+- Backend: stage-run accepts optional `guidance`; regenerate re-runs the stage.
+
+**Slice C — chapter granularity (both modes).**
+- Choose per project/session: **outline-all-then-write** (full outline, then write chapters one at a time with approve each — reuses today's outliner + the existing per-chapter gate) OR **one chapter at a time** (outline a single chapter → approve → write → approve → next), which needs the outliner to support single-chapter outlining.
+- Per-chapter approve / regenerate / edit-with-guidance (generalize the existing chapter gate; add reject/regenerate).
+
+**Slice D — UI: step controller + typed state.**
+- Typed `jobStatus` (`idle | running_stage | awaiting_approval | stopped | completed | failed`); `pendingReview` carries the stage id + artifact.
+- Dashboard: a step controller — current step highlighted; **Run this step / Approve & continue / Regenerate / Reset to…**; artifact preview; suggestion-apply chips (title etc.). Wire the existing `getCurrentJob` to rehydrate on reload.
+
+**Open decisions (resolve at build).** step-only vs `step`/`auto` toggle (lean: default step, keep auto escape hatch); "Apply suggested title" one-click vs auto-apply only when the user's title is blank (lean: one-click, never auto); reset granularity — single stage vs stage+downstream (lean: offer both); where single-chapter outlining lives in the outliner (Slice C).
+
+**Reuses:** the `human_review_required` / `paused_for_review` / `submit_review_decision` gate; `save_project_data` per-stage checkpoints; Versions snapshot/restore for reset; existing entity/outline/chapter edit endpoints for hand-edits; the WS streaming bridge.
+
+## Epic B38: Guided story-seeding wizard (Q&A → generate lore → explore/edit) — **DESIGN (specced 2026-07-07, planning only; no code yet)**
+
+**Concept (user idea).** A separate, optional flow that **gathers the user's specific information** through structured questions — e.g. *how many main characters*, each character's info, *the high-level story arcs*, the setting — and then **elaborates those specifics into full lorebook records** (characters, locations, codex, arcs, worldbuilding, threads) the user explores and edits. This is **world-seeding, not prose writing** — explicitly a whole separate function from Start-Generation.
+
+**NOT an invention engine (user clarification 2026-07-07).** The point is to **collect concrete parameters and expand them**, never to invent a random book. The user's answers are authoritative: counts (# main characters, # arcs), names, roles, arc shapes, setting — the system only **fills in the detail** the user didn't specify, strictly grounded in what they did. It elaborates; it does not originate the story.
+
+**Why separate.** Start-Generation writes chapters; this builds the world. Someone with just an idea answers a handful of questions and gets a rich, editable lorebook to start from — then uses step-by-step generation (the other epic) to write. It's the on-ramp for a new project, and it's the counterpart to lore-grounded generation: **the wizard fills the lorebook that the generator then builds on.**
+
+**Two modes (user clarification 2026-07-07).** (1) **Seed a new project** — gather specifics from scratch and elaborate into a starting lorebook. (2) **Overall brainstorming for an in-progress project** — run the same structured intake against an EXISTING project to expand/develop it: questions are pre-filled from the current KB, the user adjusts (add 2 more characters, a new arc, deepen the setting), and elaboration is **grounded in the existing lore** (merge-by-name, no duplicates). Same engine, different entry point — a project-level "brainstorm the whole thing" pass, complementing the per-entity focused brainstorm.
+
+**Design.**
+- **Question set — gather concrete parameters, not vibes.** Ask for the specifics the user actually has in mind: **how many main characters** (then per character: name/role/key trait), **the high-level story arcs** (name + shape, how many), the **setting/world**, central conflict, tone + genre, key factions / items / rules. Counts and named items drive how many records to elaborate. Keep it short and **staged** (answer a few → generate → refine) rather than one giant form.
+- **LLM-authored, project-tailored questions (user idea 2026-07-07).** Beyond a small fixed core, **use the LLM to generate the questions themselves**, tailored to *this* project — its genre/category, title/premise, book length, and (for the in-progress mode) the existing lore digest. A mystery gets "Who's the detective? What's the central crime? Who are the suspects and their motives?"; a court-intrigue fantasy gets different ones. The generated questions are **stored** in the vestigial `dynamic_questions` KB field (`knowledge_base.py:207`, currently stored-but-unused) as `{question: answer}` (answers start empty), so they persist, and the user can **edit / add / remove / regenerate** them before answering. This is a small pass (reuse `concept_generator`/`llm_client` structured output) and it also powers the "adaptive follow-ups" — 1–2 further clarifiers generated from prior answers (ties to the brainstorm epic's "questioning" switches).
+- **Generation.** From the answers, run focused passes per entity type — reuse `concept_generator` draft→critique→refine + `lore_intake.extract_from_text` / `llm_extract_for_type` + `merge_apply` — fanned out via `bounded_map` (B29), one pass per category. Produces typed candidates: characters (role/motivation/voice), locations, codex, arcs, threads, worldbuilding.
+- **Review + cherry-pick.** Stage the generated lore into the **B27 sandbox** (per-run) so the user accepts / rejects / edits before it lands in the KB — this makes the wizard the **first real seed strategy for the sandbox**; the two features reinforce each other. (Fallback if built before B27: the existing proposal-review + `merge_apply`.)
+- **Explore + edit.** Once applied, the user refines with the existing lorebook — editors, connections (B25), gaps (B28), brainstorm.
+
+**Relation to the rest.**
+- **Reuses:** `lore_intake` (extract/merge), `concept_generator` (draft→critique→refine), **B29** concurrency, **B27** sandbox (cherry-pick), the vestigial `dynamic_questions` field.
+- **Distinct from** the step-by-step *prose* generation epic (writes chapters); this seeds the world. They chain: **wizard → lorebook → step-by-step generation.**
+
+**Open decisions.** Fixed vs adaptive questions (lean: fixed core + optional 1–2 adaptive); where it lives — a New Project "guided" path vs a standalone "Seed my world" action on an existing/empty project (lean: **both**); direct-to-lorebook vs stage-in-sandbox (lean: sandbox once B27 exists, proposal-review before then); how many questions (lean: 6–8 core, staged).
+
+**Effort: M/L.** Best sequenced **after B27 slice A** (so it can stage into the sandbox), though the question UI + a direct-to-proposal generation could ship earlier.
+
+## Plan-review additions (2026-07-07) — consistency, revision & finishing
+
+Gaps surfaced by reviewing the whole plan set. Worked through with the user one by one; only approved items are recorded here.
+
+### B31. Continuity guard — check written prose against canon — **effort: M** — *APPROVED (2026-07-07)*
+
+**The gap.** The gap-finder (B28) is entirely **pre-writing**. Once chapters exist, nothing checks the actual prose against the lorebook. The machinery already exists but is **unwired**: `fact_checker` (agent + `project_manager.check_facts`, reachable only standalone), the continuity checker, and the `ContinuityNote` model — none run in the writing flow.
+
+**What it does.** On demand, run a pass over a written chapter (or the whole manuscript) that flags contradictions against canon:
+- a character described against their record (eye colour, age, role);
+- a dead/absent character reappearing;
+- a location / codex fact contradicted;
+- (LATER, needs B33) someone knowing something they shouldn't yet.
+
+**How it surfaces.** Findings render like the **Gaps tab** — grouped, each with the offending chapter + the canon it violates, click-to-jump. **Read-only**: the author decides whether to fix the prose or update the lore (the story may have legitimately evolved). Nothing auto-edits the text.
+
+**Decisions (locked).** **On-demand** (a "Check continuity" button + a Continuity report tab), NOT automatic — it's an LLM pass and auto-running it every chapter adds latency on local models and fights the human-directed feel. An **optional "auto-check after each chapter" toggle** in the step-by-step flow is a later enhancement, default off. **Scope first** the checks with no dependency (contradicted facts, description drift, dead/absent reappearance); the "knows too early" check waits for **B33** (character-state/timeline).
+
+**Reuses.** `fact_checker` extract-claims→check-each pointed at lore + retrieval (keyword, no embed swap); `ContinuityNote`; the Gaps-tab report pattern; `bounded_map` (B29) to check chapters in parallel. Part of the **consistency cluster** with B32 (canon lock) and B33 (character-state/timeline), to be worked through next.
+
+### B32. Canon lock / story bible — inviolable rules generation must respect — **effort: S/M** — *APPROVED (slim, 2026-07-07)*
+
+**The gap.** Lore-grounding injects everything as equal-weight, advisory context. Nothing lets the author mark a subset as **immovable** — especially high-level facts that aren't a lore field at all (tense, POV, "never happens"). And the continuity guard (B31) has nothing to enforce *strictly*.
+
+**Design (slim).** A per-project **`canon_rules: list[str]`** — a short, author-owned list of one-line rules. Injected into **every** generation stage's prompt with strong phrasing ("These are INVIOLABLE — never contradict"), and treated by B31 as **high-severity** (a canon violation is a warn/error; ordinary drift is info). Optional lighter secondary: a `canon: bool` flag on individual records to mark a specific record's facts as locked. No heavy system.
+
+**Seeded rule categories (UI scaffolding, author edits freely).** The Canon Rules panel ships with these as collapsible prompts / example chips so it's never a blank box:
+- **Voice & POV** — "Third-person limited, Maren's POV only — no head-hopping within a scene."
+- **Tense** — "Past tense throughout."
+- **Character fates & immutable traits** — "Maren dies in Ch. 12 and never reappears." / "Cee is an android and cannot lie."
+- **World / magic-tech hard limits** — "Magic can't raise the dead." / "No tech beyond steam."
+- **Timeline / chronology** — "The story spans one winter." / "No flashbacks before Ch. 5."
+- **Relationship constraints** — "Tya and Cee don't meet until Act 3." / "No romance between Maren and the antagonist."
+- **Never-happens (prohibitions)** — "The villain is never redeemed." / "No deus-ex-machina rescues." / "No modern slang."
+- **Terminology & spelling** — "Always 'the Ashfall Compact' (capital A/C)." / "British spelling — colour, grey."
+- **Content boundaries (adult)** — "All explicit content is between consenting adults." / "Violence stays off-page." *(pairs with the adult-content controls item)*
+- **Prose guardrails** — "No em-dashes." / "Avoid 'suddenly' and 'very'." / "End scenes on a hook."
+
+**Fit.** The teeth behind lore-grounding + B31: the author decides what's immovable (very much human-directs-the-story), and B31 enforces it strictly. Part of the consistency cluster (B31 guard / B32 canon lock / B33 character-state).
+
+### B33. Character-state + lightweight timeline tracking — **effort: M+** — *APPROVED, sequenced AFTER B31/B32 (2026-07-07)*
+
+**The gap.** `CharacterState` is a model (`knowledge_base.py`) that **nothing populates** — no agent maintains it. There is no timeline at all. So the system has no memory of what each character *knows / feels / where they are* at a given chapter, and no ordered sense of *when* events happen.
+
+**What it does.**
+- **Character state per chapter** — a lightweight snapshot maintained as chapters are approved: emotional state, key things they now *know* (revelations learned), location, physical condition.
+- **Lightweight timeline** — an ordered list of key events tied to chapters ("Ch. 3: Maren learns Tya betrayed her").
+
+**Why it matters.** It powers the **"knows something too early"** continuity check (B31) — the highest-value catch for mystery/thriller and impossible without who-knows-what-when. It gives generation **time-aware** context (the chapter writer already consumes `CharacterState` where present). It feeds pacing/structure analysis later.
+
+**How.** After a chapter is approved, a small structured pass extracts state deltas + timeline events from the prose and stores them (cheap; reuses the extraction machinery + `bounded_map`). Surfaced read-only per character/chapter; editable.
+
+**Sequencing (locked).** Build **after** B31 (guard) and B32 (canon lock) — those deliver most consistency value without it; B33 unlocks the deeper "knows too early" check and time-aware context when ready. Completes the consistency cluster (B31 / B32 / B33).
+
+### B34. Human-directed revision loop — rewrite existing chapters with control — **effort: M** — *APPROVED, sequenced AFTER the step-by-step generation epic (2026-07-07)*
+
+**The gap.** The step-by-step generation epic covers the **first draft** only. There is no equivalent for **rewriting** an existing chapter — `editor` / `style_editor` run automatically (or not at all), so the author can't drive a revision the way they can drive generation.
+
+**What it does.** Point the same **approve / regenerate / guidance** controls at an existing chapter:
+- Pick a chapter → give revision notes ("tighten the middle", "more tension in the confrontation", "she wouldn't say that") → **regenerate with that guidance**, or **hand-edit** directly.
+- Scope: whole chapter, a scene, or a selected passage.
+- Keep or discard; each attempt is **versioned** for rollback.
+
+**Fit.** Revision is most of real writing; this applies the human-directed philosophy to the back half. Reuses the step-by-step control UX (approve/regenerate/guidance/reset) + the Versions machinery. A revision respects **canon (B32)** and can trigger a **continuity re-check (B31)** afterward.
+
+**Sequencing (locked).** Build **after** the step-by-step generation epic — it shares that epic's UX and plumbing; the new part is passage/scene-scoped regeneration with notes + a diff (pairs with the diff-on-regenerate item).
+
+### B35. Diff on regenerate — **effort: S** — *APPROVED as a cross-cutting requirement (2026-07-07)*
+
+**The gap.** Regenerating anything (a stage, a chapter, a passage) silently *replaces* the old output — the author can't see what changed to judge whether the regen is better.
+
+**What it does.** On any regenerate, show a **before/after diff** and offer **keep new / keep old / merge**. Prose → readable word-level diff; structured stages (outline, characters) → field-level diff. Could also show old-vs-suggested for "Apply suggested title".
+
+**Not standalone — baked in.** This is a **cross-cutting requirement** of the step-by-step generation review panel and the revision loop (B34), not a separate tool. The Versions machinery already snapshots, so the data exists. A self-contained JS diff (inlined, per the offline/local constraint).
+
+**Fit.** Makes the human-directed loop trustworthy: "regenerate" stops being a scary silent overwrite and becomes an informed choice — same theme as suggest-don't-overwrite and reset.
+
+### B36. Advanced content-intensity controls (gated) — **effort: S/M** — *APPROVED (2026-07-07)*
+
+**Purpose.** An optional per-scene/chapter/project control that lets the author steer the **tone, register, and intensity** of generated prose across a 1–5 scale (from mildest to most intense). Purely a generation steer — it adjusts the prompt only; it performs **no filtering of model output**. Scene-intent tags (e.g. "confrontation", "aftermath") and optional secondary tone dials ride the same mechanism, leaning on the existing `Scene.scene_type`.
+
+**Gated & discreet (required part of the design).**
+- **Off by default and not shown in the main UI.** Enabled only through an **Advanced settings** area (hard to find — not on the dashboard), which requires: (a) an explicit opt-in, (b) an **age affirmation (18+)**, and (c) acknowledgment of the usage disclaimer below.
+- Until unlocked, the control and its detailed level definitions are **hidden** — nothing in the default UI indicates the capability, so it isn't obvious to a casual or underage viewer.
+- **Neutral identifiers everywhere:** code/config/planning use generic names (e.g. `content_intensity`, levels 1–5). The prompt text that actually defines each level's register lives in a **gated, unlocked-only template** loaded at runtime — not inline in obvious source, and not enumerated in this public planning doc.
+- Sensible neutral defaults so the app behaves identically when the feature is disabled.
+
+**Usage disclaimer (shown at enable, must be acknowledged).** The software does not and cannot control the output of local/third-party LLMs, nor how the user uses them. The user is **solely responsible** for ensuring any generated content complies with the laws, ratings, and requirements of **their own jurisdiction**, and must be of legal age (18+). **No responsibility or liability is assumed or implied** for improper use or for content that violates the user's local laws.
+
+**Storage / wiring.** The intensity level stores on Scene/Chapter (+ a project default) and injects register/tone guidance into the generation prompt only when the feature is enabled. Per-scene granularity rides with the chapter/scene-granularity slice; a per-project default can ship earlier. The gating + age affirmation + disclaimer + neutral naming are built together with the control, not bolted on later. Pairs with the B32 content-boundary rules.
+
+### B37. Publish-ready export — DOCX → EPUB → PDF — **effort: M** — *APPROVED, delayed (2026-07-07)*
+
+**The gap.** Export today is only `.txt` (plain prose) + a re-importable JSON bundle — no format you can hand to a reader or an editor. The pipeline stops just short of "a finished book."
+
+**What it does.** Assemble the manuscript (chapters + title/author front matter + a table of contents + basic styling) into real documents, added as format options on the existing export UI. Pure **offline/local** assembly (no cloud conversion), per the local constraint.
+
+**Order (locked).** **DOCX first** (for beta readers / editors who use Word), **then EPUB** (the real ebook format — sections, TOC, front matter), **then PDF later** (heavier; explicitly delayed).
+
+**Notes.** Independent of everything else — no sequencing constraints beyond the internal DOCX→EPUB→PDF order; can slot in whenever. DOCX via a library or minimal OOXML; EPUB is a zip of XHTML + manifest (doable without heavy deps). A satisfying "get a real book out" item to interleave with the heavier work. Marked **delayed** — build after the higher-priority consistency/generation work.
+
+### Story-structure / pacing analysis — 🧊 **PARKED (2026-07-07)**
+
+Considered in the plan review; parked for now. A "zoom out on the whole book" view — act/structure balance, chapter word-count/pacing curve, tension/beat mapping (from `emotional_beat`/`scene_type`/arcs), arc/thread coverage. Weakest fit of the reviewed set: it's analysis not creation, overlaps the Stats page (readability), the continuity guard (B31), and the gap-finder, and its richest parts depend on B33 (timeline). If revived, the cheap wins (word-count curve + act ratios, zero-LLM) could be a small addition to the existing Stats page rather than a whole feature.
 
 ## Docs refresh (Docusaurus, **not a wiki**) — low-priority parallel track
 
