@@ -1467,6 +1467,20 @@ Gaps surfaced by reviewing the whole plan set. Worked through with the user one 
 
 **Fit.** The teeth behind lore-grounding + B31: the author decides what's immovable (very much human-directs-the-story), and B31 enforces it strictly. Part of the consistency cluster (B31 guard / B32 canon lock / B33 character-state).
 
+### B33. Character-state + lightweight timeline tracking — **effort: M+** — *APPROVED, sequenced AFTER B31/B32 (2026-07-07)*
+
+**The gap.** `CharacterState` is a model (`knowledge_base.py`) that **nothing populates** — no agent maintains it. There is no timeline at all. So the system has no memory of what each character *knows / feels / where they are* at a given chapter, and no ordered sense of *when* events happen.
+
+**What it does.**
+- **Character state per chapter** — a lightweight snapshot maintained as chapters are approved: emotional state, key things they now *know* (revelations learned), location, physical condition.
+- **Lightweight timeline** — an ordered list of key events tied to chapters ("Ch. 3: Maren learns Tya betrayed her").
+
+**Why it matters.** It powers the **"knows something too early"** continuity check (B31) — the highest-value catch for mystery/thriller and impossible without who-knows-what-when. It gives generation **time-aware** context (the chapter writer already consumes `CharacterState` where present). It feeds pacing/structure analysis later.
+
+**How.** After a chapter is approved, a small structured pass extracts state deltas + timeline events from the prose and stores them (cheap; reuses the extraction machinery + `bounded_map`). Surfaced read-only per character/chapter; editable.
+
+**Sequencing (locked).** Build **after** B31 (guard) and B32 (canon lock) — those deliver most consistency value without it; B33 unlocks the deeper "knows too early" check and time-aware context when ready. Completes the consistency cluster (B31 / B32 / B33).
+
 ## Docs refresh (Docusaurus, **not a wiki**) — low-priority parallel track
 
 Decision (2026-07-01): we already have a **Docusaurus** site in `docs/` wired for GitHub
