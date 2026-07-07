@@ -25,7 +25,7 @@ export const restoreVersion = (name: string, version: number) => api.post(`/proj
 export const getProjectStatus = (name: string) => api.get(`/projects/${name}/status`).then(r => r.data)
 export const getStats = (name: string) => api.get(`/projects/${name}/stats`).then(r => r.data)
 export const previewContext = (name: string, chapterNumber: number) => api.get(`/projects/${name}/preview-context/${chapterNumber}`).then(r => r.data)
-export const previewChat = (name: string, body: { message?: string, focus_type?: string | null, focus_name?: string | null, use_references?: boolean }) => api.post(`/projects/${name}/chat/preview`, body).then(r => r.data)
+export const previewChat = (name: string, body: { message?: string, focus_type?: string | null, focus_name?: string | null, focus_aspect?: string | null, use_references?: boolean }) => api.post(`/projects/${name}/chat/preview`, body).then(r => r.data)
 export const getRetrieval = (name: string) => api.get(`/projects/${name}/retrieval`).then(r => r.data)
 export const setRetrieval = (name: string, mode: string) => api.put(`/projects/${name}/retrieval`, { mode }).then(r => r.data)
 
@@ -85,8 +85,8 @@ export const deleteArc = (name: string, arcName: string) => api.delete(`/project
 export const importLore = (name: string, body: { data: any, smart?: boolean }) => api.post(`/projects/${name}/lore/import`, body).then(r => r.data)
 // Smart lore intake (B12 + B13): parse → review → merge
 export const parseLore = (name: string, body: { data: any, smart?: boolean }) => api.post(`/projects/${name}/lore/parse`, body).then(r => r.data)
-export const parseChat = (name: string, body: { text: string, focus_type?: string | null, focus_name?: string | null }) => api.post(`/projects/${name}/chat/parse`, body).then(r => r.data)
-export const parseChatDebug = (name: string, body: { text: string, focus_type?: string | null, focus_name?: string | null }) => api.post(`/projects/${name}/chat/parse/debug`, body).then(r => r.data)
+export const parseChat = (name: string, body: { text: string, focus_type?: string | null, focus_name?: string | null, focus_aspect?: string | null }) => api.post(`/projects/${name}/chat/parse`, body).then(r => r.data)
+export const parseChatDebug = (name: string, body: { text: string, focus_type?: string | null, focus_name?: string | null, focus_aspect?: string | null }) => api.post(`/projects/${name}/chat/parse/debug`, body).then(r => r.data)
 export const applyParsed = (name: string, records: any) => api.post(`/projects/${name}/lore/apply-parsed`, { records }).then(r => r.data)
 export const extractFields = (name: string, body: { name: string, content: string, category: string }) => api.post(`/projects/${name}/lore/extract-fields`, body).then(r => r.data)
 export const extractFieldsDebug = (name: string, body: { name: string, content: string, category: string, entry_type?: string }) => api.post(`/projects/${name}/lore/extract-fields/debug`, body).then(r => r.data)
@@ -137,11 +137,11 @@ export const getSession = (name: string, sid: string) => api.get(`/projects/${na
 export const clearSession = (name: string, sid: string) => api.delete(`/projects/${name}/chat/sessions/${sid}/messages`)
 export const applyChat = (name: string, body: { text: string, target_type: string, entity_name: string, smart?: boolean }) => api.post(`/projects/${name}/chat/apply`, body).then(r => r.data)
 // Streaming chat uses fetch (axios doesn't stream response bodies in the browser).
-export async function streamChat(name: string, message: string, onToken: (t: string) => void, focus?: { type: string, name: string } | null, useReferences: boolean = true, sessionId?: string | null, prefs?: Record<string, any> | null): Promise<void> {
+export async function streamChat(name: string, message: string, onToken: (t: string) => void, focus?: { type: string, name: string, aspect?: string } | null, useReferences: boolean = true, sessionId?: string | null, prefs?: Record<string, any> | null): Promise<void> {
   const res = await fetch(`/api/projects/${name}/chat`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ message, focus_type: focus?.type || null, focus_name: focus?.name || null, use_references: useReferences, session_id: sessionId || null, prefs: prefs || null }),
+    body: JSON.stringify({ message, focus_type: focus?.type || null, focus_name: focus?.name || null, focus_aspect: focus?.aspect || null, use_references: useReferences, session_id: sessionId || null, prefs: prefs || null }),
   })
   if (!res.ok || !res.body) throw new Error(`chat failed (${res.status})`)
   const reader = res.body.getReader()

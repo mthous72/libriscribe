@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 
-export interface BrainstormFocus { type: string; name: string }
+export interface BrainstormFocus { type: string; name: string; aspect?: string }
 
 interface BrainstormState {
   open: boolean

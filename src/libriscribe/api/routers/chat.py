@@ -386,6 +386,7 @@ class ChatRequest(BaseModel):
     message: str
     focus_type: str | None = None  # character | location | lore | arc
     focus_name: str | None = None
+    focus_aspect: str | None = None  # narrow to one property (field key or 'voice'); '' / 'all' = whole entity
     use_references: bool = True
     session_id: str | None = None  # B18: which brainstorm session to append to
     prefs: dict | None = None      # B23: {verbosity: low|medium|high}; falls back to the session's
@@ -555,9 +556,34 @@ def _focus_context(kb, name: str, focus_type: str, focus_name: str, message: str
     return resolved, record, "\n".join(surrounding)
 
 
-def _focus_system_prompt(kb, focus_type: str, focus_name: str, record: str, surrounding: str, directive: str) -> str:
-    lens = _INTENT_LENS.get(focus_type, "")
-    lens_block = f"{lens}\n\n" if lens else ""
+def _aspect_guidance(aspect: str) -> tuple[str, str]:
+    """(label, hint) for a narrowed brainstorm aspect. `aspect` is a field key or 'voice'."""
+    from libriscribe.services import lore_prompts as lp
+
+    if aspect == "voice":
+        return (
+            "dialogue voice — how they actually speak",
+            "Focus on speech patterns, vocabulary level, verbal tics, what they'd never say, and a "
+            "couple of example lines. Don't develop other aspects of the character.",
+        )
+    label = aspect.replace("_", " ")
+    hint = lp.FIELD_DESCRIPTIONS.get(aspect, "")
+    return (label, f"That means: {hint}." if hint else "")
+
+
+def _focus_system_prompt(kb, focus_type: str, focus_name: str, record: str, surrounding: str,
+                         directive: str, aspect: str | None = None) -> str:
+    aspect = (aspect or "").strip().lower()
+    if aspect and aspect != "all":
+        a_label, a_hint = _aspect_guidance(aspect)
+        lens_block = (
+            f"NARROW FOCUS: right now the author is developing ONE aspect of '{focus_name}' — its "
+            f"{a_label}. Keep every suggestion about that single aspect and nothing else about the "
+            f"{focus_type}. {a_hint}\n\n"
+        )
+    else:
+        lens = _INTENT_LENS.get(focus_type, "")
+        lens_block = f"{lens}\n\n" if lens else ""
     return (
         f"You are a creative collaborator for the book '{kb.title}' ({kb.genre}). The author is "
         f"developing the {focus_type} '{focus_name}' and wants to deepen it using the surrounding "
@@ -676,7 +702,8 @@ def clear_session(name: str, sid: str):
     _save_session(name, session)
 
 
-def _assemble_system_prompt(name, kb, message, focus_type, focus_name, use_references, directive: str | None = None) -> str:
+def _assemble_system_prompt(name, kb, message, focus_type, focus_name, use_references,
+                            directive: str | None = None, focus_aspect: str | None = None) -> str:
     """Build the exact system prompt the brainstorm chat would send (focus/general + lore
     context + optional reference band). Shared by the live chat and the preview (B15).
     `directive` is the verbosity response directive; defaults to Medium for previews."""
@@ -686,7 +713,7 @@ def _assemble_system_prompt(name, kb, message, focus_type, focus_name, use_refer
         focus = _focus_context(kb, name, focus_type, focus_name, message)
     if focus:
         resolved, record, related = focus
-        system_prompt = _focus_system_prompt(kb, focus_type, resolved, record, related, directive)
+        system_prompt = _focus_system_prompt(kb, focus_type, resolved, record, related, directive, focus_aspect)
     else:
         system_prompt = _system_prompt(kb, _build_lore_context(name, kb, message), directive)
     if use_references:
@@ -700,6 +727,7 @@ class PreviewRequest(BaseModel):
     message: str = ""
     focus_type: str | None = None
     focus_name: str | None = None
+    focus_aspect: str | None = None
     use_references: bool = True
 
 
@@ -711,7 +739,8 @@ def chat_preview(name: str, body: PreviewRequest):
     if not kb:
         raise HTTPException(status_code=404, detail="Project not found")
     system_prompt = _assemble_system_prompt(
-        name, kb, body.message or "(no message yet)", body.focus_type, body.focus_name, body.use_references
+        name, kb, body.message or "(no message yet)", body.focus_type, body.focus_name, body.use_references,
+        focus_aspect=body.focus_aspect,
     )
     return {"system_prompt": system_prompt, "token_estimate": estimate_tokens(system_prompt)}
 
@@ -740,7 +769,7 @@ def chat(name: str, body: ChatRequest):
 
     system_prompt = _assemble_system_prompt(
         name, kb, body.message, body.focus_type, body.focus_name, body.use_references,
-        directive=vb["directive"],
+        directive=vb["directive"], focus_aspect=body.focus_aspect,
     )
     if memory:
         system_prompt += (
@@ -791,6 +820,7 @@ class ParseRequest(BaseModel):
     text: str
     focus_type: str | None = None  # B24: when the session is focused on an entity, decompose the
     focus_name: str | None = None  # reply straight into THAT known entity's full field set
+    focus_aspect: str | None = None  # narrow the apply to one property (field key or 'voice')
 
 
 @router.post("/{name}/chat/parse")
@@ -814,7 +844,8 @@ def parse_to_proposal(name: str, body: ParseRequest):
 
     client = _utility_client_for(kb)
     if body.focus_type and body.focus_name:
-        cats = lore_intake.extract_focused(client, kb, body.focus_type, body.focus_name, text)
+        cats = lore_intake.extract_focused(client, kb, body.focus_type, body.focus_name, text,
+                                           aspect=body.focus_aspect)
     else:
         cats = lore_intake.extract_from_text(client, kb.genre, text, book_title=kb.title)
     if lore_intake.cats_count(cats) == 0:
@@ -854,7 +885,8 @@ def parse_to_proposal_debug(name: str, body: ParseRequest):
     raw_plain = _raw(False)
     focused = None
     if body.focus_type and body.focus_name:
-        focused = lore_intake.extract_focused(client, kb, body.focus_type, body.focus_name, text)
+        focused = lore_intake.extract_focused(client, kb, body.focus_type, body.focus_name, text,
+                                              aspect=body.focus_aspect)
     return {
         "provider": kb.llm_provider,
         "model": getattr(client, "model", None),

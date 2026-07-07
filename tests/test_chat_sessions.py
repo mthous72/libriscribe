@@ -181,6 +181,25 @@ class BrainstormPrefsTests(unittest.TestCase):
         self.assertIn("STAKES", arc)
         self.assertNotIn("MOTIVATION", arc)
 
+    def test_aspect_narrows_the_focus_prompt(self):
+        from types import SimpleNamespace
+        kb = SimpleNamespace(title="Book", genre="Sci-Fi")
+        # A specific field aspect swaps the broad lens for a narrow-focus instruction on that field.
+        p = chat._focus_system_prompt(kb, "character", "Maren", "(rec)", "(lore)",
+                                      chat._VERBOSITY["medium"]["directive"], aspect="motivations")
+        self.assertIn("NARROW FOCUS", p)
+        self.assertIn("motivations", p)
+        self.assertNotIn("MOTIVATION, VOICE", p)   # broad intent lens is suppressed
+        # The voice aspect describes the dialogue voice.
+        v = chat._focus_system_prompt(kb, "character", "Maren", "(rec)", "(lore)",
+                                      chat._VERBOSITY["medium"]["directive"], aspect="voice")
+        self.assertIn("dialogue voice", v)
+        # 'all' behaves like no aspect (keeps the broad lens).
+        allp = chat._focus_system_prompt(kb, "character", "Maren", "(rec)", "(lore)",
+                                         chat._VERBOSITY["medium"]["directive"], aspect="all")
+        self.assertNotIn("NARROW FOCUS", allp)
+        self.assertIn("MOTIVATION", allp)
+
 
 if __name__ == "__main__":
     unittest.main()

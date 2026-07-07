@@ -381,6 +381,7 @@ def llm_classify_all(client, genre: str, cats: dict, book_title: str = "") -> di
 def llm_extract_for_type(
     client, genre: str, name: str, content: str, category: str,
     book_title: str = "", entry_type_hint: str | None = None, existing_fields: dict | None = None,
+    include_voice: bool = True,
 ) -> dict:
     """Extract typed sub-fields for a KNOWN category from an entry's content.
 
@@ -426,7 +427,7 @@ def llm_extract_for_type(
 
     # For characters, also capture the dialogue VOICE (nested VoiceProfile) in a dedicated pass.
     # Exposed as voice_* fields (editable in review); _upsert assembles them into `voice_profile`.
-    if type_key == "character":
+    if type_key == "character" and include_voice:
         for vk, vv in _extract_voice(client, genre, name, content, book_title=book_title).items():
             result[f"voice_{vk}"] = vv
     return result
@@ -518,10 +519,15 @@ def existing_fields_for(kb, category: str, name: str) -> dict | None:
 
 
 def extract_focused(client, kb, focus_type: str, focus_name: str, text: str,
-                    include_others: bool = False) -> dict:
+                    include_others: bool = False, aspect: str | None = None) -> dict:
     """Focus-aware brainstorm parse (B24). The session already knows the entity being developed,
     so decompose the reply into that KNOWN entity's FULL typed field set (pre-targeted to it,
     augmenting its current fields) instead of re-discovering/re-classifying it.
+
+    ``aspect`` narrows to a single property of the focused entity:
+      - "voice" (characters) → only the dialogue voice pass → voice_* fields.
+      - a field name (e.g. "motivations") → only that field.
+      - None / "" / "all" → the full field set (default).
 
     By default this returns ONLY the focused entity — "develop Tya" should update Tya, not scrape
     the whole conversation. The multi-entity discovery sweep is unreliable on brainstorm prose and
@@ -532,15 +538,29 @@ def extract_focused(client, kb, focus_type: str, focus_name: str, text: str,
         return _empty_cats()
     category = TYPE_TO_CATEGORY.get(focus_type, focus_type)
     cats = _empty_cats()
+    aspect = (aspect or "").strip().lower()
+    narrowed = bool(aspect) and aspect != "all"
+
+    # Voice-only aspect: run just the dedicated voice pass (characters).
+    if aspect == "voice" and focus_type == "character":
+        voice = _extract_voice(client, kb.genre, focus_name, text, book_title=kb.title,
+                               existing_voice=(existing_fields_for(kb, category, focus_name) or {}).get("voice_profile"))
+        fields = {f"voice_{k}": v for k, v in voice.items()}
+        if fields and category in cats:
+            cats[category].append({"name": focus_name, "fields": fields})
+        return cats
 
     fields = llm_extract_for_type(
         client, kb.genre, focus_name, text, focus_type, book_title=kb.title,
         existing_fields=existing_fields_for(kb, category, focus_name),
+        include_voice=not narrowed,  # skip the voice call when narrowing to a non-voice field
     )
+    if narrowed:
+        fields = {k: v for k, v in (fields or {}).items() if k == aspect}  # keep only the chosen property
     if fields and category in cats:
         cats[category].append({"name": focus_name, "fields": fields})
 
-    if not include_others:
+    if not include_others or narrowed:
         return cats
 
     # Opt-in: fold in OTHER entities the reply mentions — but only known ones (no invented junk),
