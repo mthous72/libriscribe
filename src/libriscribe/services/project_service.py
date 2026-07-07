@@ -143,6 +143,7 @@ def get_project_detail(project_name: str) -> dict[str, Any] | None:
         "llm_provider": kb.llm_provider,
         "model": kb.model,
         "utility_model": kb.utility_model,
+        "max_concurrency": kb.max_concurrency,
         "outline": kb.outline,
         "next_step": progress.next_step,
         "chapter_count": len(existing_chapters),

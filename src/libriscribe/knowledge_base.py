@@ -201,6 +201,7 @@ class ProjectKnowledgeBase(BaseModel):
     agent_models: dict[str, str] = Field(default_factory=dict)
     fallback_chain: list[str] = Field(default_factory=list)
     agent_fallback_chains: dict[str, list[str]] = Field(default_factory=dict)
+    max_concurrency: int = 4  # cap on concurrent LLM calls (B29); 1 = serial/off for rate-limited providers
     chapter_writing_mode: str = "prompt"
     chapter_error_mode: str = "stop"
     dynamic_questions: dict[str, str] = Field(default_factory=dict)
