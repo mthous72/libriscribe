@@ -13,7 +13,7 @@ import {
   listThreads, createThread, updateThread, deleteThread,
   parseLore,
   listReferences, uploadReference, deleteReference,
-  getGaps, deepScanGaps,
+  getGaps, deepScanGaps, getProject,
 } from '../api/client'
 import { useBrainstormStore } from '../store/brainstormSlice'
 import LoreProposalReview, { Proposal } from '../components/LoreProposalReview'
@@ -46,13 +46,29 @@ function EntityList({ items, onSelect, onDelete, onAnalyze, labelKey = 'name', b
   )
 }
 
-function FieldEditor({ fields, data, onChange }: { fields: string[], data: any, onChange: (key: string, val: any) => void }) {
+// Single chapter-number fields — rendered as a chapter pulldown (they're ints, not free text).
+const CHAPTER_FIELDS = new Set(['first_appearance', 'opened_chapter', 'target_resolution_chapter', 'resolved_chapter'])
+
+function FieldEditor({ fields, data, onChange, numChapters = 0 }: { fields: string[], data: any, onChange: (key: string, val: any) => void, numChapters?: number }) {
   return (
     <div className="space-y-3">
       {fields.map(f => (
         <label key={f} className="block">
           <span className="text-xs text-gray-400 capitalize">{f.replace(/_/g, ' ')}</span>
-          {typeof data[f] === 'object' && !Array.isArray(data[f]) ? (
+          {CHAPTER_FIELDS.has(f) ? (
+            numChapters >= 1 ? (
+              <select className="w-full mt-1 px-2 py-1.5 bg-gray-800 border border-gray-700 rounded text-sm"
+                value={data[f] ?? ''}
+                onChange={e => { const v = e.target.value; onChange(f, v === '' ? null : Number(v)); useUiStore.getState().markDirty() }}>
+                <option value="">— unset —</option>
+                {Array.from({ length: numChapters }, (_, i) => i + 1).map(ch => <option key={ch} value={ch}>Chapter {ch}</option>)}
+              </select>
+            ) : (
+              <input type="number" min={1} className="w-full mt-1 px-2 py-1.5 bg-gray-800 border border-gray-700 rounded text-sm"
+                value={data[f] ?? ''}
+                onChange={e => { const v = e.target.value; onChange(f, v === '' ? null : Number(v)); useUiStore.getState().markDirty() }} />
+            )
+          ) : typeof data[f] === 'object' && !Array.isArray(data[f]) ? (
             <textarea className="w-full mt-1 px-2 py-1.5 bg-gray-800 border border-gray-700 rounded text-sm h-20" value={JSON.stringify(data[f], null, 2)} onChange={e => { try { onChange(f, JSON.parse(e.target.value)); useUiStore.getState().markDirty() } catch {} }} />
           ) : Array.isArray(data[f]) ? (
             <input className="w-full mt-1 px-2 py-1.5 bg-gray-800 border border-gray-700 rounded text-sm" value={data[f].join(', ')} onChange={e => { onChange(f, e.target.value.split(',').map((s: string) => s.trim()).filter(Boolean)); useUiStore.getState().markDirty() }} />
@@ -93,6 +109,14 @@ export default function LorebookPage() {
   // Refresh when lore is written elsewhere (e.g. brainstorm Apply-to-lore, which is a separate component).
   const loreVersion = useBrainstormStore(s => s.loreVersion)
   const lastLoreVersion = useRef(loreVersion)
+  const [numChapters, setNumChapters] = useState(0)
+  useEffect(() => {
+    if (!name) return
+    getProject(name).then((p: any) => {
+      const nc = p?.num_chapters
+      setNumChapters(Array.isArray(nc) ? (nc.length ? Math.max(...nc.map(Number)) : 0) : (Number(nc) || 0))
+    }).catch(() => {})
+  }, [name])
   const [gaps, setGaps] = useState<{ gaps: any[], counts: any } | null>(null)
   const [gapsLoading, setGapsLoading] = useState(false)
   const [deepGaps, setDeepGaps] = useState<any[] | null>(null)
@@ -507,7 +531,7 @@ export default function LorebookPage() {
           )}
           {tab === 'Locations' && selected && (
             <div>
-              <FieldEditor fields={locFields} data={selected} onChange={(k, v) => setSelected({ ...selected, [k]: v })} />
+              <FieldEditor fields={locFields} data={selected} onChange={(k, v) => setSelected({ ...selected, [k]: v })} numChapters={numChapters} />
               <div className="mt-4 flex gap-2">
                 <button onClick={handleSave} className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 rounded-lg text-sm">Save</button>
                 {selected && TAB_TO_FOCUS[tab] && (
@@ -524,7 +548,7 @@ export default function LorebookPage() {
           )}
           {tab === 'Lore' && selected && (
             <div>
-              <FieldEditor fields={loreFields} data={selected} onChange={(k, v) => setSelected({ ...selected, [k]: v })} />
+              <FieldEditor fields={loreFields} data={selected} onChange={(k, v) => setSelected({ ...selected, [k]: v })} numChapters={numChapters} />
               <div className="mt-4 flex gap-2">
                 <button onClick={handleSave} className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 rounded-lg text-sm">Save</button>
                 {selected && TAB_TO_FOCUS[tab] && (
@@ -541,7 +565,7 @@ export default function LorebookPage() {
           )}
           {tab === 'Arcs' && selected && (
             <div>
-              <FieldEditor fields={arcFields} data={selected} onChange={(k, v) => setSelected({ ...selected, [k]: v })} />
+              <FieldEditor fields={arcFields} data={selected} onChange={(k, v) => setSelected({ ...selected, [k]: v })} numChapters={numChapters} />
               {/* Milestones (F1) */}
               {selected.milestones && selected.milestones.length > 0 && (
                 <div className="mt-4 border border-gray-700 rounded-lg p-3">
@@ -576,7 +600,7 @@ export default function LorebookPage() {
           )}
           {tab === 'Threads' && selected && (
             <div>
-              <FieldEditor fields={threadFields} data={selected} onChange={(k, v) => setSelected({ ...selected, [k]: v })} />
+              <FieldEditor fields={threadFields} data={selected} onChange={(k, v) => setSelected({ ...selected, [k]: v })} numChapters={numChapters} />
               <div className="mt-4 flex gap-2">
                 <button onClick={handleSave} className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 rounded-lg text-sm">Save</button>
                 {selected && TAB_TO_FOCUS[tab] && (
