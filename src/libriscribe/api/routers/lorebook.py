@@ -51,6 +51,17 @@ def get_gaps(name: str):
     return gap_finder.find_gaps(kb)
 
 
+@router.get("/{name}/connections/{entity_type}/{entity_name:path}")
+def get_connections(name: str, entity_type: str, entity_name: str):
+    """Navigable, bidirectional links for one entity (B25) — outgoing + incoming, each resolved
+    to a real record or flagged unresolved. Read-only, no LLM."""
+    kb = load_kb(name)
+    if not kb:
+        raise HTTPException(status_code=404, detail="Project not found")
+    from libriscribe.services import connections
+    return connections.entity_connections(kb, entity_type, entity_name)
+
+
 @router.post("/{name}/gaps/deep-scan")
 def deep_scan_gaps(name: str):
     """AI pass (opt-in, costs LLM calls): scan prose + lore free-text for named entities that have

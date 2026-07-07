@@ -13,7 +13,7 @@ import {
   listThreads, createThread, updateThread, deleteThread,
   parseLore,
   listReferences, uploadReference, deleteReference,
-  getGaps, deepScanGaps, getProject,
+  getGaps, deepScanGaps, getProject, getConnections,
 } from '../api/client'
 import { useBrainstormStore } from '../store/brainstormSlice'
 import LoreProposalReview, { Proposal } from '../components/LoreProposalReview'
@@ -81,6 +81,49 @@ function FieldEditor({ fields, data, onChange, numChapters = 0 }: { fields: stri
   )
 }
 
+const TYPE_FOR_TAB: Record<string, string> = { Characters: 'character', Locations: 'location', Lore: 'lore', Arcs: 'arc', Threads: 'thread' }
+
+// B25: navigable, bidirectional links for the selected entity. Resolved links jump to the record;
+// unresolved names (no matching record) show as non-navigable "unlinked" chips.
+function ConnectionsPanel({ projectName, entityType, entityName, version, onOpen }: { projectName: string, entityType: string, entityName: string, version: number, onOpen: (t: { type: string, name: string }) => void }) {
+  const [conn, setConn] = useState<{ outgoing: any[], incoming: any[] } | null>(null)
+  useEffect(() => {
+    let cancelled = false
+    getConnections(projectName, entityType, entityName)
+      .then(c => { if (!cancelled) setConn(c) })
+      .catch(() => { if (!cancelled) setConn({ outgoing: [], incoming: [] }) })
+    return () => { cancelled = true }
+  }, [projectName, entityType, entityName, version])
+
+  if (!conn) return null
+  if (!conn.outgoing.length && !conn.incoming.length) {
+    return <div className="mt-4 border-t border-gray-800 pt-3 text-[11px] text-gray-600">No connections yet — add names to the relationship / involved / related / associated fields.</div>
+  }
+  const chip = (l: any, i: number, navigable: boolean) => {
+    const body = <><span className="capitalize text-gray-500">{l.type || '?'}</span> <span className="text-gray-200">{l.name}</span><span className="text-gray-600"> · {l.relation}</span>{l.detail ? <span className="text-gray-600"> ({l.detail})</span> : null}</>
+    return navigable
+      ? <button key={i} onClick={() => onOpen({ type: l.type, name: l.name })} className="px-2 py-1 bg-gray-800 hover:bg-gray-700 rounded text-xs text-left">{body}</button>
+      : <span key={i} title="Not in the lorebook yet" className="px-2 py-1 bg-gray-800/40 rounded text-xs text-gray-500">{l.name} <span className="text-[10px]">(unlinked)</span></span>
+  }
+  return (
+    <div className="mt-4 border-t border-gray-800 pt-3 space-y-2">
+      <h4 className="text-xs uppercase tracking-wide text-gray-500">Connections</h4>
+      {conn.outgoing.length > 0 && (
+        <div className="flex flex-wrap items-center gap-1.5">
+          <span className="text-[11px] text-gray-500">Links to:</span>
+          {conn.outgoing.map((l, i) => chip(l, i, l.resolved))}
+        </div>
+      )}
+      {conn.incoming.length > 0 && (
+        <div className="flex flex-wrap items-center gap-1.5">
+          <span className="text-[11px] text-gray-500">Referenced by:</span>
+          {conn.incoming.map((l, i) => chip(l, 1000 + i, true))}
+        </div>
+      )}
+    </div>
+  )
+}
+
 export default function LorebookPage() {
   const { name } = useParams<{ name: string }>()
   const [tab, setTab] = useState('Characters')
@@ -108,6 +151,7 @@ export default function LorebookPage() {
   const openBrainstorm = useBrainstormStore(s => s.openBrainstorm)
   // Refresh when lore is written elsewhere (e.g. brainstorm Apply-to-lore, which is a separate component).
   const loreVersion = useBrainstormStore(s => s.loreVersion)
+  const bumpLore = useBrainstormStore(s => s.bumpLore)
   const lastLoreVersion = useRef(loreVersion)
   const [numChapters, setNumChapters] = useState(0)
   useEffect(() => {
@@ -282,6 +326,7 @@ export default function LorebookPage() {
       if (tab === 'Threads') await updateThread(name, s._origName || s.name, s)
       useUiStore.getState().markClean()
       reload()
+      bumpLore()  // refresh connections + any open views after link edits
     } catch (e) { alert('Save failed') }
   }
 
@@ -629,6 +674,16 @@ export default function LorebookPage() {
               ))}
               <button onClick={() => name && updateWorldbuilding(name, world).then(() => { useUiStore.getState().markClean(); reload() })} className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 rounded-lg text-sm">Save Worldbuilding</button>
             </div>
+          )}
+          {/* Connections (B25) — navigable links, both directions */}
+          {selected && TYPE_FOR_TAB[tab] && (
+            <ConnectionsPanel
+              projectName={name!}
+              entityType={TYPE_FOR_TAB[tab]}
+              entityName={selected._origName || selected.name}
+              version={loreVersion}
+              onOpen={openEntity}
+            />
           )}
           {/* Suggestion Review Panel */}
           {showSuggestions && (tab === 'Characters' || tab === 'Locations' || tab === 'Lore') && (
