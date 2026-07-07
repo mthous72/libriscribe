@@ -422,6 +422,47 @@ class LorePromptsTests(unittest.TestCase):
         self.assertIn("ENTRY NAME: Maren", p)
 
 
+class ExpandedRelationalFieldsTests(unittest.TestCase):
+    """Location/Codex/Arc now parse their relational + meta fields from a brainstorm."""
+
+    def test_field_sets_and_descriptions_expanded(self):
+        for f in ("associated_characters", "first_appearance", "tags"):
+            self.assertIn(f, lore_intake.SMART_FIELDS["location"])
+        for f in ("related_entities", "first_appearance", "tags"):
+            self.assertIn(f, lore_intake.SMART_FIELDS["lore"])
+        for f in ("chapters_involved", "characters_involved", "status"):
+            self.assertIn(f, lore_intake.SMART_FIELDS["arc"])
+        for f in ("associated_characters", "related_entities", "first_appearance",
+                  "tags", "chapters_involved", "characters_involved", "status"):
+            self.assertIn(f, lore_prompts.FIELD_DESCRIPTIONS)
+
+    def test_merge_coerces_relational_fields_from_strings(self):
+        # The model emits plain strings; the merge coerces to list[str] / list[int] / int.
+        kb = _kb()
+        lore_intake.merge_apply(kb, {
+            "locations": [{"name": "Keep", "fields": {
+                "tags": "stone, old", "associated_characters": "Ada, Bran", "first_appearance": "3"}}],
+            "lore": [{"name": "Guild", "fields": {"related_entities": "Ada; Keep"}}],
+            "arcs": [{"name": "Fall", "fields": {
+                "chapters_involved": "1, 2, 5", "characters_involved": "Ada", "status": "active"}}],
+        })
+        loc = kb.locations["Keep"]
+        self.assertEqual(loc.tags, ["stone", "old"])
+        self.assertEqual(loc.associated_characters, ["Ada", "Bran"])
+        self.assertEqual(loc.first_appearance, 3)
+        self.assertEqual(kb.lore_entries["Guild"].related_entities, ["Ada", "Keep"])
+        arc = kb.story_arcs["Fall"]
+        self.assertEqual(arc.chapters_involved, [1, 2, 5])
+        self.assertEqual(arc.characters_involved, ["Ada"])
+        self.assertEqual(arc.status, "active")
+
+    def test_json_example_for_location_includes_new_fields(self):
+        ex = lore_prompts.json_example("location", "Keep")
+        obj = parse_llm_json(ex)
+        for f in ("associated_characters", "first_appearance", "tags"):
+            self.assertIn(f, obj)
+
+
 class ExpandedCharacterFieldsTests(unittest.TestCase):
     def test_character_field_set_includes_conflicts_and_age(self):
         for f in ("internal_conflicts", "external_conflicts", "age"):
