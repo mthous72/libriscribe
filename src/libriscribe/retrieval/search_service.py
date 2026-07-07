@@ -15,6 +15,7 @@ class SearchService(Protocol):
         top_k: int = 6,
         filters: dict[str, Any] | None = None,
         task_type: str | None = None,
+        force: bool = False,
     ) -> list[SearchResult]:
         """Performs a search over the index."""
         ...
@@ -40,6 +41,7 @@ class NullSearchService:
         top_k: int = 6,
         filters: dict[str, Any] | None = None,
         task_type: str | None = None,
+        force: bool = False,
     ) -> list[SearchResult]:
         return []
 
@@ -127,12 +129,17 @@ class SearchServiceImpl:
         top_k: int = 6,
         filters: dict[str, Any] | None = None,
         task_type: str | None = None,
+        force: bool = False,
     ) -> list[SearchResult]:
         """Search via keyword, semantic, or hybrid — resolved from the project's retrieval
-        config. Semantic/hybrid silently fall back to keyword if no embedder/index is ready."""
+        config. Semantic/hybrid silently fall back to keyword if no embedder/index is ready.
+
+        ``force=True`` honors the requested ``mode`` exactly, bypassing the project-mode override —
+        used by high-frequency callers (brainstorm follow-up turns) that must stay on keyword to
+        avoid a local embedding-model swap every turn."""
         keyword = self.index_manager.keyword_index
 
-        effective = self._effective_mode(mode)
+        effective = (mode or "keyword").lower() if force else self._effective_mode(mode)
         if effective in ("semantic", "hybrid") and not self._semantic_ready():
             effective = "keyword"
 
