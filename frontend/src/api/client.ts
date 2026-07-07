@@ -96,6 +96,13 @@ export const getWorldbuilding = (name: string) => api.get(`/projects/${name}/wor
 export const updateWorldbuilding = (name: string, body: any) => api.put(`/projects/${name}/worldbuilding`, body).then(r => r.data)
 
 export const getGaps = (name: string): Promise<{ gaps: any[], counts: { total: number, warn: number, info: number } }> => api.get(`/projects/${name}/gaps`).then(r => r.data)
+// Sandbox (B27A) — staged candidates, human cherry-pick
+export const listSandboxRuns = (name: string) => api.get(`/projects/${name}/sandbox`).then(r => r.data)
+export const getSandboxRun = (name: string, runId: string) => api.get(`/projects/${name}/sandbox/${runId}`).then(r => r.data)
+export const deleteSandboxRun = (name: string, runId: string) => api.delete(`/projects/${name}/sandbox/${runId}`)
+export const patchSandboxCandidate = (name: string, runId: string, cid: string, body: { status?: string, name?: string, fields?: any }) => api.patch(`/projects/${name}/sandbox/${runId}/candidates/${cid}`, body).then(r => r.data)
+export const applySandboxRun = (name: string, runId: string) => api.post(`/projects/${name}/sandbox/${runId}/apply`).then(r => r.data)
+export const stageGapsToSandbox = (name: string, gaps: any[]) => api.post(`/projects/${name}/gaps/to-sandbox`, { gaps }).then(r => r.data)
 // Deep scan makes many LLM calls; disable the request timeout.
 export const deepScanGaps = (name: string): Promise<{ gaps: any[], scanned: number, truncated: boolean, detail?: string }> => api.post(`/projects/${name}/gaps/deep-scan`, null, { timeout: 0 }).then(r => r.data)
 export const getConnections = (name: string, entityType: string, entityName: string): Promise<{ outgoing: any[], incoming: any[], found: boolean }> => api.get(`/projects/${name}/connections/${entityType}/${encPath(entityName)}`).then(r => r.data)

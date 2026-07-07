@@ -92,6 +92,78 @@ def deep_scan_gaps(name: str):
     return gap_finder.find_undefined_entities(client, kb, texts, workers)
 
 
+# ─── Sandbox (B27 Slice A) — staged candidates, human cherry-pick ─────────────
+
+class CandidatePatch(BaseModel):
+    status: str | None = None      # pending | accepted | rejected
+    name: str | None = None
+    fields: dict | None = None
+
+
+class StageGapsRequest(BaseModel):
+    gaps: list[dict]
+
+
+@router.get("/{name}/sandbox")
+def sandbox_list(name: str):
+    if not load_kb(name):
+        raise HTTPException(status_code=404, detail="Project not found")
+    from libriscribe.services import sandbox
+    return sandbox.list_runs(name)
+
+
+@router.get("/{name}/sandbox/{run_id}")
+def sandbox_get(name: str, run_id: str):
+    from libriscribe.services import sandbox
+    run = sandbox.get_run(name, run_id)
+    if not run:
+        raise HTTPException(status_code=404, detail="Run not found")
+    return run
+
+
+@router.delete("/{name}/sandbox/{run_id}", status_code=204)
+def sandbox_delete(name: str, run_id: str):
+    from libriscribe.services import sandbox
+    if not sandbox.delete_run(name, run_id):
+        raise HTTPException(status_code=404, detail="Run not found")
+
+
+@router.patch("/{name}/sandbox/{run_id}/candidates/{candidate_id}")
+def sandbox_patch_candidate(name: str, run_id: str, candidate_id: str, body: CandidatePatch):
+    from libriscribe.services import sandbox
+    c = sandbox.update_candidate(name, run_id, candidate_id,
+                                 status=body.status, name=body.name, fields=body.fields)
+    if not c:
+        raise HTTPException(status_code=404, detail="Candidate not found")
+    return c
+
+
+@router.post("/{name}/sandbox/{run_id}/apply")
+def sandbox_apply(name: str, run_id: str):
+    """Merge ONLY the accepted candidates into the lorebook (never auto-accepts)."""
+    kb = load_kb(name)
+    if not kb:
+        raise HTTPException(status_code=404, detail="Project not found")
+    from libriscribe.services import sandbox
+    result = sandbox.apply_accepted(name, kb, run_id)
+    if result is None:
+        raise HTTPException(status_code=404, detail="Run not found")
+    save_kb(name, kb)
+    return result
+
+
+@router.post("/{name}/gaps/to-sandbox")
+def gaps_to_sandbox(name: str, body: StageGapsRequest):
+    """Stage gap findings (deep-scan undefined entities, structural gaps) as sandbox
+    candidates for cherry-pick — the gap → stage → review → merge loop."""
+    if not load_kb(name):
+        raise HTTPException(status_code=404, detail="Project not found")
+    if not body.gaps:
+        raise HTTPException(status_code=400, detail="No gaps to stage")
+    from libriscribe.services import sandbox
+    return sandbox.stage_gaps(name, body.gaps)
+
+
 # ─── Characters ───────────────────────────────────────────────────
 
 @router.get("/{name}/characters")
