@@ -1494,6 +1494,16 @@ Gaps surfaced by reviewing the whole plan set. Worked through with the user one 
 
 **Sequencing (locked).** Build **after** the step-by-step generation epic — it shares that epic's UX and plumbing; the new part is passage/scene-scoped regeneration with notes + a diff (pairs with the diff-on-regenerate item).
 
+### B35. Diff on regenerate — **effort: S** — *APPROVED as a cross-cutting requirement (2026-07-07)*
+
+**The gap.** Regenerating anything (a stage, a chapter, a passage) silently *replaces* the old output — the author can't see what changed to judge whether the regen is better.
+
+**What it does.** On any regenerate, show a **before/after diff** and offer **keep new / keep old / merge**. Prose → readable word-level diff; structured stages (outline, characters) → field-level diff. Could also show old-vs-suggested for "Apply suggested title".
+
+**Not standalone — baked in.** This is a **cross-cutting requirement** of the step-by-step generation review panel and the revision loop (B34), not a separate tool. The Versions machinery already snapshots, so the data exists. A self-contained JS diff (inlined, per the offline/local constraint).
+
+**Fit.** Makes the human-directed loop trustworthy: "regenerate" stops being a scary silent overwrite and becomes an informed choice — same theme as suggest-don't-overwrite and reset.
+
 ## Docs refresh (Docusaurus, **not a wiki**) — low-priority parallel track
 
 Decision (2026-07-01): we already have a **Docusaurus** site in `docs/` wired for GitHub
