@@ -128,16 +128,19 @@ class ConceptGeneratorAgent(Agent):
                 logger.error("Refined concept parsing failed")
                 return None
 
-            # --- Step 4: Update ProjectData (using refined concept) ---
-            if "title" in refined_concept_json:
-                project_knowledge_base.title = refined_concept_json["title"]
-            if "logline" in refined_concept_json:
-                project_knowledge_base.logline = refined_concept_json["logline"]
-            if "description" in refined_concept_json:
-                project_knowledge_base.description = refined_concept_json["description"]
+            # --- Step 4: SUGGEST (never overwrite) the user's title/logline/description (Phase 0) ---
+            # The author's title/logline/description are theirs; the concept stage only proposes.
+            # The UI surfaces suggested_* with an Apply button.
+            if refined_concept_json.get("title"):
+                project_knowledge_base.suggested_title = refined_concept_json["title"]
+            if refined_concept_json.get("logline"):
+                project_knowledge_base.suggested_logline = refined_concept_json["logline"]
+            if refined_concept_json.get("description"):
+                project_knowledge_base.suggested_description = refined_concept_json["description"]
 
             logger.info(
-                f"Concept generated (refined): Title: {project_knowledge_base.title}, Logline: {project_knowledge_base.logline}"
+                "Concept generated (refined) — suggested title: %s, suggested logline: %s",
+                project_knowledge_base.suggested_title, project_knowledge_base.suggested_logline,
             )
 
         except Exception as e:

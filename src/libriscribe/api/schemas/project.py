@@ -56,6 +56,10 @@ class ProjectDetail(BaseModel):
     model: str = ""
     utility_model: str = ""
     max_concurrency: int = 4
+    suggested_title: str = ""
+    suggested_logline: str = ""
+    suggested_description: str = ""
+    suggested_num_chapters: int | None = None
     outline: str = ""
     next_step: str = "concept"
     chapter_count: int = 0

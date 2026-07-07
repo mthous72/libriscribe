@@ -3,9 +3,9 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { useProject } from '../hooks/useProject'
 import { useWebSocket } from '../hooks/useWebSocket'
 import { useGenerationStore } from '../store/generationSlice'
-import { startGeneration, cancelGeneration, resumeGeneration, listChapters, getCost, updateProjectSettings, updateProjectMeta, fetchProviderModels, getActiveModel, listVersions, saveVersion, restoreVersion, getRetrieval, setRetrieval, getStats } from '../api/client'
+import { startGeneration, cancelGeneration, resumeGeneration, listChapters, getCost, updateProjectSettings, updateProjectMeta, actOnSuggestions, fetchProviderModels, getActiveModel, listVersions, saveVersion, restoreVersion, getRetrieval, setRetrieval, getStats } from '../api/client'
 import ModelPicker from '../components/ModelPicker'
-import { Play, Square, BookOpen, Map, FileText, Download, Save, RefreshCw, Loader2, RotateCcw, Pencil } from 'lucide-react'
+import { Play, Square, BookOpen, Map, FileText, Download, Save, RefreshCw, Loader2, RotateCcw, Pencil, Sparkles } from 'lucide-react'
 
 const STAGES = ['concept', 'outline', 'characters', 'worldbuilding', 'chapters', 'formatting']
 const PROVIDERS = [
@@ -64,6 +64,11 @@ export default function ProjectDashboard() {
       book_length: project?.book_length || '',
     })
     setEditingMeta(true)
+  }
+
+  const actSuggestion = async (action: 'apply' | 'dismiss', fields: string[]) => {
+    if (!name) return
+    try { await actOnSuggestions(name, action, fields); refresh() } catch {}
   }
 
   const saveMeta = async () => {
@@ -248,6 +253,34 @@ export default function ProjectDashboard() {
           <button onClick={() => navigate(`/projects/${name}/outline`)} className="px-3 py-1.5 bg-gray-800 hover:bg-gray-700 rounded-lg text-sm flex items-center gap-1"><Map size={14} /> Outline</button>
         </div>
       </div>
+
+      {/* Generation suggestions (Phase 0) — the AI proposes; it never overwrites your values. */}
+      {(project.suggested_title || project.suggested_logline || project.suggested_description || project.suggested_num_chapters) && (
+        <div className="bg-indigo-950/40 border border-indigo-800/60 rounded-xl p-4 space-y-3">
+          <div className="flex items-center gap-2 text-sm font-medium text-indigo-300"><Sparkles size={15} /> Generation suggestions</div>
+          <p className="text-xs text-gray-400">The concept/outline stages proposed these. Your current values are untouched — apply the ones you like.</p>
+          {([
+            ['title', 'Title', project.suggested_title, project.title],
+            ['logline', 'Logline', project.suggested_logline, project.logline],
+            ['description', 'Description', project.suggested_description, project.description],
+            ['num_chapters', 'Chapters', project.suggested_num_chapters, project.num_chapters],
+          ] as const).filter(([, , sug]) => sug).map(([field, label, sug, cur]) => (
+            <div key={field} className="text-sm border-t border-indigo-900/50 pt-2">
+              <div className="text-xs text-gray-500 mb-1">{label}</div>
+              <div className="text-gray-500 text-xs line-through truncate">now: {String(cur ?? '—')}</div>
+              <div className="text-gray-200">{String(sug)}</div>
+              <div className="flex gap-2 mt-1.5">
+                <button onClick={() => actSuggestion('apply', [field])} className="px-2 py-1 bg-indigo-600 hover:bg-indigo-500 rounded text-xs">Apply</button>
+                <button onClick={() => actSuggestion('dismiss', [field])} className="px-2 py-1 bg-gray-800 hover:bg-gray-700 rounded text-xs">Dismiss</button>
+              </div>
+            </div>
+          ))}
+          <div className="flex gap-2 pt-1">
+            <button onClick={() => actSuggestion('apply', ['title', 'logline', 'description', 'num_chapters'])} className="px-3 py-1 bg-indigo-700 hover:bg-indigo-600 rounded text-xs">Apply all</button>
+            <button onClick={() => actSuggestion('dismiss', ['title', 'logline', 'description', 'num_chapters'])} className="px-3 py-1 bg-gray-800 hover:bg-gray-700 rounded text-xs">Dismiss all</button>
+          </div>
+        </div>
+      )}
 
       {/* Edit story details modal */}
       {editingMeta && (
