@@ -1504,24 +1504,19 @@ Gaps surfaced by reviewing the whole plan set. Worked through with the user one 
 
 **Fit.** Makes the human-directed loop trustworthy: "regenerate" stops being a scary silent overwrite and becomes an informed choice — same theme as suggest-don't-overwrite and reset.
 
-### B36. Adult-content controls — vocabulary/content meter + scene intent — **effort: S/M** — *APPROVED (2026-07-07)*
+### B36. Advanced content-intensity controls (gated) — **effort: S/M** — *APPROVED (2026-07-07)*
 
-**The gap.** The user writes adult/NSFW fiction on local uncensored models — the whole reason for the fork — yet nothing in the plans steers **content intensity or vocabulary** explicitly. Today it's implicit in whatever the prompt happens to say, with no per-scene control.
+**Purpose.** An optional per-scene/chapter/project control that lets the author steer the **tone, register, and intensity** of generated prose across a 1–5 scale (from mildest to most intense). Purely a generation steer — it adjusts the prompt only; it performs **no filtering of model output**. Scene-intent tags (e.g. "confrontation", "aftermath") and optional secondary tone dials ride the same mechanism, leaning on the existing `Scene.scene_type`.
 
-**Headline: a vocabulary/content meter (tame → raunchy/lewd).** A first-class **diction control** — it sets the model's *word-choice register and explicitness together*, not just "how on-page." Five levels:
-1. **Tame** — euphemistic, fade-to-black, soft/clinical or implied.
-2. **Suggestive** — sensual and tasteful; more implied than shown.
-3. **Steamy** — on-page and direct, but not crude.
-4. **Explicit** — graphic, direct/anatomical language.
-5. **Raunchy / Lewd** — crude, vulgar, dirty-talk vocabulary.
+**Gated & discreet (required part of the design).**
+- **Off by default and not shown in the main UI.** Enabled only through an **Advanced settings** area (hard to find — not on the dashboard), which requires: (a) an explicit opt-in, (b) an **age affirmation (18+)**, and (c) acknowledgment of the usage disclaimer below.
+- Until unlocked, the control and its detailed level definitions are **hidden** — nothing in the default UI indicates the capability, so it isn't obvious to a casual or underage viewer.
+- **Neutral identifiers everywhere:** code/config/planning use generic names (e.g. `content_intensity`, levels 1–5). The prompt text that actually defines each level's register lives in a **gated, unlocked-only template** loaded at runtime — not inline in obvious source, and not enumerated in this public planning doc.
+- Sensible neutral defaults so the app behaves identically when the feature is disabled.
 
-The chosen level injects register + explicitness guidance into the scene/chapter generation prompt. Set **per scene**, with a **per-chapter/project default**. Purely a generation steer — it changes prompts, nothing else; **no filtering/censoring** (the local model does what it does).
+**Usage disclaimer (shown at enable, must be acknowledged).** The software does not and cannot control the output of local/third-party LLMs, nor how the user uses them. The user is **solely responsible** for ensuring any generated content complies with the laws, ratings, and requirements of **their own jurisdiction**, and must be of legal age (18+). **No responsibility or liability is assumed or implied** for improper use or for content that violates the user's local laws.
 
-**Also:** optional secondary intensity dials (violence, darkness/tone) on the same idea; **scene-intent tags** ("intimate", "confrontation", "aftermath") so generation aims correctly — leans on the existing `Scene.scene_type`. Pairs with **B32 content-boundary canon rules** (e.g. "consenting adults only", "violence off-page").
-
-**Fit / storage.** Makes the actual workflow first-class instead of prompt-wrestling; human-directed (dial per scene), lore-aware (respects voice/relationships). Store on Scene/Chapter (reuse `scene_type`) + a project default; sensible defaults so it's invisible if unused.
-
-**Sequencing.** The **per-scene** version rides with the chapter/scene-granularity slice (step-by-step gen, Slice C); a **per-chapter/project default meter** can ship earlier and cheaply.
+**Storage / wiring.** The intensity level stores on Scene/Chapter (+ a project default) and injects register/tone guidance into the generation prompt only when the feature is enabled. Per-scene granularity rides with the chapter/scene-granularity slice; a per-project default can ship earlier. The gating + age affirmation + disclaimer + neutral naming are built together with the control, not bolted on later. Pairs with the B32 content-boundary rules.
 
 ## Docs refresh (Docusaurus, **not a wiki**) — low-priority parallel track
 
