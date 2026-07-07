@@ -54,6 +54,11 @@ export function useWebSocket(projectName: string | undefined) {
           case 'error':
             addLog(`ERROR [${payload.stage}]: ${payload.message}`)
             break
+          case 'stage_awaiting_approval':
+            // Step mode (B30): one stage finished; the pipeline stopped for the author's review.
+            setJobStatus('completed')
+            addLog(payload.message || `Stage ${payload.stage} finished — awaiting your review.`)
+            break
           case 'generation_complete':
             setJobStatus('completed')
             addLog('Generation complete!')

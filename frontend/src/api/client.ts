@@ -44,6 +44,7 @@ export const startGeneration = (name: string, body?: any) => api.post(`/projects
 export const cancelGeneration = (name: string) => api.post(`/projects/${name}/generate/cancel`).then(r => r.data)
 export const resumeGeneration = (name: string, body: any) => api.post(`/projects/${name}/generate/resume`, body).then(r => r.data)
 export const getCurrentJob = (name: string) => api.get(`/projects/${name}/jobs/current`).then(r => r.data)
+export const resetGeneration = (name: string, toStage: string) => api.post(`/projects/${name}/generate/reset`, { to_stage: toStage }).then(r => r.data)
 
 // ─── Chapters ────────────────────────────────────────────────
 export const listChapters = (name: string) => api.get(`/projects/${name}/chapters`).then(r => r.data)

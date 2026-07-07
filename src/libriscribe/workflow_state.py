@@ -23,8 +23,14 @@ class ProjectProgress:
 
 
 def has_concept_data(project_knowledge_base: ProjectKnowledgeBase) -> bool:
-    return bool(project_knowledge_base.logline.strip()) and (
+    if bool(project_knowledge_base.logline.strip()) and (
         project_knowledge_base.logline != "No logline available"
+    ):
+        return True
+    # Phase 0a: the concept stage SUGGESTS instead of overwriting — a pending suggestion
+    # still means the concept ran (otherwise step mode would re-run it forever).
+    return bool(getattr(project_knowledge_base, "suggested_logline", "").strip()) or bool(
+        getattr(project_knowledge_base, "suggested_title", "").strip()
     )
 
 

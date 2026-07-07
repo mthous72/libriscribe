@@ -26,16 +26,24 @@ class GenerationService:
         start_from_stage: str = "",
         streaming: bool = True,
         ws_queue: asyncio.Queue | None = None,
+        mode: str = "",
     ) -> GenerationJob:
         loop = asyncio.get_running_loop()
         queue = ws_queue or asyncio.Queue()
         callback = build_event_callback(project_name, queue, loop)
 
         task = asyncio.create_task(
-            self._run_pipeline(project_name, start_from_stage, streaming, queue, callback, loop)
+            self._run_pipeline(project_name, start_from_stage, streaming, queue, callback, loop, mode)
         )
         job = self.job_manager.create_job(project_name, task, queue)
         return job
+
+    @staticmethod
+    def _effective_mode(kb, override: str = "") -> str:
+        """'step' (default — one stage per request, stop for review) or 'auto' (legacy full run).
+        A request override wins; else the project's generation_mode; else step."""
+        mode = (override or getattr(kb, "generation_mode", "") or "step").strip().lower()
+        return mode if mode in ("step", "auto") else "step"
 
     async def _run_pipeline(
         self,
@@ -45,6 +53,7 @@ class GenerationService:
         ws_queue: asyncio.Queue,
         callback,
         loop: asyncio.AbstractEventLoop,
+        mode: str = "",
     ):
         try:
             pm = ProjectManagerAgent(event_callback=callback)
@@ -72,6 +81,12 @@ class GenerationService:
             progress = inspect_project_progress(project_dir, kb)
             stages_to_run = self._compute_stages(progress, start_from_stage, kb)
 
+            # Phase 1 (B30): step mode runs exactly ONE stage per request, then stops so the
+            # author reviews/edits before explicitly running the next. 'auto' = legacy full run.
+            step_mode = self._effective_mode(kb, mode) == "step"
+            if step_mode:
+                stages_to_run = stages_to_run[:1]
+
             for stage in stages_to_run:
                 # Check cancellation
                 if job and job.cancel_event.is_set():
@@ -81,7 +96,22 @@ class GenerationService:
                 if job:
                     job.current_stage = stage
 
-                await self._run_stage(pm, stage, kb, streaming, job)
+                await self._run_stage(pm, stage, kb, streaming, job, step_mode=step_mode)
+
+            if step_mode and stages_to_run:
+                done_stage = stages_to_run[0]
+                new_progress = inspect_project_progress(project_dir, pm.project_knowledge_base or kb)
+                next_stage = new_progress.next_step
+                self.job_manager.complete_job(
+                    project_name, "completed",
+                    f"Stage '{done_stage}' finished — review it, then run the next step.",
+                )
+                callback("stage_awaiting_approval", {
+                    "stage": done_stage,
+                    "next_stage": next_stage,
+                    "message": f"Stage '{done_stage}' finished — review it, then run the next step.",
+                })
+                return
 
             self.job_manager.complete_job(project_name, "completed", "Generation complete")
 
@@ -119,7 +149,7 @@ class GenerationService:
             stages.append("formatting")
         return stages
 
-    async def _run_stage(self, pm: ProjectManagerAgent, stage: str, kb, streaming: bool, job: GenerationJob | None):
+    async def _run_stage(self, pm: ProjectManagerAgent, stage: str, kb, streaming: bool, job: GenerationJob | None, step_mode: bool = False):
         if stage == "concept":
             await asyncio.to_thread(pm.generate_concept)
         elif stage == "outline":
@@ -129,14 +159,17 @@ class GenerationService:
         elif stage == "worldbuilding":
             await asyncio.to_thread(pm.generate_worldbuilding)
         elif stage == "chapters":
-            await self._run_chapters(pm, kb, streaming, job)
+            await self._run_chapters(pm, kb, streaming, job, one_chapter=step_mode)
         elif stage == "formatting":
             project_dir = pm.project_dir
             if project_dir:
                 output_path = str(project_dir / "manuscript.md")
                 await asyncio.to_thread(pm.format_book, output_path)
 
-    async def _run_chapters(self, pm: ProjectManagerAgent, kb, streaming: bool, job: GenerationJob | None):
+    async def _run_chapters(self, pm: ProjectManagerAgent, kb, streaming: bool, job: GenerationJob | None,
+                            one_chapter: bool = False):
+        """Write missing chapters. In step mode (``one_chapter``) write ONLY the next missing
+        chapter, then return — the author approves each chapter before the next is written."""
         total_chapters = kb.num_chapters
         if isinstance(total_chapters, tuple):
             total_chapters = total_chapters[1]
@@ -174,3 +207,6 @@ class GenerationService:
                 pm.review_threading_event = job.review_threading_event if job else pm.review_threading_event
 
             await asyncio.to_thread(pm.write_and_review_chapter, chapter_num, streaming)
+
+            if one_chapter:
+                return  # step mode: one chapter per request; the author reviews before the next

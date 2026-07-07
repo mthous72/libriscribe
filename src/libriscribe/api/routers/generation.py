@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, HTTPException
 
-from libriscribe.api.schemas.generation import StartGenerationRequest, ResumeRequest, JobStatus, RegenerateOutlineRequest
+from libriscribe.api.schemas.generation import StartGenerationRequest, ResumeRequest, JobStatus, RegenerateOutlineRequest, ResetRequest
 from libriscribe.api.dependencies import get_job_manager, get_generation_service
 
 router = APIRouter(prefix="/api/projects", tags=["generation"])
@@ -24,8 +24,25 @@ async def start_generation(name: str, req: StartGenerationRequest | None = None)
         name,
         start_from_stage=req.start_from_stage,
         streaming=req.streaming,
+        mode=req.mode,
     )
     return jm.to_status_dict(name)
+
+
+@router.post("/{name}/generate/reset")
+def reset_generation(name: str, req: ResetRequest):
+    """Reset generation back to a stage (Phase 1 / B30): snapshots the project first, then
+    clears that stage + everything downstream so the step flow re-gates there."""
+    from libriscribe.services import project_service
+
+    jm = get_job_manager()
+    existing = jm.get_job(name)
+    if existing and existing.status == "running":
+        raise HTTPException(status_code=409, detail="Cancel the running generation before resetting")
+    try:
+        return project_service.reset_to_stage(name, req.to_stage)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
 
 
 @router.post("/{name}/generate/cancel", response_model=JobStatus)

@@ -141,6 +141,7 @@ class UpdateProjectSettings(BaseModel):
     utility_model: str | None = None
     fallback_chain: list[str] | None = None
     max_concurrency: int | None = None  # cap on concurrent LLM calls (1 = serial)
+    generation_mode: str | None = None  # 'step' (one stage per run, default) | 'auto' (legacy full run)
 
 
 @router.put("/{name}/settings", response_model=ProjectDetail)
@@ -163,6 +164,8 @@ def update_project_settings(name: str, body: UpdateProjectSettings):
         kb.fallback_chain = body.fallback_chain
     if body.max_concurrency is not None:
         kb.max_concurrency = max(1, int(body.max_concurrency))
+    if body.generation_mode is not None and body.generation_mode in ("step", "auto"):
+        kb.generation_mode = body.generation_mode
     project_service.save_kb(name, kb)
     return project_service.get_project_detail(name)
 

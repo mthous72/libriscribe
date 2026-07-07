@@ -6,6 +6,11 @@ from pydantic import BaseModel, Field
 class StartGenerationRequest(BaseModel):
     start_from_stage: str = ""
     streaming: bool = True
+    mode: str = ""  # '' = use the project's generation_mode; 'step' | 'auto' override
+
+
+class ResetRequest(BaseModel):
+    to_stage: str  # concept | outline | characters | worldbuilding | chapters | formatting
 
 
 class ResumeRequest(BaseModel):

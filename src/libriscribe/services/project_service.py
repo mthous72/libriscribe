@@ -144,6 +144,7 @@ def get_project_detail(project_name: str) -> dict[str, Any] | None:
         "model": kb.model,
         "utility_model": kb.utility_model,
         "max_concurrency": kb.max_concurrency,
+        "generation_mode": kb.generation_mode,
         "suggested_title": kb.suggested_title,
         "suggested_logline": kb.suggested_logline,
         "suggested_description": kb.suggested_description,
@@ -418,6 +419,61 @@ def save_project_version(project_name: str, label: str | None = None) -> dict[st
 
 def list_project_versions(project_name: str) -> list[dict[str, Any]]:
     return sorted(_load_versions_index(project_name), key=lambda e: e.get("version", 0), reverse=True)
+
+
+# ─── Reset to a generation stage (Phase 1 / B30) ──────────────────────────────
+
+_RESET_STAGE_ORDER = ["concept", "outline", "characters", "worldbuilding", "chapters", "formatting"]
+
+
+def reset_to_stage(project_name: str, to_stage: str) -> dict[str, Any]:
+    """Reset generation back to `to_stage`: snapshot the project (Versions) first, then clear
+    that stage's artifacts AND everything downstream so the step flow re-gates there.
+    The user's own metadata (title/description/num_chapters/lorebook) is untouched except where
+    a stage's artifact IS the data (outline chapters, generated characters, worldbuilding)."""
+    if to_stage not in _RESET_STAGE_ORDER:
+        raise ValueError(f"Unknown stage '{to_stage}'")
+    kb = load_kb(project_name)
+    if not kb:
+        raise ValueError("Project not found")
+    project_dir = get_projects_dir() / project_name
+
+    snapshot = save_project_version(project_name, label=f"before reset to {to_stage}")
+
+    stages = _RESET_STAGE_ORDER[_RESET_STAGE_ORDER.index(to_stage):]
+    for stage in stages:
+        if stage == "concept":
+            kb.logline = "No logline available"
+            kb.suggested_title = ""
+            kb.suggested_logline = ""
+            kb.suggested_description = ""
+        elif stage == "outline":
+            kb.outline = ""
+            kb.chapters = {}
+            (project_dir / "outline.md").unlink(missing_ok=True)
+        elif stage == "characters":
+            kb.characters = {}
+            (project_dir / "characters.json").unlink(missing_ok=True)
+        elif stage == "worldbuilding":
+            kb.worldbuilding = None
+            (project_dir / "world.json").unlink(missing_ok=True)
+        elif stage == "chapters":
+            for f in project_dir.glob("chapter_*.md"):
+                f.unlink(missing_ok=True)
+        elif stage == "formatting":
+            for fname in ("manuscript.md", "manuscript.pdf", "manuscript_original.md", "manuscript_original.pdf"):
+                (project_dir / fname).unlink(missing_ok=True)
+
+    # Mark the reset stages pending in project_status.json so progress re-gates there.
+    from libriscribe.utils.project_status import update_stage_status
+    for stage in stages:
+        try:
+            update_stage_status(project_dir, stage, "pending")
+        except Exception:
+            pass
+
+    save_kb(project_name, kb)
+    return {"reset_to": to_stage, "stages_reset": stages, "snapshot": snapshot}
 
 
 def _restore_bundle_in_place(project_name: str, bundle: dict[str, Any]) -> None:

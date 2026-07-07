@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { useProject } from '../hooks/useProject'
 import { useWebSocket } from '../hooks/useWebSocket'
 import { useGenerationStore } from '../store/generationSlice'
-import { startGeneration, cancelGeneration, resumeGeneration, listChapters, getCost, updateProjectSettings, updateProjectMeta, actOnSuggestions, fetchProviderModels, getActiveModel, listVersions, saveVersion, restoreVersion, getRetrieval, setRetrieval, getStats } from '../api/client'
+import { startGeneration, cancelGeneration, resumeGeneration, resetGeneration, listChapters, getCost, updateProjectSettings, updateProjectMeta, actOnSuggestions, fetchProviderModels, getActiveModel, listVersions, saveVersion, restoreVersion, getRetrieval, setRetrieval, getStats } from '../api/client'
 import ModelPicker from '../components/ModelPicker'
 import { Play, Square, BookOpen, Map, FileText, Download, Save, RefreshCw, Loader2, RotateCcw, Pencil, Sparkles } from 'lucide-react'
 
@@ -180,14 +180,33 @@ export default function ProjectDashboard() {
   }
   useEffect(() => { refreshActiveModel() }, [name])
 
+  // Step mode: when a stage run finishes, refresh so the "next step" (and suggestions) advance.
+  useEffect(() => { if (jobStatus === 'completed') refresh() }, [jobStatus])
+
   if (loading) return <div className="text-gray-400">Loading...</div>
   if (!project) return <div className="text-red-400">Project not found</div>
 
-  const handleStart = async () => {
+  const handleStart = async (opts?: { mode?: string, start_from_stage?: string }) => {
     try {
-      await startGeneration(name!, { streaming: true })
+      await startGeneration(name!, { streaming: true, ...(opts || {}) })
     } catch (e: any) {
       alert(e?.response?.data?.detail || 'Failed to start')
+    }
+  }
+
+  const handleModeChange = async (mode: 'step' | 'auto') => {
+    try { await updateProjectSettings(name!, { generation_mode: mode } as any); refresh() } catch {}
+  }
+
+  const handleReset = async (toStage: string) => {
+    if (!toStage) return
+    if (!confirm(`Reset back to "${toStage}"? This clears that stage and everything after it (a snapshot is saved to Versions first).`)) return
+    try {
+      await resetGeneration(name!, toStage)
+      reset()   // clear local stage statuses so the pipeline cards reflect the reset
+      refresh()
+    } catch (e: any) {
+      alert(e?.response?.data?.detail || 'Reset failed')
     }
   }
 
@@ -366,17 +385,50 @@ export default function ProjectDashboard() {
         })}
       </div>
 
-      {/* Controls */}
+      {/* Controls — step mode runs ONE stage per click and stops for your review (B30). */}
       <div className="flex items-center gap-3 flex-wrap">
-        {!isRunning && !isPaused && (
-          <button onClick={handleStart} className="flex items-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-500 rounded-lg text-sm font-medium">
+        {!isRunning && !isPaused && (project.generation_mode !== 'auto' ? (
+          <>
+            {progress?.next_step && progress.next_step !== 'complete' ? (
+              <button onClick={() => handleStart()} className="flex items-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-500 rounded-lg text-sm font-medium" title="Runs only this stage, then stops so you can review before continuing">
+                <Play size={16} /> Run next step: <span className="capitalize">{progress.next_step}</span>
+              </button>
+            ) : (
+              <span className="text-sm text-green-400">All stages complete.</span>
+            )}
+            <select defaultValue="" onChange={e => { const v = e.target.value; e.target.value = ''; if (v) handleStart({ start_from_stage: v }) }}
+              className="px-2 py-2 bg-gray-800 border border-gray-700 rounded-lg text-xs" title="Re-run a single stage (step mode runs just that one)">
+              <option value="" disabled>Re-run stage…</option>
+              {STAGES.map(s => <option key={s} value={s} className="capitalize">{s}</option>)}
+            </select>
+            <select defaultValue="" onChange={e => { const v = e.target.value; e.target.value = ''; handleReset(v) }}
+              className="px-2 py-2 bg-gray-800 border border-gray-700 rounded-lg text-xs" title="Snapshot, then clear this stage + everything after it">
+              <option value="" disabled>Reset to…</option>
+              {STAGES.map(s => <option key={s} value={s} className="capitalize">{s}</option>)}
+            </select>
+            <button onClick={() => handleStart({ mode: 'auto' })} className="px-3 py-2 bg-gray-800 hover:bg-gray-700 rounded-lg text-xs" title="Legacy behavior: run every remaining stage without stopping">
+              Run all remaining
+            </button>
+          </>
+        ) : (
+          <button onClick={() => handleStart()} className="flex items-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-500 rounded-lg text-sm font-medium">
             <Play size={16} /> Start Generation
           </button>
-        )}
+        ))}
         {isRunning && (
           <button onClick={handleCancel} className="flex items-center gap-2 px-4 py-2 bg-red-600 hover:bg-red-500 rounded-lg text-sm font-medium">
             <Square size={16} /> Cancel
           </button>
+        )}
+        {!isRunning && (
+          <label className="text-[11px] text-gray-500 flex items-center gap-1.5" title="Step-by-step stops after every stage for your review; Automatic runs everything unattended (legacy)">
+            Mode
+            <select value={project.generation_mode === 'auto' ? 'auto' : 'step'} onChange={e => handleModeChange(e.target.value as any)}
+              className="px-2 py-1 bg-gray-800 border border-gray-700 rounded text-xs">
+              <option value="step">Step-by-step</option>
+              <option value="auto">Automatic</option>
+            </select>
+          </label>
         )}
         {cost && (
           <span className="text-xs text-gray-500">Session cost: ${cost.total_cost?.toFixed(4) || '0.0000'}</span>
