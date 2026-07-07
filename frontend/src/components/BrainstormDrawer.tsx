@@ -26,16 +26,25 @@ const ASPECTS: Record<string, { value: string, label: string }[]> = {
   location: [
     { value: 'description', label: 'Description' },
     { value: 'significance', label: 'Significance' },
+    { value: 'associated_characters', label: 'Associated characters' },
+    { value: 'first_appearance', label: 'First appearance' },
+    { value: 'tags', label: 'Tags' },
   ],
   lore: [
     { value: 'entry_type', label: 'Type' },
     { value: 'description', label: 'Description' },
     { value: 'significance', label: 'Significance' },
+    { value: 'related_entities', label: 'Related entities' },
+    { value: 'first_appearance', label: 'First appearance' },
+    { value: 'tags', label: 'Tags' },
   ],
   arc: [
     { value: 'arc_type', label: 'Arc type' },
     { value: 'description', label: 'Description' },
     { value: 'resolution_notes', label: 'Resolution notes' },
+    { value: 'chapters_involved', label: 'Chapters involved' },
+    { value: 'characters_involved', label: 'Characters involved' },
+    { value: 'status', label: 'Status' },
   ],
 }
 
