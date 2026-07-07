@@ -1481,6 +1481,19 @@ Gaps surfaced by reviewing the whole plan set. Worked through with the user one 
 
 **Sequencing (locked).** Build **after** B31 (guard) and B32 (canon lock) — those deliver most consistency value without it; B33 unlocks the deeper "knows too early" check and time-aware context when ready. Completes the consistency cluster (B31 / B32 / B33).
 
+### B34. Human-directed revision loop — rewrite existing chapters with control — **effort: M** — *APPROVED, sequenced AFTER the step-by-step generation epic (2026-07-07)*
+
+**The gap.** The step-by-step generation epic covers the **first draft** only. There is no equivalent for **rewriting** an existing chapter — `editor` / `style_editor` run automatically (or not at all), so the author can't drive a revision the way they can drive generation.
+
+**What it does.** Point the same **approve / regenerate / guidance** controls at an existing chapter:
+- Pick a chapter → give revision notes ("tighten the middle", "more tension in the confrontation", "she wouldn't say that") → **regenerate with that guidance**, or **hand-edit** directly.
+- Scope: whole chapter, a scene, or a selected passage.
+- Keep or discard; each attempt is **versioned** for rollback.
+
+**Fit.** Revision is most of real writing; this applies the human-directed philosophy to the back half. Reuses the step-by-step control UX (approve/regenerate/guidance/reset) + the Versions machinery. A revision respects **canon (B32)** and can trigger a **continuity re-check (B31)** afterward.
+
+**Sequencing (locked).** Build **after** the step-by-step generation epic — it shares that epic's UX and plumbing; the new part is passage/scene-scoped regeneration with notes + a diff (pairs with the diff-on-regenerate item).
+
 ## Docs refresh (Docusaurus, **not a wiki**) — low-priority parallel track
 
 Decision (2026-07-01): we already have a **Docusaurus** site in `docs/` wired for GitHub
