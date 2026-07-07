@@ -1528,6 +1528,10 @@ Gaps surfaced by reviewing the whole plan set. Worked through with the user one 
 
 **Notes.** Independent of everything else — no sequencing constraints beyond the internal DOCX→EPUB→PDF order; can slot in whenever. DOCX via a library or minimal OOXML; EPUB is a zip of XHTML + manifest (doable without heavy deps). A satisfying "get a real book out" item to interleave with the heavier work. Marked **delayed** — build after the higher-priority consistency/generation work.
 
+### Story-structure / pacing analysis — 🧊 **PARKED (2026-07-07)**
+
+Considered in the plan review; parked for now. A "zoom out on the whole book" view — act/structure balance, chapter word-count/pacing curve, tension/beat mapping (from `emotional_beat`/`scene_type`/arcs), arc/thread coverage. Weakest fit of the reviewed set: it's analysis not creation, overlaps the Stats page (readability), the continuity guard (B31), and the gap-finder, and its richest parts depend on B33 (timeline). If revived, the cheap wins (word-count curve + act ratios, zero-LLM) could be a small addition to the existing Stats page rather than a whole feature.
+
 ## Docs refresh (Docusaurus, **not a wiki**) — low-priority parallel track
 
 Decision (2026-07-01): we already have a **Docusaurus** site in `docs/` wired for GitHub
