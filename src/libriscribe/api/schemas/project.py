@@ -56,6 +56,7 @@ class ProjectDetail(BaseModel):
     model: str = ""
     utility_model: str = ""
     max_concurrency: int = 4
+    generation_mode: str = "step"
     suggested_title: str = ""
     suggested_logline: str = ""
     suggested_description: str = ""

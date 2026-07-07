@@ -201,6 +201,9 @@ class ProjectKnowledgeBase(BaseModel):
     suggested_logline: str = ""
     suggested_description: str = ""
     suggested_num_chapters: int | None = None
+    # Phase 1 (B30): 'step' runs ONE stage per request and stops for review (default);
+    # 'auto' is the legacy run-everything behavior (opt-in escape hatch).
+    generation_mode: str = "step"
     llm_provider: str = "openai"
     model: str = ""  # the "Writing" model — prose, brainstorm chat, chapter generation
     utility_model: str = ""  # optional model for structured tasks (lore intake); blank ⇒ use `model`
