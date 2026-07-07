@@ -448,6 +448,25 @@ class ExpandedCharacterFieldsTests(unittest.TestCase):
         self.assertEqual(m.internal_conflicts, "guilt over the war")
         self.assertEqual(m.external_conflicts, "hunted by the guild")
 
+    def test_proposal_preserves_voice_fields_end_to_end(self):
+        # Regression: build_proposal used to strip voice_* (not literal Character fields), so a
+        # focused voice brainstorm never reached the nested voice_profile on Apply. The proposal
+        # must keep voice_* AND applying its records must assemble them.
+        kb = _kb()
+        cats = {"characters": [{"name": "Tya", "fields": {
+            "voice_speech_patterns": "clipped, terse", "voice_verbal_tics": "says 'aye'",
+            "role": "broker"}}], "locations": [], "lore": [], "arcs": []}
+        proposal = lore_intake.build_proposal(kb, cats)
+        pf = proposal["characters"][0]["fields"]
+        self.assertIn("voice_speech_patterns", pf)      # survives proposal-building (was stripped)
+        self.assertEqual(pf["role"], "broker")
+        # Apply the proposal's records exactly as the UI does.
+        lore_intake.merge_apply(kb, {"characters": proposal["characters"]})
+        vp = kb.characters["Tya"].voice_profile
+        self.assertIsNotNone(vp)
+        self.assertEqual(vp.speech_patterns, "clipped, terse")
+        self.assertEqual(vp.verbal_tics, "says 'aye'")
+
 
 class FocusAwareApplyTests(unittest.TestCase):
     """B24: a focused brainstorm decomposes the reply into the KNOWN entity's full field set,
