@@ -96,6 +96,7 @@ export const updateWorldbuilding = (name: string, body: any) => api.put(`/projec
 export const getGaps = (name: string): Promise<{ gaps: any[], counts: { total: number, warn: number, info: number } }> => api.get(`/projects/${name}/gaps`).then(r => r.data)
 // Deep scan makes many LLM calls; disable the request timeout.
 export const deepScanGaps = (name: string): Promise<{ gaps: any[], scanned: number, truncated: boolean, detail?: string }> => api.post(`/projects/${name}/gaps/deep-scan`, null, { timeout: 0 }).then(r => r.data)
+export const getConnections = (name: string, entityType: string, entityName: string): Promise<{ outgoing: any[], incoming: any[], found: boolean }> => api.get(`/projects/${name}/connections/${entityType}/${encPath(entityName)}`).then(r => r.data)
 export const listXref = (name: string) => api.get(`/projects/${name}/xref`).then(r => r.data)
 export const searchProject = (name: string, body: any) => api.post(`/projects/${name}/search`, body).then(r => r.data)
 
