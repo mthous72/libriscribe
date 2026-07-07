@@ -109,3 +109,44 @@ def entity_connections(kb, entity_type: str, name: str) -> dict:
                     break  # one link per source entity
 
     return {"outgoing": outgoing, "incoming": incoming, "found": True}
+
+
+# Which field an entity's outgoing links live in (for adding a suggestion to the right place).
+PRIMARY_LINK_FIELD = {
+    "character": "relationships",
+    "location": "associated_characters",
+    "lore": "related_entities",
+    "arc": "characters_involved",
+    "thread": "characters_involved",
+}
+
+
+def suggest_connections(kb, project_dir, entity_type: str, name: str) -> dict:
+    """Auto-suggest links from cross-reference co-occurrence: entities that appear alongside this
+    one across chapters but aren't already linked. Empty when there's no prose/xref index yet."""
+    store = getattr(kb, _STORES.get(entity_type, ""), {}) or {}
+    canon = _canonical(store, name)
+    if canon is None:
+        return {"suggestions": []}
+
+    conns = entity_connections(kb, entity_type, canon)
+    already = {o["name"].lower() for o in conns["outgoing"]}
+    already.add(canon.lower())
+    known = _all_names(kb)
+
+    suggestions = []
+    seen: set[str] = set()
+    try:
+        from libriscribe.services.retrieval_service import search_service_for
+        svc = search_service_for(project_dir, kb)
+        xref = svc.search_cross_references(canon)
+        for rn in (getattr(xref, "related_entities", None) or []):
+            low = str(rn).strip().lower()
+            resolved = known.get(low)
+            if not resolved or low in already or low in seen:
+                continue
+            seen.add(low)
+            suggestions.append({"type": resolved[0], "name": resolved[1]})
+    except Exception:
+        pass
+    return {"suggestions": suggestions}

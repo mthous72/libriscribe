@@ -60,6 +60,37 @@ class ConnectionsTests(unittest.TestCase):
         c = connections.entity_connections(_kb(), "character", "Maren")
         self.assertNotIn(("character", "Maren"), {(i["type"], i["name"]) for i in c["incoming"]})
 
+    def test_primary_link_field_map(self):
+        self.assertEqual(connections.PRIMARY_LINK_FIELD["arc"], "characters_involved")
+        self.assertEqual(connections.PRIMARY_LINK_FIELD["character"], "relationships")
+
+
+class SuggestConnectionsTests(unittest.TestCase):
+    def test_suggests_co_occurring_not_yet_linked(self):
+        import libriscribe.services.retrieval_service as rs
+        kb = _kb()  # Maren already links to Tya (relationship) and Ghost (unlinked)
+
+        class FakeXref:
+            related_entities = ["Tya", "The Keep", "Ghost"]  # Tya already linked; Keep is new; Ghost isn't a record
+
+        class FakeSvc:
+            def search_cross_references(self, n):
+                return FakeXref()
+
+        orig = rs.search_service_for
+        rs.search_service_for = lambda *a, **k: FakeSvc()
+        try:
+            out = connections.suggest_connections(kb, project_dir=None, entity_type="character", name="Maren")
+        finally:
+            rs.search_service_for = orig
+        names = {s["name"] for s in out["suggestions"]}
+        self.assertIn("The Keep", names)       # co-occurs, is a record, not already linked
+        self.assertNotIn("Tya", names)         # already linked → excluded
+        self.assertEqual(len(out["suggestions"]), 1)  # Ghost isn't a real record → excluded
+
+    def test_suggest_missing_entity_is_empty(self):
+        self.assertEqual(connections.suggest_connections(_kb(), None, "character", "Nobody")["suggestions"], [])
+
 
 if __name__ == "__main__":
     unittest.main()
