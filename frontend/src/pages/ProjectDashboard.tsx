@@ -30,6 +30,7 @@ export default function ProjectDashboard() {
   const [llmProvider, setLlmProvider] = useState('openai')
   const [llmModel, setLlmModel] = useState('')
   const [utilityModel, setUtilityModel] = useState('')
+  const [maxConcurrency, setMaxConcurrency] = useState(4)
   const [llmModels, setLlmModels] = useState<any[]>([])
   const [loadingLlmModels, setLoadingLlmModels] = useState(false)
   const [llmModelError, setLlmModelError] = useState('')
@@ -154,6 +155,7 @@ export default function ProjectDashboard() {
       setLlmProvider(project.llm_provider || 'openai')
       setLlmModel(project.model || '')
       setUtilityModel(project.utility_model || '')
+      setMaxConcurrency(project.max_concurrency || 4)
     }
   }, [project])
 
@@ -216,7 +218,7 @@ export default function ProjectDashboard() {
   const saveLlm = async () => {
     setSavingLlm(true)
     try {
-      await updateProjectSettings(name!, { llm_provider: llmProvider, model: llmModel, utility_model: utilityModel })
+      await updateProjectSettings(name!, { llm_provider: llmProvider, model: llmModel, utility_model: utilityModel, max_concurrency: maxConcurrency })
       setSavedLlm(true)
       setTimeout(() => setSavedLlm(false), 2000)
       refresh()
@@ -447,6 +449,18 @@ export default function ProjectDashboard() {
             />
             <p className="mt-1 text-xs text-gray-500">
               Structured tasks — lore extraction & classification. Use a clean instruct model here.
+            </p>
+          </label>
+          <label className="block">
+            <span className="text-xs text-gray-400">Max concurrent requests</span>
+            <input
+              type="number" min={1} max={16} value={maxConcurrency}
+              onChange={e => setMaxConcurrency(Math.max(1, Number(e.target.value) || 1))}
+              className="w-24 mt-1 px-2 py-1.5 bg-gray-800 border border-gray-700 rounded text-sm"
+            />
+            <p className="mt-1 text-xs text-gray-500">
+              How many LLM calls run at once for batch work (gap scan, auto-explore). LM Studio allows 4.
+              Set to <span className="font-medium">1</span> to disable parallelism (e.g. rate-limited free models).
             </p>
           </label>
         </div>

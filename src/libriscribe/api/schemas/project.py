@@ -55,6 +55,7 @@ class ProjectDetail(BaseModel):
     llm_provider: str = "openai"
     model: str = ""
     utility_model: str = ""
+    max_concurrency: int = 4
     outline: str = ""
     next_step: str = "concept"
     chapter_count: int = 0
