@@ -103,6 +103,11 @@ export const deleteSandboxRun = (name: string, runId: string) => api.delete(`/pr
 export const patchSandboxCandidate = (name: string, runId: string, cid: string, body: { status?: string, name?: string, fields?: any }) => api.patch(`/projects/${name}/sandbox/${runId}/candidates/${cid}`, body).then(r => r.data)
 export const applySandboxRun = (name: string, runId: string) => api.post(`/projects/${name}/sandbox/${runId}/apply`).then(r => r.data)
 export const stageGapsToSandbox = (name: string, gaps: any[]) => api.post(`/projects/${name}/gaps/to-sandbox`, { gaps }).then(r => r.data)
+// Story wizard (B38)
+export const getWizardQuestions = (name: string) => api.get(`/projects/${name}/wizard/questions`).then(r => r.data)
+export const generateWizardQuestions = (name: string) => api.post(`/projects/${name}/wizard/questions`, null, { timeout: 0 }).then(r => r.data)
+export const saveWizardQuestions = (name: string, questions: Record<string, string>) => api.put(`/projects/${name}/wizard/questions`, { questions }).then(r => r.data)
+export const elaborateWizard = (name: string) => api.post(`/projects/${name}/wizard/elaborate`, null, { timeout: 0 }).then(r => r.data)
 // Deep scan makes many LLM calls; disable the request timeout.
 export const deepScanGaps = (name: string): Promise<{ gaps: any[], scanned: number, truncated: boolean, detail?: string }> => api.post(`/projects/${name}/gaps/deep-scan`, null, { timeout: 0 }).then(r => r.data)
 export const getConnections = (name: string, entityType: string, entityName: string): Promise<{ outgoing: any[], incoming: any[], found: boolean }> => api.get(`/projects/${name}/connections/${entityType}/${encPath(entityName)}`).then(r => r.data)

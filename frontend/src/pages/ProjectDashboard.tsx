@@ -280,6 +280,7 @@ export default function ProjectDashboard() {
         </div>
         <div className="flex gap-2 shrink-0">
           <button onClick={openMetaEditor} className="px-3 py-1.5 bg-gray-800 hover:bg-gray-700 rounded-lg text-sm flex items-center gap-1" title="Edit story details"><Pencil size={14} /> Edit details</button>
+          <button onClick={() => navigate(`/projects/${name}/wizard`)} className="px-3 py-1.5 bg-gray-800 hover:bg-gray-700 rounded-lg text-sm flex items-center gap-1" title="Answer questions about your story; the AI elaborates them into staged lore"><Sparkles size={14} /> Wizard</button>
           <button onClick={() => navigate(`/projects/${name}/lorebook`)} className="px-3 py-1.5 bg-gray-800 hover:bg-gray-700 rounded-lg text-sm flex items-center gap-1"><BookOpen size={14} /> Lorebook</button>
           <button onClick={() => navigate(`/projects/${name}/outline`)} className="px-3 py-1.5 bg-gray-800 hover:bg-gray-700 rounded-lg text-sm flex items-center gap-1"><Map size={14} /> Outline</button>
         </div>

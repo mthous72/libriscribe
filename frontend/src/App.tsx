@@ -8,6 +8,7 @@ import ProjectDashboard from './pages/ProjectDashboard'
 import ChapterEditorPage from './pages/ChapterEditorPage'
 import LorebookPage from './pages/LorebookPage'
 import OutlinePage from './pages/OutlinePage'
+import WizardPage from './pages/WizardPage'
 import SettingsPage from './pages/SettingsPage'
 import { useUiStore } from './store/uiSlice'
 import { shutdownApp } from './api/client'
@@ -112,6 +113,7 @@ export default function App() {
           <Route path="/projects/:name/lorebook" element={<LorebookPage />} />
           <Route path="/projects/:name/lorebook/*" element={<LorebookPage />} />
           <Route path="/projects/:name/outline" element={<OutlinePage />} />
+          <Route path="/projects/:name/wizard" element={<WizardPage />} />
           <Route path="/settings" element={<SettingsPage />} />
         </Routes>
       </main>
