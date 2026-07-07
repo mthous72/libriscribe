@@ -1427,6 +1427,26 @@ The sandbox is the spine — build it first, fill it from something that already
 
 **Effort: M/L.** Best sequenced **after B27 slice A** (so it can stage into the sandbox), though the question UI + a direct-to-proposal generation could ship earlier.
 
+## Plan-review additions (2026-07-07) — consistency, revision & finishing
+
+Gaps surfaced by reviewing the whole plan set. Worked through with the user one by one; only approved items are recorded here.
+
+### B31. Continuity guard — check written prose against canon — **effort: M** — *APPROVED (2026-07-07)*
+
+**The gap.** The gap-finder (B28) is entirely **pre-writing**. Once chapters exist, nothing checks the actual prose against the lorebook. The machinery already exists but is **unwired**: `fact_checker` (agent + `project_manager.check_facts`, reachable only standalone), the continuity checker, and the `ContinuityNote` model — none run in the writing flow.
+
+**What it does.** On demand, run a pass over a written chapter (or the whole manuscript) that flags contradictions against canon:
+- a character described against their record (eye colour, age, role);
+- a dead/absent character reappearing;
+- a location / codex fact contradicted;
+- (LATER, needs B33) someone knowing something they shouldn't yet.
+
+**How it surfaces.** Findings render like the **Gaps tab** — grouped, each with the offending chapter + the canon it violates, click-to-jump. **Read-only**: the author decides whether to fix the prose or update the lore (the story may have legitimately evolved). Nothing auto-edits the text.
+
+**Decisions (locked).** **On-demand** (a "Check continuity" button + a Continuity report tab), NOT automatic — it's an LLM pass and auto-running it every chapter adds latency on local models and fights the human-directed feel. An **optional "auto-check after each chapter" toggle** in the step-by-step flow is a later enhancement, default off. **Scope first** the checks with no dependency (contradicted facts, description drift, dead/absent reappearance); the "knows too early" check waits for **B33** (character-state/timeline).
+
+**Reuses.** `fact_checker` extract-claims→check-each pointed at lore + retrieval (keyword, no embed swap); `ContinuityNote`; the Gaps-tab report pattern; `bounded_map` (B29) to check chapters in parallel. Part of the **consistency cluster** with B32 (canon lock) and B33 (character-state/timeline), to be worked through next.
+
 ## Docs refresh (Docusaurus, **not a wiki**) — low-priority parallel track
 
 Decision (2026-07-01): we already have a **Docusaurus** site in `docs/` wired for GitHub
