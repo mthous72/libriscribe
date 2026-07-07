@@ -1318,13 +1318,16 @@ Finds what's *missing or dangling* and stages it into the same sandbox:
 ### Context + response-length expansion (user note)
 Auto mode leans on the **utility model** for structured passes and needs **bigger context + higher max_tokens** than interactive brainstorm: the survey pass ingests a large lore digest; enrichment passes emit long structured output. Add **per-mode overrides** (auto-mode context budget + response cap) distinct from the just-shipped interactive verbosity/`max_tokens` controls. **B21 (warm-up/keep-alive)** matters more here (many back-to-back calls).
 
-### Open decisions (resolve before building)
-- Sandbox granularity: one global vs **per-run** (lean: per-run, listed — compare/abandon runs).
-- Default stop: lean **budget-in-LLM-calls + live counter + Stop**, diminishing-returns backstop on.
-- Auto-accept: **never** — always human cherry-pick (matches the request).
-- Gap-finder placement: a **seed strategy** for Auto mode **and** a standalone quick report (structural part runs instantly).
-- Client thread-safety under 4-way concurrency (verify before relying on it).
-- Which model does the creative *refine* step — utility (structure) vs writing model (prose quality)? (lean: utility for structure, optional writing model for refine.)
+### Decisions (locked 2026-07-07)
+- **Auto-accept: NEVER.** Everything stages; the author always cherry-picks (accept/reject/edit) before anything merges. Non-negotiable.
+- **Sandbox granularity: per-run.** Each Auto/gap run writes its own `sandbox/<run_id>.json`, listed so runs can be compared and abandoned. No single global sandbox.
+- **Refine-step model: utility model only** (for now). All Auto-mode passes — survey, enrich, critique, refine, consistency — use the utility model. Using the writing model for the creative refine step is a *later* option, not in the first build.
+- **Concurrency must be switchable OFF.** Default `max_concurrency` = 4 for the user's LM Studio host, but the setting must support **1 (fully serial)** to disable parallelism — e.g. OpenRouter free models where concurrent calls trigger rate limits. So: per-provider `max_concurrency` (1 = off), user-overridable; when 1, the runner degrades to sequential (same code path, semaphore of 1). Don't hard-code 4 anywhere.
+
+### Still open (resolve at build time)
+- Default stop criterion + value (lean: **budget-in-LLM-calls + live counter + Stop button**, diminishing-returns backstop on).
+- Gap-finder placement (lean: a **seed strategy** for Auto mode **and** a standalone instant structural report).
+- **Verify** the sync client is safe under concurrent use before relying on >1 workers (if not, one client per worker / small pool).
 
 ### Phasing / effort
 **B29** (concurrency infra, S/M) → **B28 structural gap-finder** (S, zero-LLM, immediate value) → **B28 LLM gap passes** (M) → **B27 orchestrator + sandbox + review UI** (L). Extends the "Higher end-value output" section, B24 (focus-aware apply), B25 (interconnection); the property-narrowed apply (just shipped) is the per-item extractor the fan-out reuses.
