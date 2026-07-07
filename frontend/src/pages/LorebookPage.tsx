@@ -123,6 +123,17 @@ export default function LorebookPage() {
       listThreads(name).catch(() => []),
     ])
     setCharacters(c); setLocations(l); setLore(le); setArcs(a); setWorld(w); setXrefData(x); setThreads(th)
+    // Re-sync the open detail pane with fresh server data so an in-place change (brainstorm
+    // Apply-to-lore on the entity you're viewing, or our own Save) shows immediately without
+    // switching tabs. Skip when the user has unsaved edits so we never clobber in-progress typing.
+    setSelected((prev: any) => {
+      if (!prev || useUiStore.getState().dirty) return prev
+      const listByTab: Record<string, any[]> = { Characters: c, Locations: l, Lore: le, Arcs: a, Threads: th }
+      const list = listByTab[tab]
+      if (!list) return prev
+      const fresh = list.find((e: any) => e.name === (prev._origName || prev.name))
+      return fresh ? { ...fresh, _origName: fresh.name } : prev
+    })
   }
 
   useEffect(() => { reload() }, [name])
