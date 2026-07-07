@@ -1447,6 +1447,26 @@ Gaps surfaced by reviewing the whole plan set. Worked through with the user one 
 
 **Reuses.** `fact_checker` extract-claims→check-each pointed at lore + retrieval (keyword, no embed swap); `ContinuityNote`; the Gaps-tab report pattern; `bounded_map` (B29) to check chapters in parallel. Part of the **consistency cluster** with B32 (canon lock) and B33 (character-state/timeline), to be worked through next.
 
+### B32. Canon lock / story bible — inviolable rules generation must respect — **effort: S/M** — *APPROVED (slim, 2026-07-07)*
+
+**The gap.** Lore-grounding injects everything as equal-weight, advisory context. Nothing lets the author mark a subset as **immovable** — especially high-level facts that aren't a lore field at all (tense, POV, "never happens"). And the continuity guard (B31) has nothing to enforce *strictly*.
+
+**Design (slim).** A per-project **`canon_rules: list[str]`** — a short, author-owned list of one-line rules. Injected into **every** generation stage's prompt with strong phrasing ("These are INVIOLABLE — never contradict"), and treated by B31 as **high-severity** (a canon violation is a warn/error; ordinary drift is info). Optional lighter secondary: a `canon: bool` flag on individual records to mark a specific record's facts as locked. No heavy system.
+
+**Seeded rule categories (UI scaffolding, author edits freely).** The Canon Rules panel ships with these as collapsible prompts / example chips so it's never a blank box:
+- **Voice & POV** — "Third-person limited, Maren's POV only — no head-hopping within a scene."
+- **Tense** — "Past tense throughout."
+- **Character fates & immutable traits** — "Maren dies in Ch. 12 and never reappears." / "Cee is an android and cannot lie."
+- **World / magic-tech hard limits** — "Magic can't raise the dead." / "No tech beyond steam."
+- **Timeline / chronology** — "The story spans one winter." / "No flashbacks before Ch. 5."
+- **Relationship constraints** — "Tya and Cee don't meet until Act 3." / "No romance between Maren and the antagonist."
+- **Never-happens (prohibitions)** — "The villain is never redeemed." / "No deus-ex-machina rescues." / "No modern slang."
+- **Terminology & spelling** — "Always 'the Ashfall Compact' (capital A/C)." / "British spelling — colour, grey."
+- **Content boundaries (adult)** — "All explicit content is between consenting adults." / "Violence stays off-page." *(pairs with the adult-content controls item)*
+- **Prose guardrails** — "No em-dashes." / "Avoid 'suddenly' and 'very'." / "End scenes on a hook."
+
+**Fit.** The teeth behind lore-grounding + B31: the author decides what's immovable (very much human-directs-the-story), and B31 enforces it strictly. Part of the consistency cluster (B31 guard / B32 canon lock / B33 character-state).
+
 ## Docs refresh (Docusaurus, **not a wiki**) — low-priority parallel track
 
 Decision (2026-07-01): we already have a **Docusaurus** site in `docs/` wired for GitHub
