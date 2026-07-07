@@ -43,6 +43,23 @@ class PortWalkTests(unittest.TestCase):
             self.assertEqual(srv._choose_port(), (None, None))
 
 
+class LocalHostResolutionTests(unittest.TestCase):
+    """LIBRISCRIBE_HOST bind target -> the address used for the health probe + auto-open browser.
+    A specific interface IP (e.g. a Tailscale 100.x) must NOT fall back to loopback, which uvicorn
+    doesn't listen on when bound to that IP (regression: browser opened 127.0.0.1 -> refused)."""
+
+    def test_default_loopback_stays_loopback(self):
+        self.assertEqual(srv._local_host_for("127.0.0.1"), "127.0.0.1")
+
+    def test_all_interfaces_reaches_via_loopback(self):
+        self.assertEqual(srv._local_host_for("0.0.0.0"), "127.0.0.1")
+        self.assertEqual(srv._local_host_for("::"), "127.0.0.1")
+        self.assertEqual(srv._local_host_for(""), "127.0.0.1")
+
+    def test_specific_ip_probes_that_ip_not_loopback(self):
+        self.assertEqual(srv._local_host_for("100.125.124.123"), "100.125.124.123")
+
+
 class RuntimeStateTests(unittest.TestCase):
     def setUp(self):
         rt.set_ui_state(dirty=False, active_generation=False)
