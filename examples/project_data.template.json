@@ -1,0 +1,275 @@
+{
+  "project_name": "example_project",
+  "title": "The Example Title",
+  "genre": "Fantasy",
+  "description": "One-paragraph premise of the story.",
+  "category": "Fiction",
+  "language": "English",
+  "num_characters": 3,
+  "num_characters_str": "",
+  "worldbuilding_needed": true,
+  "review_preference": "Human",
+  "book_length": "Novel",
+  "logline": "A one-sentence summary of the story.",
+  "tone": "Dark",
+  "target_audience": "Adult",
+  "num_chapters": 12,
+  "num_chapters_str": "",
+  "target_word_count": 80000,
+  "suggested_title": "",
+  "suggested_logline": "",
+  "suggested_description": "",
+  "suggested_num_chapters": null,
+  "generation_mode": "step",
+  "canon_rules": [
+    "Past tense throughout.",
+    "The protagonist never uses modern slang."
+  ],
+  "prose_register": null,
+  "llm_provider": "local",
+  "model": "example-writing-model",
+  "utility_model": "example-utility-model",
+  "agent_models": {},
+  "fallback_chain": [],
+  "agent_fallback_chains": {},
+  "max_concurrency": 4,
+  "chapter_writing_mode": "prompt",
+  "chapter_error_mode": "stop",
+  "dynamic_questions": {
+    "Who are the main characters?": ""
+  },
+  "retrieval": {
+    "enabled": false,
+    "mode": "disabled",
+    "backend": "local",
+    "auto_index": true,
+    "top_k": 6,
+    "max_context_tokens": 1800,
+    "embedding_provider": "sentence-transformers",
+    "embedding_model": "all-MiniLM-L6-v2",
+    "chunk_size": 800,
+    "chunk_overlap": 120,
+    "include_chapter_text": true,
+    "include_chapter_summaries": true,
+    "include_outline": true,
+    "include_characters": true,
+    "include_worldbuilding": true,
+    "include_cross_references": true,
+    "projects_subdir": ".libriscribe_retrieval"
+  },
+  "characters": {
+    "Example Character": {
+      "name": "Example Character",
+      "age": "34",
+      "sex": "female",
+      "sexual_orientation": "bisexual",
+      "physical_description": "Tall; grey eyes; a scar across one brow.",
+      "personality_traits": "Wry, guarded, loyal",
+      "background": "Raised in the capital; exiled after the coup.",
+      "motivations": "Clear her family's name.",
+      "relationships": {
+        "Second Character": "estranged sibling"
+      },
+      "role": "protagonist",
+      "internal_conflicts": "Duty to family vs. hunger for a quiet life.",
+      "external_conflicts": "Hunted by the Compact.",
+      "character_arc": "From fugitive to reluctant leader.",
+      "voice_profile": {
+        "speech_patterns": "Short, clipped sentences.",
+        "vocabulary_level": "Plain and direct",
+        "verbal_tics": "Says 'aye' when conceding a point.",
+        "avoids": "Never swears.",
+        "example_dialogue": [
+          "Aye. But not today.",
+          "Ask me again when the ash settles."
+        ]
+      }
+    }
+  },
+  "worldbuilding": {
+    "geography": "Volcanic ash plains ringed by black mountains.",
+    "culture_and_society": "Clan-based; oaths outrank written law.",
+    "history": "The dynasty fell a generation ago.",
+    "rules_and_laws": "Oath-breaking is punishable by exile.",
+    "technology_level": "Late-medieval with early gunpowder.",
+    "magic_system": "Blood-cost sorcery; nothing raises the dead.",
+    "key_locations": "Example Keep; the Ash Road.",
+    "important_organizations": "The Example Compact.",
+    "flora_and_fauna": "Ash-adapted scrub; carrion drakes.",
+    "languages": "Common tongue; Old Dynastic in rites.",
+    "religions_and_beliefs": "Ancestor veneration.",
+    "economy": "Barter and salt-scrip.",
+    "conflicts": "Compact vs. the exiled heirs.",
+    "setting_context": "",
+    "key_figures": "",
+    "major_events": "",
+    "underlying_causes": "",
+    "consequences": "",
+    "relevant_data": "",
+    "different_perspectives": "",
+    "key_concepts": "",
+    "industry_overview": "",
+    "target_audience": "",
+    "market_analysis": "",
+    "business_model": "",
+    "marketing_and_sales_strategy": "",
+    "operations": "",
+    "financial_projections": "",
+    "management_team": "",
+    "legal_and_regulatory_environment": "",
+    "risks_and_challenges": "",
+    "opportunities_for_growth": "",
+    "introduction": "",
+    "literature_review": "",
+    "methodology": "",
+    "results": "",
+    "discussion": "",
+    "conclusion": "",
+    "references": "",
+    "appendices": ""
+  },
+  "chapters": {
+    "1": {
+      "chapter_number": 1,
+      "title": "The Letter",
+      "summary": "An unsigned letter pulls the protagonist out of hiding.",
+      "scenes": [
+        {
+          "scene_number": 1,
+          "summary": "The letter arrives at the waystation.",
+          "characters": [
+            "Example Character"
+          ],
+          "setting": "Ash Road waystation",
+          "goal": "Hook: establish the threat and the summons.",
+          "emotional_beat": "unease",
+          "scene_type": "quiet",
+          "target_word_count": 1200
+        }
+      ]
+    }
+  },
+  "outline": "# Outline\n\nChapter 1: The Letter — ...",
+  "locations": {
+    "Example Keep": {
+      "name": "Example Keep",
+      "description": "A black-stone fortress above the ash plains.",
+      "significance": "Seat of the old dynasty; the story's endpoint.",
+      "associated_characters": [
+        "Example Character"
+      ],
+      "first_appearance": 2,
+      "tags": [
+        "fortress",
+        "ancestral"
+      ]
+    }
+  },
+  "lore_entries": {
+    "Example Compact": {
+      "name": "Example Compact",
+      "entry_type": "faction",
+      "description": "A pact of exiled houses that enforces the old law.",
+      "significance": "The antagonist force pressing on every arc.",
+      "related_entities": [
+        "Example Character",
+        "Example Keep"
+      ],
+      "first_appearance": 1,
+      "tags": [
+        "faction"
+      ]
+    }
+  },
+  "story_arcs": {
+    "Example Arc": {
+      "name": "Example Arc",
+      "description": "The fall and retaking of the Keep.",
+      "arc_type": "main",
+      "chapters_involved": [
+        1,
+        6,
+        12
+      ],
+      "characters_involved": [
+        "Example Character"
+      ],
+      "status": "active",
+      "resolution_notes": "Resolves when the Keep falls in the finale.",
+      "milestones": [
+        {
+          "name": "The gates fall",
+          "milestone_type": "climax",
+          "target_chapter": 12,
+          "actual_chapter": null,
+          "description": "The Compact breaches the Keep.",
+          "status": "pending"
+        }
+      ]
+    }
+  },
+  "character_states": {
+    "Example Character": [
+      {
+        "character_name": "Example Character",
+        "chapter_number": 1,
+        "emotional_state": "wary",
+        "knowledge": [
+          "Learns the letter bears the Compact's seal."
+        ],
+        "relationships": {
+          "Second Character": "suspicious of"
+        },
+        "physical_state": "uninjured",
+        "notes": "Ends the chapter at Example Keep."
+      }
+    ]
+  },
+  "timeline_events": [
+    {
+      "chapter_number": 1,
+      "description": "The unsigned letter arrives.",
+      "characters_involved": [
+        "Example Character"
+      ]
+    }
+  ],
+  "continuity_notes": [
+    {
+      "chapter_number": 3,
+      "note_type": "inconsistency",
+      "description": "Eye colour described as brown; canon says grey.",
+      "entities_involved": [
+        "Example Character"
+      ],
+      "resolved": false
+    }
+  ],
+  "lore_suggestions": [
+    {
+      "entity_type": "character",
+      "entity_name": "Example Character",
+      "field": "motivations",
+      "current_value": "Clear her family's name.",
+      "proposed_value": "Clear her family's name — and take the Keep back.",
+      "reason": "Chapter 6 escalates her goal.",
+      "source_chapter": 6,
+      "status": "pending"
+    }
+  ],
+  "narrative_threads": {
+    "Example Thread": {
+      "name": "Example Thread",
+      "thread_type": "promise",
+      "description": "Who sent the unsigned letter?",
+      "opened_chapter": 1,
+      "target_resolution_chapter": 10,
+      "resolved_chapter": null,
+      "status": "open",
+      "characters_involved": [
+        "Example Character"
+      ]
+    }
+  },
+  "writing_system_prompt": ""
+}
