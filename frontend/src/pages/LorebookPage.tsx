@@ -48,6 +48,30 @@ function EntityList({ items, onSelect, onDelete, onAnalyze, labelKey = 'name', b
   )
 }
 
+// List fields (tags, chapters involved, example dialogue): edit as free text, parse ONLY on
+// blur/Enter. Parsing per keystroke ate the separator the user just typed, making it impossible
+// to enter more than one item.
+function ListInput({ value, numeric = false, onCommit }: { value: any[], numeric?: boolean, onCommit: (v: any[]) => void }) {
+  const [text, setText] = useState((value || []).join(', '))
+  const [focused, setFocused] = useState(false)
+  useEffect(() => { if (!focused) setText((value || []).join(', ')) }, [JSON.stringify(value || [])])  // eslint-disable-line react-hooks/exhaustive-deps
+  const commit = () => {
+    const parts = text.split(/[,;\n]/).map(p => p.trim()).filter(Boolean)
+    onCommit(numeric ? parts.map(Number).filter(n => Number.isFinite(n)) : parts)
+  }
+  return (
+    <input
+      className="w-full mt-1 px-2 py-1.5 bg-gray-800 border border-gray-700 rounded text-sm"
+      value={text}
+      placeholder={numeric ? 'e.g. 1, 2, 5' : 'comma-separated'}
+      onFocus={() => setFocused(true)}
+      onChange={e => setText(e.target.value)}
+      onBlur={() => { setFocused(false); commit() }}
+      onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); commit() } }}
+    />
+  )
+}
+
 // Single chapter-number fields — rendered as a chapter pulldown (they're ints, not free text).
 const CHAPTER_FIELDS = new Set(['first_appearance', 'opened_chapter', 'target_resolution_chapter', 'resolved_chapter'])
 // Entity-reference LIST fields → what records are valid targets ('characters' | 'all').
@@ -170,7 +194,7 @@ function FieldEditor({ fields, data, onChange, numChapters = 0, entityType = '',
           ) : typeof data[f] === 'object' && !Array.isArray(data[f]) ? (
             <textarea className="w-full mt-1 px-2 py-1.5 bg-gray-800 border border-gray-700 rounded text-sm h-20" value={JSON.stringify(data[f], null, 2)} onChange={e => { try { onChange(f, dirty(JSON.parse(e.target.value))) } catch {} }} />
           ) : Array.isArray(data[f]) ? (
-            <input className="w-full mt-1 px-2 py-1.5 bg-gray-800 border border-gray-700 rounded text-sm" value={data[f].join(', ')} onChange={e => { onChange(f, e.target.value.split(',').map((s: string) => s.trim()).filter(Boolean)); useUiStore.getState().markDirty() }} />
+            <ListInput value={data[f]} numeric={f === 'chapters_involved'} onCommit={v => { onChange(f, v); useUiStore.getState().markDirty() }} />
           ) : (
             <input className="w-full mt-1 px-2 py-1.5 bg-gray-800 border border-gray-700 rounded text-sm" value={data[f] ?? ''} onChange={e => { onChange(f, e.target.value); useUiStore.getState().markDirty() }} />
           )}
@@ -342,6 +366,10 @@ export default function LorebookPage() {
   const [world, setWorld] = useState<any>({})
   const [xrefData, setXrefData] = useState<any[]>([])
   const [selected, setSelected] = useState<any>(null)
+  // Per-RECORD unsaved-edit tracking: the re-sync guard used the GLOBAL dirty flag, so having
+  // touched anything anywhere silently blocked brainstorm-apply refreshes of the open record.
+  const selectedDirtyRef = useRef(false)
+  const [staleFresh, setStaleFresh] = useState<any>(null)  // newer server copy held back by unsaved edits
   const [searchQuery, setSearchQuery] = useState('')
   const [searchResults, setSearchResults] = useState<any[]>([])
   const [suggestions, setSuggestions] = useState<any[]>([])
@@ -427,7 +455,7 @@ export default function LorebookPage() {
     setTab(t)
     const listMap: Record<string, any[]> = { Characters: characters, Locations: locations, Lore: lore, Arcs: arcs, Threads: threads }
     const found = (listMap[t] || []).find(e => e.name === target.name)
-    if (found) setSelected({ ...found, _origName: found.name })
+    if (found) { selectedDirtyRef.current = false; setStaleFresh(null); setSelected({ ...found, _origName: found.name }) }
   }
 
   const onImportFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -464,12 +492,21 @@ export default function LorebookPage() {
     // Apply-to-lore on the entity you're viewing, or our own Save) shows immediately without
     // switching tabs. Skip when the user has unsaved edits so we never clobber in-progress typing.
     setSelected((prev: any) => {
-      if (!prev || useUiStore.getState().dirty) return prev
+      if (!prev) return prev
       const listByTab: Record<string, any[]> = { Characters: c, Locations: l, Lore: le, Arcs: a, Threads: th }
       const list = listByTab[tab]
       if (!list) return prev
-      const fresh = list.find((e: any) => e.name === (prev._origName || prev.name))
-      return fresh ? { ...fresh, _origName: fresh.name } : prev
+      const target = String(prev._origName || prev.name).toLowerCase()
+      const fresh = list.find((e: any) => String(e.name).toLowerCase() === target)
+      if (!fresh) return prev
+      if (selectedDirtyRef.current) {
+        // Don't clobber in-progress edits — but surface that a newer copy exists.
+        const { _origName, ...cur } = prev
+        if (JSON.stringify(cur) !== JSON.stringify(fresh)) setStaleFresh(fresh)
+        return prev
+      }
+      setStaleFresh(null)
+      return { ...fresh, _origName: fresh.name }
     })
   }
 
@@ -557,6 +594,8 @@ export default function LorebookPage() {
       if (tab === 'Arcs') await updateArc(name, s._origName || s.name, s)
       if (tab === 'Threads') await updateThread(name, s._origName || s.name, s)
       useUiStore.getState().markClean()
+      selectedDirtyRef.current = false
+      setStaleFresh(null)
       reload()
       bumpLore()  // refresh connections + any open views after link edits
     } catch (e) { alert('Save failed') }
@@ -737,16 +776,16 @@ export default function LorebookPage() {
         {/* List */}
         <div className="lg:col-span-1 space-y-2">
           <button onClick={handleCreate} className="w-full flex items-center justify-center gap-1 px-3 py-1.5 bg-gray-800 hover:bg-gray-700 rounded-lg text-sm"><Plus size={14} /> Add</button>
-          {tab === 'Characters' && <EntityList items={characters} onSelect={(c: any) => { setSelected({ ...c, _origName: c.name }); setShowSuggestions(false) }} onDelete={handleDelete} onAnalyze={handleAnalyze} badgeKey="role" />}
-          {tab === 'Locations' && <EntityList items={locations} onSelect={(l: any) => { setSelected({ ...l, _origName: l.name }); setShowSuggestions(false) }} onDelete={handleDelete} onAnalyze={handleAnalyze} />}
-          {tab === 'Lore' && <EntityList items={lore} onSelect={(l: any) => { setSelected({ ...l, _origName: l.name }); setShowSuggestions(false) }} onDelete={handleDelete} onAnalyze={handleAnalyze} badgeKey="entry_type" />}
-          {tab === 'Arcs' && <EntityList items={arcs} onSelect={(a: any) => { setSelected({ ...a, _origName: a.name }); setShowSuggestions(false) }} onDelete={handleDelete} badgeKey="status" />}
+          {tab === 'Characters' && <EntityList items={characters} onSelect={(c: any) => { selectedDirtyRef.current = false; setStaleFresh(null); setSelected({ ...c, _origName: c.name }); setShowSuggestions(false) }} onDelete={handleDelete} onAnalyze={handleAnalyze} badgeKey="role" />}
+          {tab === 'Locations' && <EntityList items={locations} onSelect={(l: any) => { selectedDirtyRef.current = false; setStaleFresh(null); setSelected({ ...l, _origName: l.name }); setShowSuggestions(false) }} onDelete={handleDelete} onAnalyze={handleAnalyze} />}
+          {tab === 'Lore' && <EntityList items={lore} onSelect={(l: any) => { selectedDirtyRef.current = false; setStaleFresh(null); setSelected({ ...l, _origName: l.name }); setShowSuggestions(false) }} onDelete={handleDelete} onAnalyze={handleAnalyze} badgeKey="entry_type" />}
+          {tab === 'Arcs' && <EntityList items={arcs} onSelect={(a: any) => { selectedDirtyRef.current = false; setStaleFresh(null); setSelected({ ...a, _origName: a.name }); setShowSuggestions(false) }} onDelete={handleDelete} badgeKey="status" />}
           {tab === 'Threads' && (
             <div className="space-y-1">
               {threads.map((t: any, i: number) => {
                 const color = t.status === 'resolved' ? 'text-green-400' : t.status === 'abandoned' ? 'text-red-400' : 'text-yellow-400'
                 return (
-                  <div key={i} className="flex items-center justify-between px-3 py-2 bg-gray-800 rounded-lg hover:bg-gray-700 cursor-pointer" onClick={() => setSelected({ ...t, _origName: t.name })}>
+                  <div key={i} className="flex items-center justify-between px-3 py-2 bg-gray-800 rounded-lg hover:bg-gray-700 cursor-pointer" onClick={() => { selectedDirtyRef.current = false; setStaleFresh(null); setSelected({ ...t, _origName: t.name }) }}>
                     <div>
                       <span className={`text-sm ${color}`}>{t.name}</span>
                       <span className="ml-2 text-xs px-1.5 py-0.5 bg-gray-700 rounded">{t.thread_type}</span>
@@ -806,9 +845,18 @@ export default function LorebookPage() {
 
         {/* Detail / Editor */}
         <div className="lg:col-span-2 bg-gray-900 border border-gray-800 rounded-xl p-4">
+          {staleFresh && selected && (
+            <div className="mb-3 px-3 py-2 bg-amber-900/30 border border-amber-800 rounded-lg text-xs text-amber-200 flex items-center justify-between gap-2">
+              <span>This record was updated elsewhere (e.g. a brainstorm apply) while you have unsaved edits.</span>
+              <span className="flex gap-2 shrink-0">
+                <button onClick={() => { setSelected({ ...staleFresh, _origName: staleFresh.name }); setStaleFresh(null); selectedDirtyRef.current = false }} className="px-2 py-1 bg-amber-700 hover:bg-amber-600 rounded">Load latest</button>
+                <button onClick={() => setStaleFresh(null)} className="px-2 py-1 bg-gray-800 hover:bg-gray-700 rounded">Keep my edits</button>
+              </span>
+            </div>
+          )}
           {tab === 'Characters' && selected && (
             <div>
-              <FieldEditor fields={charFields} data={selected} onChange={(k, v) => setSelected({ ...selected, [k]: v })} entityType={TYPE_FOR_TAB[tab]} characterNames={characterNames} allEntityNames={allEntityNames} suggestions={linkSuggestions} />
+              <FieldEditor fields={charFields} data={selected} onChange={(k, v) => { selectedDirtyRef.current = true; setSelected({ ...selected, [k]: v }) }} entityType={TYPE_FOR_TAB[tab]} characterNames={characterNames} allEntityNames={allEntityNames} suggestions={linkSuggestions} />
               {/* Voice Profile (F3) */}
               <details className="mt-4 border border-gray-700 rounded-lg">
                 <summary className="px-3 py-2 text-sm font-medium text-gray-300 cursor-pointer hover:bg-gray-800 rounded-t-lg flex items-center gap-1">
@@ -818,12 +866,12 @@ export default function LorebookPage() {
                   {['speech_patterns', 'vocabulary_level', 'verbal_tics', 'avoids'].map(f => (
                     <label key={f} className="block">
                       <span className="text-xs text-gray-400 capitalize">{f.replace(/_/g, ' ')}</span>
-                      <input className="w-full mt-1 px-2 py-1.5 bg-gray-800 border border-gray-700 rounded text-sm" value={selected.voice_profile?.[f] || ''} onChange={e => setSelected({ ...selected, voice_profile: { ...selected.voice_profile, [f]: e.target.value } })} />
+                      <input className="w-full mt-1 px-2 py-1.5 bg-gray-800 border border-gray-700 rounded text-sm" value={selected.voice_profile?.[f] || ''} onChange={e => { selectedDirtyRef.current = true; setSelected({ ...selected, voice_profile: { ...selected.voice_profile, [f]: e.target.value } }) }} />
                     </label>
                   ))}
                   <label className="block">
                     <span className="text-xs text-gray-400">Example Dialogue (comma-separated)</span>
-                    <input className="w-full mt-1 px-2 py-1.5 bg-gray-800 border border-gray-700 rounded text-sm" value={(selected.voice_profile?.example_dialogue || []).join(', ')} onChange={e => setSelected({ ...selected, voice_profile: { ...selected.voice_profile, example_dialogue: e.target.value.split(',').map((s: string) => s.trim()).filter(Boolean) } })} />
+                    <ListInput value={selected.voice_profile?.example_dialogue || []} onCommit={v => { selectedDirtyRef.current = true; setSelected({ ...selected, voice_profile: { ...selected.voice_profile, example_dialogue: v } }) }} />
                   </label>
                 </div>
               </details>
@@ -843,7 +891,7 @@ export default function LorebookPage() {
           )}
           {tab === 'Locations' && selected && (
             <div>
-              <FieldEditor fields={locFields} data={selected} onChange={(k, v) => setSelected({ ...selected, [k]: v })} numChapters={numChapters} entityType={TYPE_FOR_TAB[tab]} characterNames={characterNames} allEntityNames={allEntityNames} suggestions={linkSuggestions} />
+              <FieldEditor fields={locFields} data={selected} onChange={(k, v) => { selectedDirtyRef.current = true; setSelected({ ...selected, [k]: v }) }} numChapters={numChapters} entityType={TYPE_FOR_TAB[tab]} characterNames={characterNames} allEntityNames={allEntityNames} suggestions={linkSuggestions} />
               <div className="mt-4 flex gap-2">
                 <button onClick={handleSave} className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 rounded-lg text-sm">Save</button>
                 {selected && TAB_TO_FOCUS[tab] && (
@@ -860,7 +908,7 @@ export default function LorebookPage() {
           )}
           {tab === 'Lore' && selected && (
             <div>
-              <FieldEditor fields={loreFields} data={selected} onChange={(k, v) => setSelected({ ...selected, [k]: v })} numChapters={numChapters} entityType={TYPE_FOR_TAB[tab]} characterNames={characterNames} allEntityNames={allEntityNames} suggestions={linkSuggestions} />
+              <FieldEditor fields={loreFields} data={selected} onChange={(k, v) => { selectedDirtyRef.current = true; setSelected({ ...selected, [k]: v }) }} numChapters={numChapters} entityType={TYPE_FOR_TAB[tab]} characterNames={characterNames} allEntityNames={allEntityNames} suggestions={linkSuggestions} />
               <div className="mt-4 flex gap-2">
                 <button onClick={handleSave} className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 rounded-lg text-sm">Save</button>
                 {selected && TAB_TO_FOCUS[tab] && (
@@ -877,7 +925,7 @@ export default function LorebookPage() {
           )}
           {tab === 'Arcs' && selected && (
             <div>
-              <FieldEditor fields={arcFields} data={selected} onChange={(k, v) => setSelected({ ...selected, [k]: v })} numChapters={numChapters} entityType={TYPE_FOR_TAB[tab]} characterNames={characterNames} allEntityNames={allEntityNames} suggestions={linkSuggestions} />
+              <FieldEditor fields={arcFields} data={selected} onChange={(k, v) => { selectedDirtyRef.current = true; setSelected({ ...selected, [k]: v }) }} numChapters={numChapters} entityType={TYPE_FOR_TAB[tab]} characterNames={characterNames} allEntityNames={allEntityNames} suggestions={linkSuggestions} />
               {/* Milestones (F1) */}
               {selected.milestones && selected.milestones.length > 0 && (
                 <div className="mt-4 border border-gray-700 rounded-lg p-3">
@@ -912,7 +960,7 @@ export default function LorebookPage() {
           )}
           {tab === 'Threads' && selected && (
             <div>
-              <FieldEditor fields={threadFields} data={selected} onChange={(k, v) => setSelected({ ...selected, [k]: v })} numChapters={numChapters} entityType={TYPE_FOR_TAB[tab]} characterNames={characterNames} allEntityNames={allEntityNames} suggestions={linkSuggestions} />
+              <FieldEditor fields={threadFields} data={selected} onChange={(k, v) => { selectedDirtyRef.current = true; setSelected({ ...selected, [k]: v }) }} numChapters={numChapters} entityType={TYPE_FOR_TAB[tab]} characterNames={characterNames} allEntityNames={allEntityNames} suggestions={linkSuggestions} />
               <div className="mt-4 flex gap-2">
                 <button onClick={handleSave} className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 rounded-lg text-sm">Save</button>
                 {selected && TAB_TO_FOCUS[tab] && (
