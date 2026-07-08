@@ -26,7 +26,8 @@ export default function ProjectDashboard() {
   const { jobStatus, logs, streamBuffer, stageStatuses, pendingReview, reset } = useGenerationStore()
   const [chapters, setChapters] = useState<any[]>([])
   const [cost, setCost] = useState<any>(null)
-  const logEndRef = useRef<HTMLDivElement>(null)
+  const logBoxRef = useRef<HTMLDivElement>(null)
+  const streamBoxRef = useRef<HTMLDivElement>(null)
   const [llmProvider, setLlmProvider] = useState('openai')
   const [llmModel, setLlmModel] = useState('')
   const [utilityModel, setUtilityModel] = useState('')
@@ -185,9 +186,16 @@ export default function ProjectDashboard() {
     }
   }, [name, jobStatus])
 
+  // Auto-scroll the log/stream boxes ONLY — scrollIntoView scrolled the whole page too,
+  // jarring the dashboard down to the log feed on every generation event.
   useEffect(() => {
-    logEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+    const el = logBoxRef.current
+    if (el) el.scrollTop = el.scrollHeight
   }, [logs])
+  useEffect(() => {
+    const el = streamBoxRef.current
+    if (el) el.scrollTop = el.scrollHeight
+  }, [streamBuffer])
 
   const refreshActiveModel = () => {
     if (name) getActiveModel(name).then(setActiveModel).catch(() => setActiveModel(null))
@@ -488,7 +496,7 @@ export default function ProjectDashboard() {
       {streamBuffer && (
         <div className="bg-gray-900 border border-gray-800 rounded-xl p-4">
           <h3 className="text-sm font-medium text-gray-400 mb-2">Live Stream</h3>
-          <div className="prose prose-invert max-w-none text-sm whitespace-pre-wrap max-h-64 overflow-y-auto">
+          <div ref={streamBoxRef} className="prose prose-invert max-w-none text-sm whitespace-pre-wrap max-h-64 overflow-y-auto">
             {streamBuffer}
           </div>
         </div>
@@ -498,9 +506,8 @@ export default function ProjectDashboard() {
       {logs.length > 0 && (
         <div className="bg-gray-900 border border-gray-800 rounded-xl p-4">
           <h3 className="text-sm font-medium text-gray-400 mb-2">Log ({logs.length})</h3>
-          <div className="font-mono text-xs text-gray-400 max-h-48 overflow-y-auto space-y-0.5">
+          <div ref={logBoxRef} className="font-mono text-xs text-gray-400 max-h-48 overflow-y-auto space-y-0.5">
             {logs.map((log, i) => <div key={i}>{log}</div>)}
-            <div ref={logEndRef} />
           </div>
         </div>
       )}
