@@ -46,6 +46,21 @@ const ASPECTS: Record<string, { value: string, label: string }[]> = {
     { value: 'characters_involved', label: 'Characters involved' },
     { value: 'status', label: 'Status' },
   ],
+  world: [
+    { value: 'geography', label: 'Geography' },
+    { value: 'culture_and_society', label: 'Culture & society' },
+    { value: 'history', label: 'History' },
+    { value: 'rules_and_laws', label: 'Rules & laws' },
+    { value: 'technology_level', label: 'Technology level' },
+    { value: 'magic_system', label: 'Magic system' },
+    { value: 'key_locations', label: 'Key locations' },
+    { value: 'important_organizations', label: 'Organizations' },
+    { value: 'flora_and_fauna', label: 'Flora & fauna' },
+    { value: 'languages', label: 'Languages' },
+    { value: 'religions_and_beliefs', label: 'Religions & beliefs' },
+    { value: 'economy', label: 'Economy' },
+    { value: 'conflicts', label: 'Conflicts' },
+  ],
 }
 
 export default function BrainstormDrawer({ projectName }: { projectName: string }) {
@@ -305,6 +320,7 @@ export default function BrainstormDrawer({ projectName }: { projectName: string 
               Focus
               <select value={focusKey} onChange={e => changeFocus(e.target.value)} className="flex-1 px-2 py-1 bg-gray-800 border border-gray-700 rounded text-xs">
                 <option value="">Whole project</option>
+                <option value="world:World">🌍 World (setting & rules)</option>
                 {ents.character.length > 0 && <optgroup label="Characters">{ents.character.map(n => <option key={'character:' + n} value={'character:' + n}>{n}</option>)}</optgroup>}
                 {ents.location.length > 0 && <optgroup label="Locations">{ents.location.map(n => <option key={'location:' + n} value={'location:' + n}>{n}</option>)}</optgroup>}
                 {ents.lore.length > 0 && <optgroup label="Codex">{ents.lore.map(n => <option key={'lore:' + n} value={'lore:' + n}>{n}</option>)}</optgroup>}

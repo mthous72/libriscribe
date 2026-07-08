@@ -536,10 +536,30 @@ def extract_focused(client, kb, focus_type: str, focus_name: str, text: str,
     and never duplicating the focused entity."""
     if client is None:
         return _empty_cats()
-    category = TYPE_TO_CATEGORY.get(focus_type, focus_type)
-    cats = _empty_cats()
     aspect = (aspect or "").strip().lower()
     narrowed = bool(aspect) and aspect != "all"
+
+    # The World is a singleton: extract its typed fields and stage under "worldbuilding"
+    # (build_proposal / merge_apply already support that shape via the import path).
+    if focus_type == "world":
+        wb = getattr(kb, "worldbuilding", None)
+        existing = None
+        if wb is not None:
+            existing = {k: v for k, v in wb.model_dump().items()
+                        if isinstance(v, str) and v.strip()} or None
+        fields = llm_extract_for_type(
+            client, kb.genre, "the world of this story", text, "worldbuilding",
+            book_title=kb.title, existing_fields=existing,
+        )
+        if narrowed:
+            fields = {k: v for k, v in (fields or {}).items() if k == aspect}
+        cats = _empty_cats()
+        if fields:
+            cats["worldbuilding"] = {"fields": fields}
+        return cats
+
+    category = TYPE_TO_CATEGORY.get(focus_type, focus_type)
+    cats = _empty_cats()
 
     # Voice-only aspect: run just the dedicated voice pass (characters).
     if aspect == "voice" and focus_type == "character":

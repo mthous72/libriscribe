@@ -28,6 +28,12 @@ TYPE_FIELDS = {
     "location": ["description", "significance", "associated_characters", "first_appearance", "tags"],
     "lore": ["entry_type", "description", "significance", "related_entities", "first_appearance", "tags"],
     "arc": ["arc_type", "description", "resolution_notes", "chapters_involved", "characters_involved", "status"],
+    # The World is a singleton (not a named entity); used by the focused "world" brainstorm apply.
+    "worldbuilding": [
+        "geography", "culture_and_society", "history", "rules_and_laws", "technology_level",
+        "magic_system", "key_locations", "important_organizations", "flora_and_fauna",
+        "languages", "religions_and_beliefs", "economy", "conflicts",
+    ],
 }
 
 # The character's dialogue VoiceProfile (nested on the model). Extracted by a dedicated pass and
@@ -53,6 +59,20 @@ FIELD_DESCRIPTIONS = {
     "entry_type": "the kind of thing this is (e.g. faction, item, technology, concept, event, rule)",
     "arc_type": "the kind of arc (e.g. redemption, mystery, romance, coming-of-age)",
     "resolution_notes": "how the arc resolves, or is intended to resolve",
+    # Worldbuilding (singleton World record)
+    "geography": "the land, climate, and significant natural features",
+    "culture_and_society": "customs, traditions, social structures, values",
+    "history": "major events, eras, and turning points of the world",
+    "rules_and_laws": "the legal system, governing bodies, enforcement",
+    "technology_level": "the technologies that exist and their impact",
+    "magic_system": "if applicable: rules, limitations, sources, costs of magic",
+    "key_locations": "important cities, towns, landmarks",
+    "important_organizations": "factions/groups — their goals and influence",
+    "flora_and_fauna": "distinct plants and creatures and their roles",
+    "languages": "languages/dialects and who speaks them",
+    "religions_and_beliefs": "deities, rituals, myths, afterlife beliefs",
+    "economy": "trade, currency, resources, economic systems",
+    "conflicts": "wars, rivalries, political tensions past and present",
     # Relational / meta fields (lists → comma-separated; chapters → numbers)
     "associated_characters": "characters connected to this place — comma-separated names",
     "related_entities": "other entities this connects to (characters, places, factions, items) — comma-separated names",

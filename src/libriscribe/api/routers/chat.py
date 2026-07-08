@@ -164,6 +164,11 @@ _INTENT_LENS = {
         "Developing an arc means STAKES, CAUSALITY (why each turn follows the last), TURNING POINTS, "
         "and CONSEQUENCES that pay off in later chapters."
     ),
+    "world": (
+        "Developing the WORLD means its RULES (physical, magical, legal — and their costs and "
+        "limits), the TEXTURE of daily life (culture, economy, beliefs), its HISTORY and how it "
+        "presses on the present, and the CONFLICTS the setting itself creates for the story."
+    ),
 }
 
 
@@ -436,6 +441,10 @@ _FOCUS_STORE = {
 
 
 def _get_focus_entity(kb, focus_type: str, focus_name: str):
+    # The World is a singleton record, not a named entity in a store.
+    if focus_type == "world":
+        from libriscribe.knowledge_base import Worldbuilding
+        return (kb.worldbuilding or Worldbuilding()), "World"
     attr = _FOCUS_STORE.get(focus_type)
     if not attr:
         return None, focus_name

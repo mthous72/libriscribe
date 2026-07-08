@@ -21,7 +21,7 @@ import { useBrainstormStore } from '../store/brainstormSlice'
 import LoreProposalReview, { Proposal } from '../components/LoreProposalReview'
 import { Plus, Trash2, Search, Sparkles, Check, X, Edit3, AlertTriangle, Loader2, ChevronDown, ChevronRight, Upload, RefreshCw } from 'lucide-react'
 
-const TAB_TO_FOCUS: Record<string, string> = { Characters: 'character', Locations: 'location', Lore: 'lore', Arcs: 'arc' }
+const TAB_TO_FOCUS: Record<string, string> = { Characters: 'character', Locations: 'location', Lore: 'lore', Arcs: 'arc', World: 'world' }
 import { useUiStore } from '../store/uiSlice'
 
 const TABS = ['Characters', 'Locations', 'Lore', 'Arcs', 'Threads', 'World', 'Graph', 'References', 'Gaps', 'Sandbox']
@@ -939,7 +939,16 @@ export default function LorebookPage() {
                   />
                 </label>
               ))}
-              <button onClick={() => name && updateWorldbuilding(name, world).then(() => { useUiStore.getState().markClean(); reload() })} className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 rounded-lg text-sm">Save Worldbuilding</button>
+              <div className="flex gap-2">
+                <button onClick={() => name && updateWorldbuilding(name, world).then(() => { useUiStore.getState().markClean(); reload() })} className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 rounded-lg text-sm">Save Worldbuilding</button>
+                <button
+                  onClick={() => openBrainstorm({ type: 'world', name: 'World' })}
+                  title="Brainstorm the world with the AI (uses your lore as context); Apply routes into these worldbuilding fields"
+                  className="px-4 py-2 bg-gray-700 hover:bg-gray-600 rounded-lg text-sm flex items-center gap-1"
+                >
+                  <Sparkles size={14} /> Brainstorm the world
+                </button>
+              </div>
             </div>
           )}
           {/* Connections (B25) — navigable links, both directions */}
