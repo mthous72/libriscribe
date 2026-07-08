@@ -304,9 +304,10 @@ class ProjectKnowledgeBase(BaseModel):
 
     @model_validator(mode="after")
     def ensure_worldbuilding_state(self) -> ProjectKnowledgeBase:
-        if not self.worldbuilding_needed:
-            self.worldbuilding = None
-        elif self.worldbuilding is None:
+        # Auto-create an empty container when the pipeline needs one — but NEVER null existing
+        # worldbuilding. (This used to wipe it whenever worldbuilding_needed was False, silently
+        # destroying World-tab edits on every load — lorebook data is user data.)
+        if self.worldbuilding is None and self.worldbuilding_needed:
             self.worldbuilding = Worldbuilding()
         return self
 

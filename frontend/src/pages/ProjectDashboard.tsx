@@ -222,7 +222,7 @@ export default function ProjectDashboard() {
 
   const handleReset = async (toStage: string) => {
     if (!toStage) return
-    if (!confirm(`Reset back to "${toStage}"? This clears that stage and everything after it (a snapshot is saved to Versions first).`)) return
+    if (!confirm(`Reset back to "${toStage}"? This clears that stage's GENERATED output and everything after it — your lorebook is never touched. (A snapshot is saved to Versions first.)`)) return
     try {
       await resetGeneration(name!, toStage)
       reset()   // clear local stage statuses so the pipeline cards reflect the reset
@@ -446,9 +446,9 @@ export default function ProjectDashboard() {
               {STAGES.map(s => <option key={s} value={s} className="capitalize">{s}</option>)}
             </select>
             <select defaultValue="" onChange={e => { const v = e.target.value; e.target.value = ''; handleReset(v) }}
-              className="px-2 py-2 bg-gray-800 border border-gray-700 rounded-lg text-xs" title="Snapshot, then clear this stage + everything after it">
+              className="px-2 py-2 bg-gray-800 border border-gray-700 rounded-lg text-xs" title="Snapshot, then clear this stage's generated output + everything after it. Your lorebook (characters, worldbuilding) is never touched.">
               <option value="" disabled>Reset to…</option>
-              {STAGES.map(s => <option key={s} value={s} className="capitalize">{s}</option>)}
+              {['concept', 'outline', 'chapters', 'formatting'].map(s => <option key={s} value={s} className="capitalize">{s}</option>)}
             </select>
             <button onClick={() => handleStart({ mode: 'auto' })} className="px-3 py-2 bg-gray-800 hover:bg-gray-700 rounded-lg text-xs" title="Legacy behavior: run every remaining stage without stopping">
               Run all remaining

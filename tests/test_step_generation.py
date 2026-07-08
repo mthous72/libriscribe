@@ -71,7 +71,7 @@ class ResetToStageTests(unittest.TestCase):
         else:
             os.environ["LIBRISCRIBE_PROJECTS_DIR"] = self._prev
 
-    def test_reset_to_outline_cascades_downstream_keeps_concept(self):
+    def test_reset_to_outline_clears_generation_artifacts_never_lorebook(self):
         result = self.svc.reset_to_stage("demo", "outline")
         self.assertEqual(result["reset_to"], "outline")
         self.assertIn("chapters", result["stages_reset"])
@@ -81,14 +81,23 @@ class ResetToStageTests(unittest.TestCase):
         self.assertEqual(kb.logline, "Real logline")           # concept untouched
         self.assertEqual(kb.outline, "")                        # outline cleared
         self.assertEqual(kb.chapters, {})
-        self.assertEqual(kb.characters, {})                     # downstream cleared
-        self.assertIsNone(kb.worldbuilding)
+        # THE LOREBOOK IS NEVER TOUCHED (regression: an early reset cascade wiped user characters).
+        self.assertIn("Maren", kb.characters)
+        self.assertIsNotNone(kb.worldbuilding)
         self.assertFalse((self.pdir / "outline.md").exists())
         self.assertFalse((self.pdir / "chapter_1.md").exists())
         self.assertFalse((self.pdir / "manuscript.md").exists())
         # Progress re-gates at outline.
         progress = inspect_project_progress(self.pdir, kb)
         self.assertEqual(progress.next_step, "outline")
+
+    def test_reset_refuses_lore_stages(self):
+        for stage in ("characters", "worldbuilding"):
+            with self.assertRaises(ValueError):
+                self.svc.reset_to_stage("demo", stage)
+        r = self.client.post("/api/projects/demo/generate/reset", json={"to_stage": "characters"})
+        self.assertEqual(r.status_code, 400)
+        self.assertIn("lorebook", r.json()["detail"].lower())
 
     def test_reset_endpoint(self):
         r = self.client.post("/api/projects/demo/generate/reset", json={"to_stage": "chapters"})

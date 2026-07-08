@@ -425,14 +425,25 @@ def list_project_versions(project_name: str) -> list[dict[str, Any]]:
 
 # ─── Reset to a generation stage (Phase 1 / B30) ──────────────────────────────
 
-_RESET_STAGE_ORDER = ["concept", "outline", "characters", "worldbuilding", "chapters", "formatting"]
+_RESET_STAGE_ORDER = ["concept", "outline", "chapters", "formatting"]
+
+# NEVER reset targets: characters/worldbuilding are the user's LOREBOOK — hand-built,
+# brainstormed, imported. An early version cleared them in the reset cascade and destroyed
+# user data. Reset only ever touches generation artifacts (concept suggestions, outline
+# structure, chapter prose, manuscript). To regenerate lore, use "Re-run stage" (which
+# augments existing records) or delete entities explicitly in the Lorebook.
+_LORE_STAGES = ("characters", "worldbuilding")
 
 
 def reset_to_stage(project_name: str, to_stage: str) -> dict[str, Any]:
     """Reset generation back to `to_stage`: snapshot the project (Versions) first, then clear
-    that stage's artifacts AND everything downstream so the step flow re-gates there.
-    The user's own metadata (title/description/num_chapters/lorebook) is untouched except where
-    a stage's artifact IS the data (outline chapters, generated characters, worldbuilding)."""
+    that stage's GENERATION artifacts and everything downstream so the step flow re-gates there.
+    The lorebook (characters, worldbuilding, locations, codex, arcs) is NEVER touched."""
+    if to_stage in _LORE_STAGES:
+        raise ValueError(
+            "Reset never clears the lorebook. To regenerate characters/worldbuilding use "
+            "'Re-run stage' (it augments your existing records), or delete entities in the Lorebook."
+        )
     if to_stage not in _RESET_STAGE_ORDER:
         raise ValueError(f"Unknown stage '{to_stage}'")
     kb = load_kb(project_name)
@@ -453,12 +464,6 @@ def reset_to_stage(project_name: str, to_stage: str) -> dict[str, Any]:
             kb.outline = ""
             kb.chapters = {}
             (project_dir / "outline.md").unlink(missing_ok=True)
-        elif stage == "characters":
-            kb.characters = {}
-            (project_dir / "characters.json").unlink(missing_ok=True)
-        elif stage == "worldbuilding":
-            kb.worldbuilding = None
-            (project_dir / "world.json").unlink(missing_ok=True)
         elif stage == "chapters":
             for f in project_dir.glob("chapter_*.md"):
                 f.unlink(missing_ok=True)
