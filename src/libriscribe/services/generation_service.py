@@ -55,6 +55,9 @@ class GenerationService:
         loop: asyncio.AbstractEventLoop,
         mode: str = "",
     ):
+        from libriscribe.services import task_lock
+        lock_held = task_lock.acquire(project_name, "Generation")
+        # (Narrow race with the endpoint pre-check is harmless: LM Studio queues excess calls.)
         try:
             pm = ProjectManagerAgent(event_callback=callback)
 
@@ -127,6 +130,9 @@ class GenerationService:
             logger.exception(f"Pipeline error for {project_name}: {e}")
             self.job_manager.complete_job(project_name, "failed", str(e))
             callback("error", {"stage": "pipeline", "message": str(e), "recoverable": False})
+        finally:
+            if lock_held:
+                task_lock.release(project_name)
 
     def _compute_stages(self, progress, start_from_stage: str, kb) -> list[str]:
         """Figures out which stages need to run."""

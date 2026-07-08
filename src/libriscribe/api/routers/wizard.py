@@ -55,12 +55,17 @@ def elaborate(name: str):
         raise HTTPException(status_code=404, detail="Project not found")
     if not any(str(a).strip() for a in (kb.dynamic_questions or {}).values()):
         raise HTTPException(status_code=400, detail="Answer at least one question first.")
-    from libriscribe.services import story_wizard
+    from libriscribe.services import story_wizard, task_lock
     from libriscribe.utils import parallel
 
-    run = story_wizard.elaborate(
-        create_utility_client(kb), kb, name, max_workers=parallel.resolve_max_workers(kb),
-    )
+    if not task_lock.acquire(name, "Story wizard"):
+        raise HTTPException(status_code=409, detail=task_lock.busy_detail(name))
+    try:
+        run = story_wizard.elaborate(
+            create_utility_client(kb), kb, name, max_workers=parallel.resolve_max_workers(kb),
+        )
+    finally:
+        task_lock.release(name)
     if run is None:
         raise HTTPException(status_code=400, detail="The answers produced no lore candidates.")
     return run

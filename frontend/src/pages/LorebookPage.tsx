@@ -13,7 +13,7 @@ import {
   listThreads, createThread, updateThread, deleteThread,
   parseLore,
   listReferences, uploadReference, deleteReference,
-  getGaps, deepScanGaps, getProject, getConnections, getConnectionSuggestions,
+  getGaps, deepScanGaps, getLastDeepScan, getProject, getConnections, getConnectionSuggestions,
   listSandboxRuns, getSandboxRun, deleteSandboxRun, patchSandboxCandidate, applySandboxRun, stageGapsToSandbox,
   extractCharacterStates, getTimeline,
 } from '../api/client'
@@ -407,9 +407,18 @@ export default function LorebookPage() {
       setDeepInfo(e?.response?.data?.detail || 'Deep scan failed.')
     } finally { setDeepScanning(false) }
   }
-  // (Re)load the gap report when the tab opens or lore changes. Deep-scan results are cleared
-  // (they're LLM-derived and can go stale after edits) — the user re-runs when they want them.
-  useEffect(() => { if (tab === 'Gaps') { loadGaps(); setDeepGaps(null); setDeepInfo('') } }, [tab, name, loreVersion])
+  // (Re)load the gap report when the tab opens or lore changes. The last deep scan is PERSISTED
+  // server-side, so navigating away never wastes the multi-call scan — reload it here.
+  useEffect(() => {
+    if (tab !== 'Gaps' || !name) return
+    loadGaps()
+    getLastDeepScan(name).then(r => {
+      if (r.gaps?.length) {
+        setDeepGaps(r.gaps)
+        setDeepInfo(r.scanned_at ? `Deep scan from ${new Date(r.scanned_at).toLocaleString()}${r.truncated ? ' (top matches shown)' : ''} — re-run after big lore changes.` : '')
+      } else { setDeepGaps(null); setDeepInfo('') }
+    }).catch(() => { setDeepGaps(null); setDeepInfo('') })
+  }, [tab, name, loreVersion])
 
   const TAB_FOR_TYPE: Record<string, string> = { character: 'Characters', location: 'Locations', lore: 'Lore', arc: 'Arcs', thread: 'Threads' }
   const openEntity = (target: { type: string, name: string }) => {

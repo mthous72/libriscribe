@@ -533,10 +533,15 @@ def revise_chapter(name: str, n: int, body: ReviseRequest):
     kb = project_service.load_kb(name)
     if not kb:
         raise HTTPException(status_code=404, detail="Project not found")
-    from libriscribe.services import revision
+    from libriscribe.services import revision, task_lock
 
-    client = project_service.create_llm_client(kb)  # prose -> writing model
-    result = revision.revise_chapter(client, kb, project_service.get_projects_dir() / name, n, body.guidance)
+    if not task_lock.acquire(name, "Chapter revision"):
+        raise HTTPException(status_code=409, detail=task_lock.busy_detail(name))
+    try:
+        client = project_service.create_llm_client(kb)  # prose -> writing model
+        result = revision.revise_chapter(client, kb, project_service.get_projects_dir() / name, n, body.guidance)
+    finally:
+        task_lock.release(name)
     if result is None:
         raise HTTPException(status_code=422, detail="Chapter not found or revision failed")
     return result
@@ -553,17 +558,22 @@ def extract_character_states(name: str, body: TrackStatesRequest | None = None):
     kb = project_service.load_kb(name)
     if not kb:
         raise HTTPException(status_code=404, detail="Project not found")
-    from libriscribe.services import char_state
+    from libriscribe.services import char_state, task_lock
     from libriscribe.utils import parallel
 
-    client = project_service.create_utility_client(kb)
-    summary = char_state.track_states(
-        client, kb, project_service.get_projects_dir() / name,
-        chapters=(body.chapters if body else None),
-        max_workers=parallel.resolve_max_workers(kb),
-    )
-    project_service.save_kb(name, kb)
-    return summary
+    if not task_lock.acquire(name, "State extraction"):
+        raise HTTPException(status_code=409, detail=task_lock.busy_detail(name))
+    try:
+        client = project_service.create_utility_client(kb)
+        summary = char_state.track_states(
+            client, kb, project_service.get_projects_dir() / name,
+            chapters=(body.chapters if body else None),
+            max_workers=parallel.resolve_max_workers(kb),
+        )
+        project_service.save_kb(name, kb)
+        return summary
+    finally:
+        task_lock.release(name)
 
 
 @router.get("/{name}/timeline")

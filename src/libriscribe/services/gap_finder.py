@@ -298,6 +298,34 @@ def find_undefined_entities(client, kb, texts, max_workers: int,
     return {"gaps": gaps, "scanned": len(texts), "truncated": truncated}
 
 
+# Persisted last deep-scan (so navigating away never wastes the multi-call scan).
+
+def save_deep_scan(project_dir, result: dict) -> None:
+    import json
+    from datetime import datetime, timezone
+    from pathlib import Path
+
+    payload = {**result, "scanned_at": datetime.now(timezone.utc).isoformat()}
+    try:
+        Path(project_dir).mkdir(parents=True, exist_ok=True)
+        (Path(project_dir) / "deep_scan.json").write_text(json.dumps(payload, indent=2), encoding="utf-8")
+    except OSError:
+        pass
+
+
+def load_deep_scan(project_dir) -> dict:
+    import json
+    from pathlib import Path
+
+    p = Path(project_dir) / "deep_scan.json"
+    if p.exists():
+        try:
+            return json.loads(p.read_text(encoding="utf-8"))
+        except Exception:
+            pass
+    return {"gaps": [], "scanned": 0, "truncated": False, "scanned_at": None}
+
+
 def find_gaps(kb) -> dict:
     """Return structural gaps for a project KB, plus counts by severity."""
     gaps: list[dict] = []

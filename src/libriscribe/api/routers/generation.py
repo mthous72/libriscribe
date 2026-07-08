@@ -19,6 +19,10 @@ async def start_generation(name: str, req: StartGenerationRequest | None = None)
     existing = jm.get_job(name)
     if existing and existing.status == "running":
         raise HTTPException(status_code=409, detail="Generation already in progress")
+    # One AI task per project: refuse while a batch op (deep scan, wizard, ...) holds the slot.
+    from libriscribe.services import task_lock
+    if task_lock.current(name):
+        raise HTTPException(status_code=409, detail=task_lock.busy_detail(name))
 
     job = await svc.start_generation(
         name,

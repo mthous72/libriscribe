@@ -72,24 +72,41 @@ def get_connection_suggestions(name: str, entity_type: str, entity_name: str):
     return connections.suggest_connections(kb, get_projects_dir() / name, entity_type, entity_name)
 
 
+@router.get("/{name}/gaps/deep-scan/last")
+def last_deep_scan(name: str):
+    """The persisted result of the most recent deep scan (survives navigation/reload)."""
+    if not load_kb(name):
+        raise HTTPException(status_code=404, detail="Project not found")
+    from libriscribe.services import gap_finder
+    return gap_finder.load_deep_scan(get_projects_dir() / name)
+
+
 @router.post("/{name}/gaps/deep-scan")
 def deep_scan_gaps(name: str):
     """AI pass (opt-in, costs LLM calls): scan prose + lore free-text for named entities that have
-    no lorebook record. Fans out at the project's max_concurrency (B29)."""
+    no lorebook record. Fans out at the project's max_concurrency (B29). One AI task per project
+    at a time (task_lock); the result is persisted so navigating away never wastes the scan."""
     kb = load_kb(name)
     if not kb:
         raise HTTPException(status_code=404, detail="Project not found")
-    from libriscribe.services import gap_finder
+    from libriscribe.services import gap_finder, task_lock
     from libriscribe.utils import parallel
 
-    project_dir = get_projects_dir() / name
-    texts = gap_finder.gather_source_texts(kb, project_dir)
-    if not texts:
-        return {"gaps": [], "scanned": 0, "truncated": False,
-                "detail": "No prose or lore text to scan yet."}
-    client = create_utility_client(kb)
-    workers = parallel.resolve_max_workers(kb)
-    return gap_finder.find_undefined_entities(client, kb, texts, workers)
+    if not task_lock.acquire(name, "Deep scan"):
+        raise HTTPException(status_code=409, detail=task_lock.busy_detail(name))
+    try:
+        project_dir = get_projects_dir() / name
+        texts = gap_finder.gather_source_texts(kb, project_dir)
+        if not texts:
+            return {"gaps": [], "scanned": 0, "truncated": False,
+                    "detail": "No prose or lore text to scan yet."}
+        client = create_utility_client(kb)
+        workers = parallel.resolve_max_workers(kb)
+        result = gap_finder.find_undefined_entities(client, kb, texts, workers)
+        gap_finder.save_deep_scan(project_dir, result)
+        return result
+    finally:
+        task_lock.release(name)
 
 
 # ─── Sandbox (B27 Slice A) — staged candidates, human cherry-pick ─────────────

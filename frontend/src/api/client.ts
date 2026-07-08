@@ -115,6 +115,7 @@ export const saveWizardQuestions = (name: string, questions: Record<string, stri
 export const elaborateWizard = (name: string) => api.post(`/projects/${name}/wizard/elaborate`, null, { timeout: 0 }).then(r => r.data)
 // Deep scan makes many LLM calls; disable the request timeout.
 export const deepScanGaps = (name: string): Promise<{ gaps: any[], scanned: number, truncated: boolean, detail?: string }> => api.post(`/projects/${name}/gaps/deep-scan`, null, { timeout: 0 }).then(r => r.data)
+export const getLastDeepScan = (name: string): Promise<{ gaps: any[], scanned: number, truncated: boolean, scanned_at: string | null }> => api.get(`/projects/${name}/gaps/deep-scan/last`).then(r => r.data)
 export const getConnections = (name: string, entityType: string, entityName: string): Promise<{ outgoing: any[], incoming: any[], found: boolean }> => api.get(`/projects/${name}/connections/${entityType}/${encPath(entityName)}`).then(r => r.data)
 export const getConnectionSuggestions = (name: string, entityType: string, entityName: string): Promise<{ suggestions: { type: string, name: string }[] }> => api.get(`/projects/${name}/connection-suggestions/${entityType}/${encPath(entityName)}`).then(r => r.data)
 export const listXref = (name: string) => api.get(`/projects/${name}/xref`).then(r => r.data)
