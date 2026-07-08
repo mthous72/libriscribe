@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, useId } from 'react'
-import { useParams } from 'react-router-dom'
+import { useParams, useLocation } from 'react-router-dom'
 import {
   listCharacters, createCharacter, updateCharacter, deleteCharacter,
   listLocations, createLocation, updateLocation, deleteLocation,
@@ -357,7 +357,10 @@ function SandboxPanel({ projectName, onApplied }: { projectName: string, onAppli
 
 export default function LorebookPage() {
   const { name } = useParams<{ name: string }>()
-  const [tab, setTab] = useState('Characters')
+  // Deep-link: navigate(..., { state: { tab: 'Sandbox' } }) opens that tab (the wizard uses it).
+  const location = useLocation()
+  const initialTab = (location.state as any)?.tab
+  const [tab, setTab] = useState(TABS.includes(initialTab) ? initialTab : 'Characters')
   const [characters, setCharacters] = useState<any[]>([])
   const [locations, setLocations] = useState<any[]>([])
   const [lore, setLore] = useState<any[]>([])

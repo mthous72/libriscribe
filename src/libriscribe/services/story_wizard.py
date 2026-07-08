@@ -102,6 +102,23 @@ def elaborate(client, kb, project_name: str, max_workers: int = 4) -> dict | Non
             if nm:
                 jobs.append((cat, nm, dict(rec.get("fields", {}) or {})))
 
+    # Deterministic augment/fallback: the discovery sweep (multi-entity JSON) is the least
+    # reliable pass on small local models — when it under-delivers, answers that clearly
+    # discuss EXISTING lorebook entities must still stage. Scan the answers for known entity
+    # names (no LLM) and enrich each mention through the proven per-entity extractor.
+    import re
+    seen = {(c, n.lower()) for c, n, _ in jobs}
+    for cat, attr in (("characters", "characters"), ("locations", "locations"),
+                      ("lore", "lore_entries"), ("arcs", "story_arcs")):
+        for nm in (getattr(kb, attr, {}) or {}):
+            n = str(nm).strip()
+            if len(n) < 2 or (cat, n.lower()) in seen:
+                continue
+            # Word-boundary match so short names don't hit inside words (CEE vs "proceed").
+            if re.search(r"\b" + re.escape(n) + r"\b", text, re.IGNORECASE):
+                jobs.append((cat, n, {}))
+                seen.add((cat, n.lower()))
+
     def _enrich(job):
         cat, nm, base = job
         type_key = {"characters": "character", "locations": "location", "lore": "lore", "arcs": "arc"}[cat]

@@ -88,6 +88,31 @@ class ElaborateTests(unittest.TestCase):
         run = story_wizard.elaborate(self._EClient(), kb, "demo", max_workers=1)
         self.assertEqual(run["candidates"][0]["op"], "update")
 
+    def test_mention_fallback_stages_known_entities_when_sweep_fails(self):
+        # The multi-entity discovery sweep is the flakiest pass on small local models.
+        # If it returns NOTHING, answers that mention existing KB entities must still stage
+        # (word-boundary matched, enriched via the per-entity extractor).
+        class _SweepFails:
+            def generate_content_with_json_repair(self, prompt, **kw):
+                if "brainstorming note" in prompt:   # discovery sweep -> nothing
+                    return "not json at all"
+                if "DIALOGUE VOICE" in prompt:
+                    return json.dumps({})
+                return "```json\n" + json.dumps({"motivations": "step into autonomy"}) + "\n```"
+        kb = ProjectKnowledgeBase(project_name="demo", title="T", genre="F")
+        kb.add_character(Character(name="CEE"))
+        kb.add_character(Character(name="Wren"))
+        kb.add_character(Character(name="Unmentioned"))
+        kb.dynamic_questions = {"Climax?": "CEE steps into autonomy; we proceed as Wren planned."}
+        self.svc.save_kb("demo", kb)
+        run = story_wizard.elaborate(_SweepFails(), kb, "demo", max_workers=1)
+        self.assertIsNotNone(run)
+        names = sorted(c["name"] for c in run["candidates"])
+        self.assertEqual(names, ["CEE", "Wren"])           # mentioned -> staged ("proceed" ≠ CEE)
+        self.assertNotIn("Unmentioned", names)
+        self.assertTrue(all(c["op"] == "update" for c in run["candidates"]))
+        self.assertEqual(run["candidates"][0]["fields"].get("motivations"), "step into autonomy")
+
     def test_no_answers_returns_none(self):
         kb = ProjectKnowledgeBase(project_name="demo", title="T", genre="F")
         kb.dynamic_questions = {"Q?": ""}

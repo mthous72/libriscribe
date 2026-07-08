@@ -14,6 +14,7 @@ export default function WizardPage() {
   const [saving, setSaving] = useState(false)
   const [elaborating, setElaborating] = useState(false)
   const [info, setInfo] = useState('')
+  const [error, setError] = useState('')
 
   useEffect(() => {
     if (!name) return
@@ -45,12 +46,14 @@ export default function WizardPage() {
   const elaborate = async () => {
     if (!name) return
     await persist(qa)
-    setElaborating(true); setInfo('')
+    setElaborating(true); setInfo(''); setError('')
     try {
       const run = await elaborateWizard(name)
       setInfo(`Created ${run.candidates?.length ?? 0} staged candidates.`)
-      navigate(`/projects/${name}/lorebook`)  // Sandbox tab holds the run for cherry-pick
-    } catch (e: any) { setInfo(e?.response?.data?.detail || 'Elaboration failed') }
+      navigate(`/projects/${name}/lorebook`, { state: { tab: 'Sandbox' } })  // land on the run
+    } catch (e: any) {
+      setError(e?.response?.data?.detail || 'Elaboration failed — your answers are saved; try again.')
+    }
     finally { setElaborating(false) }
   }
 
@@ -85,6 +88,7 @@ export default function WizardPage() {
         )}
       </div>
       {info && <div className="text-xs text-gray-400">{info}</div>}
+      {error && <div className="px-3 py-2 bg-red-900/30 border border-red-800 rounded-lg text-xs text-red-300">{error}</div>}
 
       <div className="space-y-3">
         {qa.map(([q, a], i) => (
