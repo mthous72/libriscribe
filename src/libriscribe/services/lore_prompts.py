@@ -105,6 +105,13 @@ SORTER_INSTRUCTION = (
     "or pad, and do not collapse everything into one field."
 )
 
+RICHNESS_INSTRUCTION = (
+    "Be COMPREHENSIVE, not summary-level: capture EVERY stated detail. Keep the author's specific "
+    "wording, names, numbers, and vivid particulars. Multi-sentence field values are expected and "
+    "encouraged — do not compress distinct facts into one vague phrase, and do not drop minor "
+    "details; they are lore."
+)
+
 CATEGORY_DEFINITIONS = (
     "- characters: a person, being, creature, android, or any named individual\n"
     "- locations: a place, building, region, or setting\n"
@@ -158,11 +165,11 @@ def build_extract_prompt(
         )
     return (
         f'Extract the details for the {type_key} named "{name}" in a {genre} book{_book(book_title)}.{hint}\n\n'
-        f"{SORTER_INSTRUCTION}\n\n"
+        f"{SORTER_INSTRUCTION}\n{RICHNESS_INSTRUCTION}\n\n"
         f"Fill these fields (every value is a plain string):\n{_field_lines(type_key)}"
         f"{existing}\n\n"
         f"Respond with ONLY a JSON object of exactly this shape:\n{json_example(type_key, name)}\n\n"
-        f"SOURCE:\n{(content or '')[:6000]}"
+        f"SOURCE:\n{(content or '')[:16000]}"
     )
 
 
@@ -180,11 +187,11 @@ def build_voice_prompt(genre: str, book_title: str, name: str, content: str, exi
         f'Capture the DIALOGUE VOICE of the character "{name}" in a {genre} book{_book(book_title)} — '
         f"how they actually speak. Base it on the SOURCE; you may make modest, consistent inferences "
         f"from their personality/background, but do not contradict stated facts.\n\n"
-        f"{SORTER_INSTRUCTION}\n\n"
+        f"{SORTER_INSTRUCTION}\n{RICHNESS_INSTRUCTION}\n\n"
         f"Fill these fields (plain strings; put each example line on its own line):\n{field_lines}"
         f"{existing}\n\n"
         f"Respond with ONLY a JSON object of exactly this shape:\n{example}\n\n"
-        f"SOURCE:\n{(content or '')[:6000]}"
+        f"SOURCE:\n{(content or '')[:16000]}"
     )
 
 
@@ -200,7 +207,7 @@ def build_classify_prompt(genre: str, book_title: str, name: str, content: str) 
     return (
         f"Sort ONE lore entry for a {genre} book{_book(book_title)} into a lorebook and extract its details.\n\n"
         f"ENTRY NAME: {name}\n"
-        f"ENTRY CONTENT:\n{(content or '')[:6000]}\n\n"
+        f"ENTRY CONTENT:\n{(content or '')[:16000]}\n\n"
         f"{SORTER_INSTRUCTION}\n\n"
         "1) Decide the single best category for this entry:\n"
         f"{CATEGORY_DEFINITIONS}\n"
@@ -252,7 +259,8 @@ def build_extract_from_text_prompt(genre: str, book_title: str, text: str) -> st
         "Include these typed fields when the note implies them:\n"
         f"{_rubric()}\n\n"
         "Only include an entity if the note gives real information about it. Do not invent entities. "
-        "Use empty strings for unknown fields.\n\n"
+        "Use empty strings for unknown fields.\n\n"        f"{RICHNESS_INSTRUCTION}\n\n"
+
         f"Respond with ONLY a JSON object of this shape:\n{example}\n\n"
         "NOTE:\n" + text
     )
@@ -274,5 +282,5 @@ def build_named_entity_prompt(genre: str, text: str) -> str:
         "pronouns, common nouns, and generic phrases. List each distinct name once, spelled as it "
         "appears, with your best guess of its type.\n\n"
         f"Respond with ONLY a JSON object of this shape:\n{example}\n\n"
-        f"TEXT:\n{(text or '')[:6000]}"
+        f"TEXT:\n{(text or '')[:16000]}"
     )

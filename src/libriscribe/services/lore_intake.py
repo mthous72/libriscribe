@@ -406,7 +406,7 @@ def llm_extract_for_type(
     def _run(use_schema: bool) -> dict:
         try:
             raw = client.generate_content_with_json_repair(
-                prompt, max_tokens=1500, temperature=0.2,
+                prompt, max_tokens=3000, temperature=0.2,
                 system_prompt=lore_prompts.BASE_SYSTEM_PROMPT,
                 json_schema=schema if use_schema else None,
             )
@@ -444,7 +444,7 @@ def _extract_voice(client, genre: str, name: str, content: str, book_title: str 
     def _run(use_schema: bool) -> dict:
         try:
             raw = client.generate_content_with_json_repair(
-                prompt, max_tokens=1000, temperature=0.3,
+                prompt, max_tokens=1600, temperature=0.3,
                 system_prompt=lore_prompts.BASE_SYSTEM_PROMPT,
                 json_schema=schema if use_schema else None,
             )
