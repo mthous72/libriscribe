@@ -162,6 +162,7 @@ class UpdateProjectSettings(BaseModel):
     max_concurrency: int | None = None  # cap on concurrent LLM calls (1 = serial)
     generation_mode: str | None = None  # 'step' (one stage per run, default) | 'auto' (legacy full run)
     prose_register: int | None = None  # B36 gated; 0/None clears
+    auto_polish: bool | None = None  # chapter drafts: auto review+edit+style vs draft-only
 
 
 @router.put("/{name}/settings", response_model=ProjectDetail)
@@ -188,6 +189,8 @@ def update_project_settings(name: str, body: UpdateProjectSettings):
         kb.generation_mode = body.generation_mode
     if body.prose_register is not None:
         kb.prose_register = body.prose_register if 1 <= int(body.prose_register) <= 5 else None
+    if body.auto_polish is not None:
+        kb.auto_polish = bool(body.auto_polish)
     project_service.save_kb(name, kb)
     return project_service.get_project_detail(name)
 

@@ -468,6 +468,17 @@ export default function ProjectDashboard() {
           </button>
         )}
         {!isRunning && (
+          <label className="text-[11px] text-gray-500 flex items-center gap-1.5" title="Auto-polish: after each chapter draft, run the automatic AI review+edit+style passes (2-3 extra full-chapter LLM calls, roughly doubles time per chapter). Draft only: you review the raw draft first and polish on demand with Revise-with-AI.">
+            Drafts
+            <select value={project.auto_polish === false ? 'draft' : 'polish'}
+              onChange={async e => { try { await updateProjectSettings(name!, { auto_polish: e.target.value === 'polish' }); refresh() } catch {} }}
+              className="px-2 py-1 bg-gray-800 border border-gray-700 rounded text-xs">
+              <option value="polish">Auto-polish</option>
+              <option value="draft">Draft only</option>
+            </select>
+          </label>
+        )}
+        {!isRunning && (
           <label className="text-[11px] text-gray-500 flex items-center gap-1.5" title="Step-by-step stops after every stage for your review; Automatic runs everything unattended (legacy)">
             Mode
             <select value={project.generation_mode === 'auto' ? 'auto' : 'step'} onChange={e => handleModeChange(e.target.value as any)}

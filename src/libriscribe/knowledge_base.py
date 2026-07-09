@@ -218,6 +218,10 @@ class ProjectKnowledgeBase(BaseModel):
     # B36 (gated): project default prose-register level 1-5; None = off. Only takes effect when
     # the feature is enabled in Advanced settings (see utils/style_register.py).
     prose_register: int | None = None
+    # Chapter drafts: True = run the automatic review+edit+style passes after each draft
+    # (~2-3 extra full-chapter LLM calls); False = draft only — the author reviews first and
+    # polishes on demand via Revise-with-AI (B34). Toggle lives next to the Mode selector.
+    auto_polish: bool = True
     llm_provider: str = "openai"
     model: str = ""  # the "Writing" model — prose, brainstorm chat, chapter generation
     utility_model: str = ""  # optional model for structured tasks (lore intake); blank ⇒ use `model`

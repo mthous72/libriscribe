@@ -505,6 +505,16 @@ class ProjectManagerAgent:
     def write_and_review_chapter(self, chapter_number: int, streaming: bool = False):
         """Writes, reviews, and potentially edits a chapter."""
         self.write_chapter(chapter_number, streaming=streaming)
+
+        # Draft-only mode: skip the automatic review/edit/style passes (2-3 extra full-chapter
+        # LLM calls) — the author reviews the raw draft and polishes on demand (Revise-with-AI).
+        if self.project_knowledge_base is not None and not getattr(
+            self.project_knowledge_base, "auto_polish", True
+        ):
+            self.emit("log", {"level": "info",
+                              "message": f"Chapter {chapter_number}: draft only (auto-polish off)."})
+            return
+
         self.review_content(chapter_number)
 
         if (

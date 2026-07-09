@@ -59,6 +59,7 @@ class ProjectDetail(BaseModel):
     generation_mode: str = "step"
     canon_rules: list[str] = Field(default_factory=list)
     prose_register: int | None = None
+    auto_polish: bool = True
     suggested_title: str = ""
     suggested_logline: str = ""
     suggested_description: str = ""

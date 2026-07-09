@@ -26,6 +26,7 @@
     "The protagonist never uses modern slang."
   ],
   "prose_register": null,
+  "auto_polish": true,
   "llm_provider": "local",
   "model": "example-writing-model",
   "utility_model": "example-utility-model",
