@@ -32,7 +32,7 @@ def revise_chapter(client, kb, project_dir: Path, chapter_number: int, guidance:
         "instructions say otherwise. Keep roughly the same length unless asked. Return ONLY the "
         "revised chapter text in Markdown — no commentary, no preamble.\n\n"
         f"AUTHOR'S REVISION INSTRUCTIONS:\n{guidance.strip() or 'Improve the prose quality.'}\n\n"
-        f"CHAPTER {chapter_number} (original):\n{original[:24000]}"
+        f"CHAPTER {chapter_number} (original):\n{original[:48000]}"
     )
     system_prompt = None
     if getattr(kb, "writing_system_prompt", ""):

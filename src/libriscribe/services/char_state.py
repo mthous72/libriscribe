@@ -32,7 +32,7 @@ def _prompt(kb, chapter_number: int, text: str) -> str:
         '              "physical_state": "<injuries/condition or empty>"}],\n'
         '  "events": [{"description": "<key event>", "characters_involved": ["<name>"]}]\n'
         "}\n```\n\n"
-        f"CHAPTER {chapter_number} TEXT:\n{text[:12000]}"
+        f"CHAPTER {chapter_number} TEXT:\n{text[:24000]}"
     )
 
 

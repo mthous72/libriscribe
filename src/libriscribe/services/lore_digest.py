@@ -79,7 +79,7 @@ def canon_block(kb) -> str:
     )
 
 
-def grounding_block(kb, max_tokens: int = 1600) -> str:
+def grounding_block(kb, max_tokens: int = 3200) -> str:
     """The digest wrapped in the instruction that makes it binding, plus the canon rules (B32).
     Empty if no lore exists AND no canon rules are set."""
     digest = build_lore_digest(kb, max_tokens)

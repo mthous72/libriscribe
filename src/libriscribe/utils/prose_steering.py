@@ -44,7 +44,7 @@ def writing_system_prompt(kb) -> str:
     return CREATIVE_WRITING_SYSTEM_PROMPT
 
 
-def continuity_block(prior_prose: str, max_words: int = 800) -> str:
+def continuity_block(prior_prose: str, max_words: int = 2000) -> str:
     """The tail of the prose written immediately before this scene, plus the rules that stop a
     small model from re-describing and recycling imagery (the top cause of repetitive output).
     Empty when there's no prior prose (first scene of chapter 1)."""

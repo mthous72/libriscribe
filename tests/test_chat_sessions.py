@@ -93,6 +93,7 @@ class RollingMemoryTests(unittest.TestCase):
         client = self._FakeClient()
         orig = chat._RECENT_WINDOW_TOKENS
         try:
+            chat._RECENT_WINDOW_TOKENS = 1000   # force old turns out of the window
             summary, start = chat._manage_session_memory("demo", self.kb, s, client)
         finally:
             chat._RECENT_WINDOW_TOKENS = orig

@@ -169,7 +169,7 @@ def build_extract_prompt(
         f"Fill these fields (every value is a plain string):\n{_field_lines(type_key)}"
         f"{existing}\n\n"
         f"Respond with ONLY a JSON object of exactly this shape:\n{json_example(type_key, name)}\n\n"
-        f"SOURCE:\n{(content or '')[:16000]}"
+        f"SOURCE:\n{(content or '')[:24000]}"
     )
 
 
@@ -191,7 +191,7 @@ def build_voice_prompt(genre: str, book_title: str, name: str, content: str, exi
         f"Fill these fields (plain strings; put each example line on its own line):\n{field_lines}"
         f"{existing}\n\n"
         f"Respond with ONLY a JSON object of exactly this shape:\n{example}\n\n"
-        f"SOURCE:\n{(content or '')[:16000]}"
+        f"SOURCE:\n{(content or '')[:24000]}"
     )
 
 
@@ -207,7 +207,7 @@ def build_classify_prompt(genre: str, book_title: str, name: str, content: str) 
     return (
         f"Sort ONE lore entry for a {genre} book{_book(book_title)} into a lorebook and extract its details.\n\n"
         f"ENTRY NAME: {name}\n"
-        f"ENTRY CONTENT:\n{(content or '')[:16000]}\n\n"
+        f"ENTRY CONTENT:\n{(content or '')[:24000]}\n\n"
         f"{SORTER_INSTRUCTION}\n\n"
         "1) Decide the single best category for this entry:\n"
         f"{CATEGORY_DEFINITIONS}\n"
@@ -282,5 +282,5 @@ def build_named_entity_prompt(genre: str, text: str) -> str:
         "pronouns, common nouns, and generic phrases. List each distinct name once, spelled as it "
         "appears, with your best guess of its type.\n\n"
         f"Respond with ONLY a JSON object of this shape:\n{example}\n\n"
-        f"TEXT:\n{(text or '')[:16000]}"
+        f"TEXT:\n{(text or '')[:24000]}"
     )

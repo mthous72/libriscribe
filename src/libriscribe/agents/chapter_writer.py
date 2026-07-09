@@ -122,7 +122,7 @@ class ChapterWriterAgent(Agent):
                 if self.context_builder:
                     context_block = self.context_builder.build_scene_context(chapter_number, scene, chapter)
                     scene_prompt = prompts.ENRICHED_SCENE_PROMPT.format(context_block=context_block, **prompt_kwargs)
-                    max_gen_tokens = 3500
+                    max_gen_tokens = 5000
                 else:
                     scene_prompt = prompts.SCENE_PROMPT.format(**prompt_kwargs)
 

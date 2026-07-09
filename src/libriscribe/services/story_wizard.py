@@ -33,7 +33,7 @@ def generate_questions(client, kb, count: int = 7) -> dict[str, str]:
     (preserving any existing answers); falls back to the fixed core on failure."""
     from libriscribe.services.lore_digest import build_lore_digest
 
-    digest = build_lore_digest(kb, max_tokens=900)
+    digest = build_lore_digest(kb, max_tokens=1600)
     existing_block = f"\n\nThe project already has this established lore:\n{digest}\n" if digest else ""
     prompt = (
         f"You are helping an author flesh out a {kb.genre} {kb.category} book "

@@ -76,7 +76,7 @@ def _now() -> str:
 
 
 # Rolling-memory tuning (per session).
-_RECENT_WINDOW_TOKENS = 3000   # recent turns sent verbatim (token-budgeted, replaces the old 12-msg cap)
+_RECENT_WINDOW_TOKENS = 8000   # recent turns sent verbatim (token-budgeted; sized for large local contexts)
 _SUMMARY_BATCH = 4             # only (re)summarize once this many messages have dropped out of the window
 _SUMMARY_CHAR_CAP = 4000       # keep the running summary compact
 
@@ -256,7 +256,7 @@ def _session_meta(s: dict) -> dict:
 
 # ─── RAG context ──────────────────────────────────────────────────────────────
 
-def _build_lore_context(name: str, kb, query: str, max_tokens: int = 1800, force_keyword: bool = False) -> str:
+def _build_lore_context(name: str, kb, query: str, max_tokens: int = 4000, force_keyword: bool = False) -> str:
     """Assemble a token-bounded block of established lore relevant to `query`.
 
     Prefer the retrieval index; fall back to a compact dump of KB entities.
@@ -398,7 +398,7 @@ class ChatRequest(BaseModel):
     prefs: dict | None = None      # B23: {verbosity: low|medium|high}; falls back to the session's
 
 
-def _reference_context(name: str, kb, query: str, max_tokens: int = 800, force_keyword: bool = False) -> str:
+def _reference_context(name: str, kb, query: str, max_tokens: int = 1600, force_keyword: bool = False) -> str:
     """A token-bounded block of imported reference material relevant to `query` (B19).
 
     Clearly labelled as source material, NOT canon lore, so the model treats it as
@@ -489,7 +489,7 @@ def _focus_context(kb, name: str, focus_type: str, focus_name: str, message: str
     if entity is None:
         return None
 
-    budget = TokenBudget(2600)
+    budget = TokenBudget(6000)
     lines = [f"{focus_type.title()} '{resolved}':"]
     for k, v in entity.model_dump().items():
         if k == "name" or v in (None, "", [], {}):
