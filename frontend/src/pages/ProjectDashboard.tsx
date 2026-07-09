@@ -211,6 +211,9 @@ export default function ProjectDashboard() {
   const handleStart = async (opts?: { mode?: string, start_from_stage?: string, chapter?: number }) => {
     try {
       await startGeneration(name!, { streaming: true, ...(opts || {}) })
+      // Mark running locally: without this, consecutive step runs went completed->completed
+      // (no transition), so the chapters/progress reload effects never fired again.
+      useGenerationStore.getState().setJobStatus('running')
     } catch (e: any) {
       alert(e?.response?.data?.detail || 'Failed to start')
     }

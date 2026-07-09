@@ -53,6 +53,7 @@ export function useWebSocket(projectName: string | undefined) {
             break
           case 'error':
             addLog(`ERROR [${payload.stage}]: ${payload.message}`)
+            if (payload.stage === 'pipeline') setJobStatus('failed')
             break
           case 'stage_awaiting_approval':
             // Step mode (B30): one stage finished; the pipeline stopped for the author's review.

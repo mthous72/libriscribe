@@ -176,6 +176,8 @@ def inspect_project_progress(
         display_statuses.setdefault("worldbuilding", "skipped")
     if expected_chapters and not missing_chapters:
         display_statuses["chapters"] = "complete"
+    elif existing_chapters:
+        display_statuses.setdefault("chapters", "in_progress")
     if manuscript_exists:
         display_statuses["formatting"] = "complete"
 
