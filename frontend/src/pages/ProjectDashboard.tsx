@@ -450,7 +450,10 @@ export default function ProjectDashboard() {
               <option value="" disabled>Reset to…</option>
               {['concept', 'outline', 'chapters', 'formatting'].map(s => <option key={s} value={s} className="capitalize">{s}</option>)}
             </select>
-            <button onClick={() => handleStart({ mode: 'auto' })} className="px-3 py-2 bg-gray-800 hover:bg-gray-700 rounded-lg text-xs" title="Legacy behavior: run every remaining stage without stopping">
+            <button onClick={() => {
+              if (!confirm('Run ALL remaining stages without stopping — including writing every remaining chapter back-to-back with no review between them?\n\nFor chapter-at-a-time review, use "Run next step" instead.')) return
+              handleStart({ mode: 'auto' })
+            }} className="px-3 py-2 bg-gray-800 hover:bg-gray-700 rounded-lg text-xs" title="Legacy behavior: runs every remaining stage AND every remaining chapter without pausing for review">
               Run all remaining
             </button>
           </>
