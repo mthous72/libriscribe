@@ -13,7 +13,7 @@ from libriscribe.settings import Settings
 from libriscribe.workflow_state import inspect_project_progress
 from libriscribe.utils.file_utils import get_existing_chapter_numbers, resolve_chapter_path
 
-EXPORT_SCHEMA_VERSION = 1
+EXPORT_SCHEMA_VERSION = 2  # v2: adds subdir payload (versions/, chat_sessions/, sandbox/, status)
 
 
 def get_projects_dir() -> Path:
@@ -220,6 +220,9 @@ def backfill_locations(kb: ProjectKnowledgeBase) -> None:
 
 # ─── Import / Export ──────────────────────────────────────────────────────────
 
+_BUNDLE_SUBDIRS = ("versions", "chat_sessions", "sandbox")
+
+
 def _safe_filename(fname: Any) -> bool:
     return (
         isinstance(fname, str)
@@ -249,12 +252,27 @@ def export_project_bundle(project_name: str) -> dict[str, Any] | None:
             pass
 
     extras: dict[str, str] = {}
-    chat = project_dir / "chat_history.json"
-    if chat.exists():
-        try:
-            extras["chat_history.json"] = chat.read_text(encoding="utf-8")
-        except Exception:
-            pass
+    for fname in ("chat_history.json", "project_status.json", "deep_scan.json", "llm_usage.jsonl"):
+        f = project_dir / fname
+        if f.exists():
+            try:
+                extras[fname] = f.read_text(encoding="utf-8")
+            except Exception:
+                pass
+
+    # Subdirectory payload (schema v2): versions (snapshots), brainstorm sessions, sandbox runs.
+    # Keyed by "subdir/filename" — flat names only, validated on import.
+    subdirs: dict[str, str] = {}
+    for sub in _BUNDLE_SUBDIRS:
+        d = project_dir / sub
+        if not d.is_dir():
+            continue
+        for f in sorted(d.iterdir()):
+            if f.is_file() and _safe_filename(f.name):
+                try:
+                    subdirs[f"{sub}/{f.name}"] = f.read_text(encoding="utf-8")
+                except Exception:
+                    pass
 
     return {
         "app": "libriscribe",
@@ -264,6 +282,7 @@ def export_project_bundle(project_name: str) -> dict[str, Any] | None:
         "project_data": project_data,
         "files": files,
         "extras": extras,
+        "subdirs": subdirs,
     }
 
 
@@ -305,6 +324,19 @@ def import_project_bundle(bundle: dict[str, Any], target_name: str | None = None
         if _safe_filename(fname) and isinstance(content, str):
             try:
                 (project_dir / fname).write_text(content, encoding="utf-8")
+            except Exception:
+                pass
+
+    # Schema v2 subdir payload: versions/, chat_sessions/, sandbox/ — strictly validated
+    # ("<known subdir>/<flat safe filename>"), so a crafted bundle can't escape the project dir.
+    for rel, content in (bundle.get("subdirs") or {}).items():
+        if not isinstance(rel, str) or not isinstance(content, str) or rel.count("/") != 1:
+            continue
+        sub, fname = rel.split("/", 1)
+        if sub in _BUNDLE_SUBDIRS and _safe_filename(fname):
+            try:
+                (project_dir / sub).mkdir(parents=True, exist_ok=True)
+                (project_dir / sub / fname).write_text(content, encoding="utf-8")
             except Exception:
                 pass
 
