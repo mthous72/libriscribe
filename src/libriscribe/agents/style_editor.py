@@ -48,8 +48,20 @@ class StyleEditorAgent(Agent):
         {chapter_content}
         ---
         """
+        # Same steering stack as the draft — and enough output budget for a FULL chapter
+        # (3000 tokens truncated 3-6k-token chapters mid-rewrite).
+        from libriscribe.utils.prose_steering import steering_blocks, writing_system_prompt
+        steer = steering_blocks(project_knowledge_base)
+        if steer:
+            prompt = (
+                f"{steer}\n\nPRESERVE THE REGISTER: keep the intensity, register, and "
+                f"explicitness of the original — polish the style WITHOUT toning it down.\n\n{prompt}"
+            )
         try:
-            response = self.llm_client.generate_content(prompt, max_tokens=3000)
+            response = self.llm_client.generate_content(
+                prompt, max_tokens=8000,
+                system_prompt=writing_system_prompt(project_knowledge_base),
+            )
 
             if "```" in response:
                 start = response.find("```") + 3

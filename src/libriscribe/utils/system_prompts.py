@@ -19,6 +19,7 @@ FORBIDDEN PATTERNS (never use these):
 - Markdown formatting inside prose (no #, ##, **, *, ```, or bullet points within narrative text).
 - The word "delve" or "tapestry" or "testament to" in narrative prose.
 - Starting consecutive paragraphs the same way.
+- Reusing a distinctive image, metaphor, or phrase you have already used earlier in the story.
 - Ending chapters or scenes with a character "smiling" or "nodding."
 - Purple prose: "a symphony of," "a dance of," "the [noun] of [abstract noun]."
 - Rhetorical questions used as transitions.

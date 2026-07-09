@@ -80,6 +80,22 @@ class ChapterWriterAgent(Agent):
             ordered_scenes = sorted(chapter.scenes, key=lambda s: s.scene_number)
             scene_contents = []
 
+            # Continuity (anti-repetition): each scene sees the tail of the prose written just
+            # before it — earlier scenes of this chapter, or the previous chapter's ending for
+            # scene 1. Without this, every scene was generated blind to prior prose, and small
+            # models re-invent the same imagery over and over.
+            prev_chapter_tail = ""
+            if chapter_number > 1 and project_knowledge_base.project_dir:
+                pdir = Path(project_knowledge_base.project_dir)
+                for cand in (pdir / f"chapter_{chapter_number - 1}_revised.md",
+                             pdir / f"chapter_{chapter_number - 1}.md"):
+                    if cand.exists():
+                        try:
+                            prev_chapter_tail = cand.read_text(encoding="utf-8")
+                        except OSError:
+                            pass
+                        break
+
             for scene in ordered_scenes:
                 self.emit("log", {"level": "info", "message": f"Creating Scene/Section {scene.scene_number} of {len(ordered_scenes)}..."})
 
@@ -117,6 +133,13 @@ class ChapterWriterAgent(Agent):
                     scene_prompt += f"\n\nTARGET LENGTH: Aim for approximately {scene.target_word_count} words for this scene."
 
                 scene_prompt += f"\n\nIMPORTANT: Begin the scene with the title: **{scene_title}**"
+
+                # Prior-prose continuity block (see utils/prose_steering.continuity_block).
+                from libriscribe.utils.prose_steering import continuity_block
+                prior = "\n\n".join(scene_contents) if scene_contents else prev_chapter_tail
+                cont = continuity_block(prior)
+                if cont:
+                    scene_prompt = f"{cont}\n\n{scene_prompt}"
 
                 # B32: the author's inviolable canon rules bind every scene.
                 from libriscribe.services.lore_digest import canon_block

@@ -48,7 +48,7 @@ class TokenBudget:
 class ContextBuilder:
     """Assembles a rich context block for each scene prompt."""
 
-    MAX_CONTEXT_TOKENS = 2000
+    MAX_CONTEXT_TOKENS = 6000  # local models have large contexts; 2000 starved the scenes of lore
 
     def __init__(self, kb: ProjectKnowledgeBase, search_service=None):
         self.kb = kb
@@ -61,7 +61,7 @@ class ContextBuilder:
 
         # Reserve a bounded slice for imported reference material (B19) first, so it isn't
         # crowded out by canon context; it is appended last (background source material).
-        reference_section = self._build_reference_context(scene, budget, max_ref_tokens=450)
+        reference_section = self._build_reference_context(scene, budget, max_ref_tokens=900)
 
         sections: list[str] = []
 

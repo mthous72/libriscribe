@@ -58,7 +58,21 @@ class EditorAgent(Agent):
 
             self.emit("log", {"level": "info", "message": f"Editing Chapter {chapter_number} based on feedback..."})
             prompt = prompts.EDITOR_PROMPT.format(**prompt_data) + scene_titles_instruction
-            edited_response = self.llm_client.generate_content(prompt, max_tokens=8000)
+
+            # The edit pass must carry the SAME steering as the draft (register + canon +
+            # writing system prompt) — a bare rewrite normalizes the prose back to generic.
+            from libriscribe.utils.prose_steering import steering_blocks, writing_system_prompt
+            steer = steering_blocks(project_knowledge_base)
+            if steer:
+                prompt = (
+                    f"{steer}\n\nPRESERVE THE REGISTER: your edit must keep the intensity, "
+                    f"register, and explicitness of the original — improve the prose WITHOUT "
+                    f"toning it down.\n\n{prompt}"
+                )
+            edited_response = self.llm_client.generate_content(
+                prompt, max_tokens=8000,
+                system_prompt=writing_system_prompt(project_knowledge_base),
+            )
             if "```" in edited_response:
                 start = edited_response.find("```") + 3
                 end = edited_response.rfind("```")
