@@ -17,6 +17,13 @@ EXPORT_SCHEMA_VERSION = 1
 
 
 def get_projects_dir() -> Path:
+    # Explicit override first: lets a source run point at the installed app's store
+    # (%LOCALAPPDATA%\LibriScribe\projects) and gives tests real isolation. This env var
+    # was previously read by tests but silently ignored here — tests were stomping the
+    # repo projects dir.
+    override = os.environ.get("LIBRISCRIBE_PROJECTS_DIR")
+    if override:
+        return Path(override)
     settings = Settings()
     return Path(settings.projects_dir)
 
