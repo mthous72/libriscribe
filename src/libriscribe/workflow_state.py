@@ -158,6 +158,27 @@ def inspect_project_progress(
     else:
         next_step = "complete"
 
+    # Overlay ACTUAL data completion onto the recorded statuses. project_status.json is only
+    # written during generation runs — projects whose content arrived via import, the wizard,
+    # or manual work otherwise showed every stage card dark ("pending") despite complete data.
+    display_statuses = dict(stage_statuses)
+    if concept_complete:
+        display_statuses["concept"] = "complete"
+    if outline_complete:
+        display_statuses["outline"] = "complete"
+    if has_character_data(project_dir, project_knowledge_base):
+        display_statuses["characters"] = "complete"
+    elif not characters_required:
+        display_statuses.setdefault("characters", "skipped")
+    if has_worldbuilding_data(project_dir, project_knowledge_base):
+        display_statuses["worldbuilding"] = "complete"
+    elif not worldbuilding_required:
+        display_statuses.setdefault("worldbuilding", "skipped")
+    if expected_chapters and not missing_chapters:
+        display_statuses["chapters"] = "complete"
+    if manuscript_exists:
+        display_statuses["formatting"] = "complete"
+
     return ProjectProgress(
         concept_complete=concept_complete,
         outline_complete=outline_complete,
@@ -170,5 +191,5 @@ def inspect_project_progress(
         manuscript_exists=manuscript_exists,
         next_step=next_step,
         interrupted_stage=interrupted_stage,
-        stage_statuses=stage_statuses,
+        stage_statuses=display_statuses,
     )
