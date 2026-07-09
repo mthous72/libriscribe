@@ -32,6 +32,38 @@ class EffectiveModeTests(unittest.TestCase):
         self.assertEqual(GenerationService._effective_mode(self._kb("bogus")), "step")
 
 
+class TargetChapterTests(unittest.TestCase):
+    def _run(self, coro):
+        import asyncio
+        return asyncio.run(coro)
+
+    def _pm(self, existing=(1, 2, 3)):
+        class PM:
+            def __init__(self):
+                self.written = []
+            def does_chapter_exist(self, n):
+                return n in existing
+            def write_and_review_chapter(self, n, streaming=False):
+                self.written.append(n)
+        return PM()
+
+    def test_target_chapter_writes_exactly_that_one_even_if_it_exists(self):
+        from libriscribe.services.generation_service import GenerationService
+        svc = GenerationService(job_manager=None)
+        kb = ProjectKnowledgeBase(project_name="t", title="T", genre="F", num_chapters=5)
+        pm = self._pm(existing=(1, 2, 3))
+        self._run(svc._run_chapters(pm, kb, False, None, one_chapter=True, target_chapter=2))
+        self.assertEqual(pm.written, [2])   # explicit pick: regenerates an existing chapter
+
+    def test_no_target_still_writes_next_missing(self):
+        from libriscribe.services.generation_service import GenerationService
+        svc = GenerationService(job_manager=None)
+        kb = ProjectKnowledgeBase(project_name="t", title="T", genre="F", num_chapters=5)
+        pm = self._pm(existing=(1, 2))
+        self._run(svc._run_chapters(pm, kb, False, None, one_chapter=True))
+        self.assertEqual(pm.written, [3])   # lowest missing
+
+
 class ConceptProgressWithSuggestionsTests(unittest.TestCase):
     def test_pending_suggestion_counts_as_concept_ran(self):
         # Phase 0a: concept suggests instead of overwriting; the stage must still register

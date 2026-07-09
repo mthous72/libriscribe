@@ -26,9 +26,10 @@ async def start_generation(name: str, req: StartGenerationRequest | None = None)
 
     job = await svc.start_generation(
         name,
-        start_from_stage=req.start_from_stage,
+        start_from_stage=req.start_from_stage or ("chapters" if req.chapter else ""),
         streaming=req.streaming,
         mode=req.mode,
+        chapter=req.chapter,
     )
     return jm.to_status_dict(name)
 

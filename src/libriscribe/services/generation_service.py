@@ -27,13 +27,14 @@ class GenerationService:
         streaming: bool = True,
         ws_queue: asyncio.Queue | None = None,
         mode: str = "",
+        chapter: int | None = None,
     ) -> GenerationJob:
         loop = asyncio.get_running_loop()
         queue = ws_queue or asyncio.Queue()
         callback = build_event_callback(project_name, queue, loop)
 
         task = asyncio.create_task(
-            self._run_pipeline(project_name, start_from_stage, streaming, queue, callback, loop, mode)
+            self._run_pipeline(project_name, start_from_stage, streaming, queue, callback, loop, mode, chapter)
         )
         job = self.job_manager.create_job(project_name, task, queue)
         return job
@@ -54,6 +55,7 @@ class GenerationService:
         callback,
         loop: asyncio.AbstractEventLoop,
         mode: str = "",
+        chapter: int | None = None,
     ):
         from libriscribe.services import task_lock
         lock_held = task_lock.acquire(project_name, "Generation")
@@ -99,7 +101,7 @@ class GenerationService:
                 if job:
                     job.current_stage = stage
 
-                await self._run_stage(pm, stage, kb, streaming, job, step_mode=step_mode)
+                await self._run_stage(pm, stage, kb, streaming, job, step_mode=step_mode, target_chapter=chapter)
 
             if step_mode and stages_to_run:
                 done_stage = stages_to_run[0]
@@ -155,7 +157,7 @@ class GenerationService:
             stages.append("formatting")
         return stages
 
-    async def _run_stage(self, pm: ProjectManagerAgent, stage: str, kb, streaming: bool, job: GenerationJob | None, step_mode: bool = False):
+    async def _run_stage(self, pm: ProjectManagerAgent, stage: str, kb, streaming: bool, job: GenerationJob | None, step_mode: bool = False, target_chapter: int | None = None):
         if stage == "concept":
             await asyncio.to_thread(pm.generate_concept)
         elif stage == "outline":
@@ -165,7 +167,7 @@ class GenerationService:
         elif stage == "worldbuilding":
             await asyncio.to_thread(pm.generate_worldbuilding)
         elif stage == "chapters":
-            await self._run_chapters(pm, kb, streaming, job, one_chapter=step_mode)
+            await self._run_chapters(pm, kb, streaming, job, one_chapter=step_mode, target_chapter=target_chapter)
         elif stage == "formatting":
             project_dir = pm.project_dir
             if project_dir:
@@ -173,9 +175,17 @@ class GenerationService:
                 await asyncio.to_thread(pm.format_book, output_path)
 
     async def _run_chapters(self, pm: ProjectManagerAgent, kb, streaming: bool, job: GenerationJob | None,
-                            one_chapter: bool = False):
+                            one_chapter: bool = False, target_chapter: int | None = None):
         """Write missing chapters. In step mode (``one_chapter``) write ONLY the next missing
-        chapter, then return — the author approves each chapter before the next is written."""
+        chapter, then return — the author approves each chapter before the next is written.
+        ``target_chapter`` writes exactly THAT chapter — including regenerating one that
+        already exists (the author picked it explicitly)."""
+        if target_chapter is not None:
+            if job:
+                job.current_chapter = target_chapter
+            await asyncio.to_thread(pm.write_and_review_chapter, target_chapter, streaming)
+            return
+
         total_chapters = kb.num_chapters
         if isinstance(total_chapters, tuple):
             total_chapters = total_chapters[1]

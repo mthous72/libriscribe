@@ -208,7 +208,7 @@ export default function ProjectDashboard() {
   if (loading) return <div className="text-gray-400">Loading...</div>
   if (!project) return <div className="text-red-400">Project not found</div>
 
-  const handleStart = async (opts?: { mode?: string, start_from_stage?: string }) => {
+  const handleStart = async (opts?: { mode?: string, start_from_stage?: string, chapter?: number }) => {
     try {
       await startGeneration(name!, { streaming: true, ...(opts || {}) })
     } catch (e: any) {
@@ -278,6 +278,7 @@ export default function ProjectDashboard() {
 
   const isRunning = jobStatus === 'running'
   const isPaused = jobStatus === 'paused_for_review'
+  const totalChapters = Array.isArray(project?.num_chapters) ? Math.max(...project.num_chapters.map(Number)) : (Number(project?.num_chapters) || 0)
 
   return (
     <div className="space-y-6">
@@ -445,6 +446,22 @@ export default function ProjectDashboard() {
               <option value="" disabled>Re-run stage…</option>
               {STAGES.map(s => <option key={s} value={s} className="capitalize">{s}</option>)}
             </select>
+            {totalChapters > 0 && (
+              <select defaultValue="" onChange={e => {
+                const v = e.target.value; e.target.value = ''
+                if (!v) return
+                const n = Number(v)
+                const exists = chapters.some((c: any) => c.chapter_number === n)
+                if (exists && !confirm(`Chapter ${n} already exists — regenerate it from its outline? The current text will be overwritten (save a Version first if you want a rollback point).`)) return
+                handleStart({ chapter: n })
+              }} className="px-2 py-2 bg-gray-800 border border-gray-700 rounded-lg text-xs" title="Write or regenerate ONE specific chapter (✓ = already written)">
+                <option value="" disabled>Write chapter…</option>
+                {Array.from({ length: totalChapters }, (_, i) => i + 1).map(n => {
+                  const done = chapters.some((c: any) => c.chapter_number === n)
+                  return <option key={n} value={n}>{done ? `✓ Chapter ${n} (rewrite)` : `Chapter ${n}`}</option>
+                })}
+              </select>
+            )}
             <select defaultValue="" onChange={e => { const v = e.target.value; e.target.value = ''; handleReset(v) }}
               className="px-2 py-2 bg-gray-800 border border-gray-700 rounded-lg text-xs" title="Snapshot, then clear this stage's generated output + everything after it. Your lorebook (characters, worldbuilding) is never touched.">
               <option value="" disabled>Reset to…</option>
