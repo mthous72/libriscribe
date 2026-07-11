@@ -55,9 +55,38 @@ const providers = [
   { name: 'local', configured: false },
 ]
 
+// B45: the workbench-tree aggregate (chapters w/ scenes, lore names, arcs, threads).
+const workbenchTree = {
+  stage_statuses: progress.stage_statuses, next_step: 'chapters',
+  outline_set: true, num_chapters: 5,
+  chapters: [
+    { chapter_number: 1, title: 'The Vanishing Coastline', summary_set: true, has_file: true, unstructured: false, word_count: 3120, scenes: [
+      { scene_number: 1, summary_set: true, has_prose: true, word_count: 1000 },
+      { scene_number: 2, summary_set: true, has_prose: true, word_count: 2120 },
+    ] },
+    { chapter_number: 2, title: 'Ink and Bone', summary_set: true, has_file: true, unstructured: true, word_count: 2890, scenes: [] },
+    { chapter_number: 3, title: 'The Salt Road', summary_set: false, has_file: false, unstructured: false, word_count: 0, scenes: [] },
+  ],
+  characters: [{ name: 'Mira', role: 'protagonist', fields_set: 4, has_voice: true }, { name: 'Captain Vos', role: 'mentor', fields_set: 2, has_voice: false }],
+  locations: [{ name: 'Saltrow' }],
+  lore: [{ name: 'Living Cartography', entry_type: 'magic' }],
+  arcs: [{ name: 'Mira’s Awakening', arc_type: 'main', status: 'active', milestones: [
+    { name: 'First redraw', milestone_type: 'inciting_incident', target_chapter: 1, actual_chapter: 1, status: 'completed', description: 'Mira redraws the coast.' },
+  ] }],
+  threads: [],
+  worldbuilding_fields_set: 3,
+}
+
 function bodyFor(pathname: string): unknown {
   const p = pathname.replace(/^\/api/, '')
   if (p === '/projects') return []
+  if (p === '/projects/demo/workbench-tree') return workbenchTree
+  // The docked brainstorm pane loads sessions on mount (the drawer only did when opened).
+  if (p === '/projects/demo/chat/sessions') return [{ id: 'abc123', title: 'General', focus: null, prefs: { verbosity: 'medium' }, message_count: 0 }]
+  if (p.startsWith('/projects/demo/chat/sessions/')) return { id: 'abc123', title: 'General', focus: null, prefs: { verbosity: 'medium' }, messages: [] }
+  if (p.startsWith('/projects/demo/impact/')) return { entity: '', chapters: [], scenes: [], total_mentions: 0 }
+  if (p === '/projects/demo/chapters/1/scene-prose') return { exists: true, unstructured: false, scenes: [{ scene_number: 1, has_prose: true, word_count: 1000 }, { scene_number: 2, has_prose: true, word_count: 2120 }] }
+  if (/^\/projects\/demo\/chapters\/1\/scene-prose\/\d+$/.test(p)) return { scene_number: 1, text: chapter1.content, word_count: 1000 }
   if (p === '/projects/demo') return project
   if (p === '/projects/demo/progress') return progress
   if (p === '/projects/demo/versions') return versions

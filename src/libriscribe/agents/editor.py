@@ -33,18 +33,20 @@ class EditorAgent(Agent):
             reviewer_agent = ContentReviewerAgent(self.llm_client, self.event_callback)
             review_results = reviewer_agent.execute(chapter_path)
 
-            scene_titles = self.extract_scene_titles(chapter_content)
+            # B39: scene delimiters are structural markers ("### Scene N"), not reader-facing
+            # titles. Preserve them verbatim; never invent titles or summary-fragment headings.
+            scene_markers = self.extract_scene_markers(chapter_content)
             scene_titles_instruction = ""
-            if scene_titles:
-                scene_titles_str = "\n".join(f"- {title}" for title in scene_titles)
+            if scene_markers:
+                markers_str = "\n".join(f"- {m}" for m in scene_markers)
                 scene_titles_instruction = f"""
-                    IMPORTANT: This chapter contains scene titles that must be preserved in your edit.
-                    Make sure each scene begins with its title in bold format (using **Scene X: Title**).
-                    Here are the scene titles to preserve:
+                    IMPORTANT: This chapter is divided into scenes by delimiter lines. Keep each
+                    delimiter line EXACTLY as written, on its own line, at the same scene break:
 
-                    {scene_titles_str}
+                    {markers_str}
 
-                    If any scene is missing a title in the format "**Scene X: Title**", please add an appropriate title.
+                    Do NOT add any other scene titles, headings, or labels, and do not turn the
+                    delimiters into prose.
                     """
             prompt_data = {
                 "chapter_number": chapter_number,
@@ -58,6 +60,12 @@ class EditorAgent(Agent):
 
             self.emit("log", {"level": "info", "message": f"Editing Chapter {chapter_number} based on feedback..."})
             prompt = prompts.EDITOR_PROMPT.format(**prompt_data) + scene_titles_instruction
+
+            # B40: name the chapter's overused phrases so the edit pass actively varies them.
+            from libriscribe.utils.repetition_guard import repetition_report_block
+            report = repetition_report_block(chapter_content)
+            if report:
+                prompt += f"\n\n{report}"
 
             # The edit pass must carry the SAME steering as the draft (register + canon +
             # writing system prompt) — a bare rewrite normalizes the prose back to generic.
@@ -93,6 +101,8 @@ class EditorAgent(Agent):
                     revised_chapter = edited_response
 
             if revised_chapter:
+                from libriscribe.utils.prose_sanitizer import sanitize_prose
+                revised_chapter = sanitize_prose(revised_chapter)
                 revised_chapter_path = str(Path(project_knowledge_base.project_dir) / f"chapter_{chapter_number}_revised.md")
                 write_markdown_file(revised_chapter_path, revised_chapter)
                 self.emit("log", {"level": "info", "message": f"Edited chapter {chapter_number} saved!"})
@@ -117,12 +127,13 @@ class EditorAgent(Agent):
                 return line.replace("#", "").strip()
         return "Untitled Chapter"
 
-    def extract_scene_titles(self, chapter_content: str) -> list[str]:
-        """Extracts scene titles from chapter content."""
+    def extract_scene_markers(self, chapter_content: str) -> list[str]:
+        """Extracts scene delimiter lines: '### Scene N' (current) or the legacy
+        '**Scene X: ...**' bold titles still present in older chapter files."""
         import re
-        titles = []
+        markers = []
         for line in chapter_content.split("\n"):
-            match = re.match(r'\*\*Scene\s+\d+:\s*(.+?)\*\*', line.strip())
-            if match:
-                titles.append(line.strip())
-        return titles
+            stripped = line.strip()
+            if re.match(r'#{1,6}\s*Scene\s+\d+\s*$', stripped) or re.match(r'\*\*Scene\s+\d+:.*\*\*$', stripped):
+                markers.append(stripped)
+        return markers

@@ -405,6 +405,9 @@ Instructions:
 - Make the scene flow naturally and avoid unnecessary exposition.
 - Ensure the scene ends in a way that connects smoothly to the next scene.
 - Use language and style appropriate for the genre.
+- Output ONLY the scene's prose. Do not write any title, heading, or label (no "Scene X:", no chapter title).
+- Never restate, paraphrase, or reference the scene summary text itself — it is a beat sheet for you, not prose. Open in-scene with action, dialogue, or a concrete sensory detail.
+- PROGRESS THE STORY: this scene must end in a different story state than it began. Never re-discover, re-examine, or re-explain anything the reader has already seen. If part of this scene's brief has already happened in an earlier scene, do NOT depict it again — start from its aftermath and cover only what is new.
 
 Important: Focus on showing rather than telling. Create an immersive experience that brings the scene to life.
 
@@ -436,6 +439,9 @@ Instructions:
 - Advance the story according to the scene's goal and emotional beat.
 - Connect smoothly to the next scene.
 - Use language and style appropriate for the genre.
+- Output ONLY the scene's prose. Do not write any title, heading, or label (no "Scene X:", no chapter title).
+- Never restate, paraphrase, or reference the scene summary text itself — it is a beat sheet for you, not prose. Open in-scene with action, dialogue, or a concrete sensory detail.
+- PROGRESS THE STORY: this scene must end in a different story state than it began. Never re-discover, re-examine, or re-explain anything the reader has already seen. If part of this scene's brief has already happened in an earlier scene, do NOT depict it again — start from its aftermath and cover only what is new.
 - Write entirely in {language}.
 """
 

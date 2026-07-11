@@ -8,12 +8,16 @@ import { mockApi } from './mockApi'
  * inline links above it.
  */
 
+// B45: '/projects/demo' IS the workbench now; the old outline/chapter URLs redirect into it,
+// and the dashboard lives on at /automation.
 const ROUTES = [
   '/',
   '/projects/new',
   '/settings',
   '/projects/demo',
-  '/projects/demo/outline',
+  '/projects/demo?sel=scene:1.1',
+  '/projects/demo?sel=outline',
+  '/projects/demo/automation',
   '/projects/demo/lorebook',
   '/projects/demo/chapters/1',
 ]
@@ -60,9 +64,10 @@ test.describe('modals fit within a short landscape viewport', () => {
   test('chapter AI-context modal stays inside 812x375', async ({ page }) => {
     await mockApi(page)
     await page.setViewportSize({ width: 812, height: 375 })
+    // Legacy chapter URL → workbench with the chapter selected (B45 redirect).
     await page.goto('/projects/demo/chapters/1', { waitUntil: 'load' })
 
-    await page.getByRole('button', { name: 'Preview AI context' }).click()
+    await page.getByRole('button', { name: 'AI context' }).click()
     const card = page.locator('.max-w-2xl').first()
     await expect(card).toBeVisible()
 

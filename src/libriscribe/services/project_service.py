@@ -344,7 +344,12 @@ def import_project_bundle(bundle: dict[str, Any], target_name: str | None = None
 
 
 _MD_PATTERNS = [
-    (re.compile(r"^#{1,6}\s*", re.M), ""),          # headings
+    # B39: headings and scene markers are structure, not story — drop the LINES entirely
+    # (previously only the '#' marks were stripped, so 'Chapter 1: ...' and truncated
+    # 'Scene N: ...' scaffolding leaked into the reader's text).
+    (re.compile(r"^\*\*Scene\s+\d+:.*\*\*\s*$\n?", re.M), ""),  # legacy bold scene titles
+    (re.compile(r"^Scene\s+\d+\s*:.*$\n?", re.M), ""),  # legacy plain-text summary echoes
+    (re.compile(r"^#{1,6}\s*\S.*$\n?", re.M), ""),   # heading lines (incl. '### Scene N')
     (re.compile(r"\*\*(.+?)\*\*", re.S), r"\1"),     # bold
     (re.compile(r"(?<!\*)\*(?!\*)(.+?)\*", re.S), r"\1"),  # italic *
     (re.compile(r"__(.+?)__", re.S), r"\1"),         # bold _
@@ -372,7 +377,8 @@ def export_story_text(project_name: str) -> str | None:
         path = resolve_chapter_path(project_dir, n)
         if not path.exists():
             continue
-        prose = _strip_markdown(path.read_text(encoding="utf-8")).strip()
+        from libriscribe.utils.prose_sanitizer import sanitize_prose
+        prose = sanitize_prose(_strip_markdown(path.read_text(encoding="utf-8")))
         if not prose:
             continue
         chapter = kb.get_chapter(n)

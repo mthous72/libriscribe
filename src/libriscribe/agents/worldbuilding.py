@@ -41,6 +41,12 @@ class WorldbuildingAgent(Agent):
                 description=project_knowledge_base.description
             )
 
+            # B42: ground in the author's established lore (Phase-0 pattern).
+            from libriscribe.services.lore_digest import grounding_block
+            lore = grounding_block(project_knowledge_base)
+            if lore:
+                prompt = f"{lore}\n\n{prompt}"
+
             worldbuilding_json_str = self.llm_client.generate_content_with_json_repair(prompt, max_tokens=4000, temperature=0.7)
             if not worldbuilding_json_str:
                 self.emit("log", {"level": "error", "message": "Worldbuilding generation failed."})
@@ -110,9 +116,30 @@ class WorldbuildingAgent(Agent):
                     else:
                         logger.debug(f"Ignoring unexpected field: {key}")
 
-                project_knowledge_base.worldbuilding = clean_worldbuilding
+                # B42: NEVER overwrite the author's worldbuilding (this used to replace the
+                # whole object). Generated values fill EMPTY fields directly; fields the
+                # author already wrote become pending sandbox suggestions instead.
+                existing = project_knowledge_base.worldbuilding
+                conflicts: dict[str, str] = {}
+                filled = 0
+                for key in expected_fields:
+                    new_val = str(getattr(clean_worldbuilding, key, "") or "").strip()
+                    if not new_val:
+                        continue
+                    current = str(getattr(existing, key, "") or "").strip()
+                    if not current:
+                        setattr(existing, key, new_val)
+                        filled += 1
+                    elif current != new_val:
+                        conflicts[key] = new_val
 
-                self.emit("log", {"level": "info", "message": "World elements created"})
+                if conflicts:
+                    self._stage_worldbuilding_suggestions(project_knowledge_base, conflicts)
+                self.emit("log", {"level": "info", "message": (
+                    f"World elements created ({filled} field(s) filled"
+                    + (f", {len(conflicts)} suggestion(s) staged for review" if conflicts else "")
+                    + ")"
+                )})
                 for key, value in project_knowledge_base.worldbuilding.model_dump().items():
                     if value and isinstance(value, str) and value.strip():
                         self.emit("log", {"level": "info", "message": f"  {key.replace('_', ' ').title()}: {value[:100]}..."})
@@ -135,3 +162,25 @@ class WorldbuildingAgent(Agent):
         except Exception as e:
             self.logger.exception(f"Error generating worldbuilding details: {e}")
             self.emit("log", {"level": "error", "message": f"Failed to generate worldbuilding details: {e}"})
+
+    def _stage_worldbuilding_suggestions(self, pkb: ProjectKnowledgeBase, conflicts: dict[str, str]) -> None:
+        """B42: generated values for fields the author already wrote become ONE pending
+        sandbox candidate — applied only on explicit acceptance, never automatically."""
+        try:
+            from libriscribe.services import sandbox
+
+            candidate = sandbox.new_candidate(
+                "worldbuilding", "Worldbuilding", conflicts, op="update",
+                source="worldbuilding_generator",
+                rationale=(
+                    "Generation produced new content for worldbuilding fields the author "
+                    "already filled: " + ", ".join(sorted(conflicts))
+                ),
+            )
+            run = sandbox.create_run(pkb.project_name, {"kind": "generation_worldbuilding"}, [candidate])
+            self.emit("log", {"level": "info", "message": (
+                f"{len(conflicts)} worldbuilding suggestion(s) staged for review "
+                f"(sandbox run {run['id']})."
+            )})
+        except Exception as e:
+            logger.warning(f"Failed to stage worldbuilding suggestions: {e}")

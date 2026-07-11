@@ -69,6 +69,10 @@ class LLMClient:
         self.settings = Settings()
         self.llm_provider = llm_provider
         self._client_cache: Dict[str, object] = {}
+        # Reasoning models spend tokens thinking before answering. Once observed for a
+        # model, remember its worst-case thinking cost and add it to every later request
+        # up front — streaming can't retry, so preemption is its only defense.
+        self._observed_reasoning: Dict[str, int] = {}
         self.client = self._get_client_for_provider(llm_provider)
         self.default_model = self._get_default_model_for_provider(llm_provider)
         self.model = self.default_model
@@ -337,6 +341,42 @@ class LLMClient:
             )
         return ""
 
+    _THINK_TAG_RE = re.compile(r"<think>.*?</think>\s*|<reasoning>.*?</reasoning>\s*", re.S | re.I)
+
+    @classmethod
+    def _strip_reasoning(cls, text: str) -> str:
+        """Remove inline chain-of-thought blocks a reasoning model may leave in its answer."""
+        if not text:
+            return ""
+        text = cls._THINK_TAG_RE.sub("", text)
+        # Orphaned closing tag: the opener was consumed by the chat template.
+        for closer in ("</think>", "</reasoning>"):
+            if closer in text:
+                text = text.split(closer, 1)[1]
+        return text.strip()
+
+    @staticmethod
+    def _reasoning_tokens(response) -> int:
+        """Tokens the model spent in its private think channel (0 for non-reasoning models)."""
+        try:
+            details = getattr(response.usage, "completion_tokens_details", None)
+            return int(getattr(details, "reasoning_tokens", 0) or 0)
+        except Exception:
+            return 0
+
+    @classmethod
+    def _harvest_openai_content(cls, response) -> str:
+        return cls._strip_reasoning((response.choices[0].message.content or "")).strip()
+
+    def _reasoning_allowance(self, model: str) -> int:
+        """Preemptive extra budget for a model known to think (observed cost + margin)."""
+        seen = self._observed_reasoning.get(model, 0)
+        return seen + 1024 if seen else 0
+
+    def _note_reasoning(self, model: str, tokens: int) -> None:
+        if tokens > self._observed_reasoning.get(model, 0):
+            self._observed_reasoning[model] = tokens
+
     def _generate_once(
         self,
         route: ModelRoute,
@@ -361,7 +401,9 @@ class LLMClient:
             if system_prompt:
                 messages.append({"role": "system", "content": system_prompt})
             messages.append({"role": "user", "content": request_prompt})
-            base = dict(model=model, messages=messages, max_tokens=max_tokens, temperature=temperature)
+            # Models already known to think get their observed thinking cost added up front.
+            effective_max = max_tokens + self._reasoning_allowance(model)
+            base = dict(model=model, messages=messages, max_tokens=effective_max, temperature=temperature)
             if json_schema:
                 rf = structured_output.response_format_openai(json_schema)
                 response = _call_or_degrade(
@@ -370,7 +412,38 @@ class LLMClient:
                 )
             else:
                 response = client.chat.completions.create(**base)
-            content = (response.choices[0].message.content or "").strip()
+            content = self._harvest_openai_content(response)
+
+            # Reasoning models (Qwen3/Hermes-style) spend tokens in a private think channel
+            # BEFORE the answer — observed: ~2.5k thinking tokens for a two-sentence ask —
+            # so a budget sized for the answer gets eaten and content comes back empty or
+            # truncated. Escalate the budget up to twice. Ordinary truncation (no reasoning
+            # tokens) is intentional scene-length capping and is NOT retried.
+            def _thought(resp) -> int:
+                t = self._reasoning_tokens(resp)
+                if not t and not self._harvest_openai_content(resp):
+                    t = len(getattr(resp.choices[0].message, "reasoning_content", None) or "") // 3
+                return t
+
+            thought = _thought(response)
+            if thought:
+                self._note_reasoning(model, thought)
+            for extra in (6144, 16384):
+                if getattr(response.choices[0], "finish_reason", "") != "length" or thought <= 0:
+                    break
+                bumped = dict(base, max_tokens=max_tokens + max(extra, thought * 2))
+                logger.info(
+                    "Reasoning model spent ~%s tokens thinking on a %s-token budget; "
+                    "retrying with %s.", thought, base["max_tokens"], bumped["max_tokens"],
+                )
+                response = client.chat.completions.create(**bumped)
+                retried = self._harvest_openai_content(response)
+                thought = _thought(response)
+                if thought:
+                    self._note_reasoning(model, thought)
+                if len(retried) > len(content):
+                    content = retried
+
             if provider == "openrouter" and "```json" not in content and "{" in content:
                 json_match = re.search(r"\{.*\}", content, re.DOTALL)
                 if json_match:
@@ -532,6 +605,53 @@ class LLMClient:
             json_schema=json_schema,
         )
 
+    class _ThinkStreamFilter:
+        """Drops <think>...</think> spans from streamed content deltas, tolerating tags
+        split across chunk boundaries. Reasoning models that inline their chain-of-thought
+        would otherwise stream it straight into the live preview and the stored prose."""
+
+        OPEN, CLOSE = "<think>", "</think>"
+
+        def __init__(self):
+            self.in_think = False
+            self.buf = ""
+
+        def feed(self, text: str) -> str:
+            self.buf += text
+            out = []
+            while True:
+                if self.in_think:
+                    end = self.buf.find(self.CLOSE)
+                    if end == -1:
+                        self.buf = self.buf[-(len(self.CLOSE) - 1):]
+                        break
+                    self.buf = self.buf[end + len(self.CLOSE):]
+                    self.in_think = False
+                else:
+                    start = self.buf.find(self.OPEN)
+                    if start == -1:
+                        keep = 0
+                        for k in range(len(self.OPEN) - 1, 0, -1):
+                            if self.buf.endswith(self.OPEN[:k]):
+                                keep = k
+                                break
+                        emit_len = len(self.buf) - keep
+                        if emit_len > 0:
+                            out.append(self.buf[:emit_len])
+                            self.buf = self.buf[emit_len:]
+                        break
+                    out.append(self.buf[:start])
+                    self.buf = self.buf[start + len(self.OPEN):]
+                    self.in_think = True
+            return "".join(out)
+
+        def flush(self) -> str:
+            if self.in_think:
+                self.buf = ""
+                return ""
+            out, self.buf = self.buf, ""
+            return out
+
     def generate_content_streaming(
         self,
         prompt: str,
@@ -558,13 +678,20 @@ class LLMClient:
             response = client.chat.completions.create(
                 model=model,
                 messages=messages,
-                max_tokens=max_tokens,
+                # Streaming can't retry — a known thinker gets its allowance preemptively.
+                max_tokens=max_tokens + self._reasoning_allowance(model),
                 temperature=temperature,
                 stream=True,
             )
+            think_filter = self._ThinkStreamFilter()
             for chunk in response:
                 if chunk.choices and chunk.choices[0].delta and chunk.choices[0].delta.content:
-                    yield chunk.choices[0].delta.content
+                    passed = think_filter.feed(chunk.choices[0].delta.content)
+                    if passed:
+                        yield passed
+            tail = think_filter.flush()
+            if tail:
+                yield tail
             return
 
         if provider == "claude":

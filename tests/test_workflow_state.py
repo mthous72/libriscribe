@@ -43,7 +43,9 @@ class WorkflowStateTests(unittest.TestCase):
         self.assertFalse(progress.worldbuilding_complete)
         self.assertEqual(progress.chapter_numbers_complete, [1])
         self.assertEqual(progress.missing_chapters, [2, 3])
-        self.assertEqual(progress.next_step, "worldbuilding")
+        # B45: characters/worldbuilding left the pipeline — they no longer gate next_step
+        # (the flags above still report their data state for display).
+        self.assertEqual(progress.next_step, "chapters")
 
     def test_inspect_project_progress_reports_complete_project(self):
         with tempfile.TemporaryDirectory() as tmpdir:

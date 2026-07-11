@@ -247,6 +247,32 @@ def delete_character(name: str, char_name: str):
     save_kb(name, kb)
 
 
+@router.post("/{name}/characters/{char_name:path}/voice-profile")
+def propose_voice_profile(name: str, char_name: str):
+    """B45: generate a voice profile for ONE character — returned UNSAVED. The author
+    reviews/edits it in the voice-profile editor and saves via the normal character PUT.
+    (Voice is what chapter writing actually needs from the old characters stage.)"""
+    kb = load_kb(name)
+    if not kb:
+        raise HTTPException(status_code=404, detail="Project not found")
+    char = kb.get_character(char_name)
+    if not char:
+        raise HTTPException(status_code=404, detail="Character not found")
+    from libriscribe.agents.character_generator import generate_voice_profile
+    from libriscribe.services import task_lock
+    from libriscribe.services.project_service import create_utility_client
+
+    if not task_lock.acquire(name, f"Voice profile: {char_name}"):
+        raise HTTPException(status_code=409, detail=task_lock.busy_detail(name))
+    try:
+        vp = generate_voice_profile(create_utility_client(kb), char, kb)
+    finally:
+        task_lock.release(name)
+    if vp is None:
+        raise HTTPException(status_code=422, detail="The model returned no usable voice profile — try again.")
+    return {"character": char_name, "voice_profile": vp.model_dump()}
+
+
 # ─── Locations ────────────────────────────────────────────────────
 
 @router.get("/{name}/locations")
@@ -369,6 +395,139 @@ def list_arcs(name: str):
     return list(kb.story_arcs.values())
 
 
+# ─── Milestones (B45 — index-addressed sub-resource) ──────────────
+# Registered BEFORE the greedy single-arc {arc_name:path} routes so they can't be swallowed.
+# Sub-endpoints (not whole-arc PUT) so a user edit and a verification write can't race.
+# The AI only ever writes `proposal`; `status` belongs to the user and flips freely.
+
+def _get_arc_or_404(kb, arc_name: str):
+    arc = kb.story_arcs.get(arc_name)
+    if arc is None:
+        for key, val in kb.story_arcs.items():  # case-insensitive fallback (matches chat focus)
+            if key.lower() == arc_name.lower():
+                return val
+        raise HTTPException(status_code=404, detail="Story arc not found")
+    return arc
+
+
+def _milestone_or_404(arc, idx: int):
+    if idx < 0 or idx >= len(arc.milestones or []):
+        raise HTTPException(status_code=404, detail=f"Milestone index {idx} not found")
+    return arc.milestones[idx]
+
+
+class MilestoneRequest(BaseModel):
+    name: str | None = None
+    milestone_type: str | None = None
+    target_chapter: int | None = None
+    actual_chapter: int | None = None
+    description: str | None = None
+    status: str | None = None
+
+
+class VerifyMilestonesRequest(BaseModel):
+    chapter: int
+
+
+class ProposalAction(BaseModel):
+    action: str  # 'accept' | 'reject'
+
+
+@router.post("/{name}/milestones/verify")
+def verify_milestones(name: str, body: VerifyMilestonesRequest):
+    """B45: AI-grade every milestone targeting a chapter against its ACTUAL prose. Writes
+    proposals only — the user approves each flag. Task-locked (one utility-model call)."""
+    kb = load_kb(name)
+    if not kb:
+        raise HTTPException(status_code=404, detail="Project not found")
+    from libriscribe.services import milestone_verifier, task_lock
+    from libriscribe.services.project_service import create_utility_client
+
+    if not milestone_verifier.targeted_milestones(kb, body.chapter):
+        raise HTTPException(status_code=422,
+                            detail=f"No milestones target Chapter {body.chapter}.")
+    if not task_lock.acquire(name, f"Milestone check: Chapter {body.chapter}"):
+        raise HTTPException(status_code=409, detail=task_lock.busy_detail(name))
+    try:
+        results = milestone_verifier.verify_chapter(
+            create_utility_client(kb), kb, get_projects_dir() / name, body.chapter)
+        save_kb(name, kb)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+    finally:
+        task_lock.release(name)
+    return {"chapter": body.chapter, "results": results}
+
+
+@router.post("/{name}/arcs/{arc_name:path}/milestones/{idx}/proposal")
+def act_on_proposal(name: str, arc_name: str, idx: int, body: ProposalAction):
+    """Accept ⇒ status follows the verdict (completed sets actual_chapter; not_completed
+    re-opens a possibly-faked flag); reject ⇒ proposal dropped, status untouched. Either
+    way the flag stays user-flippable."""
+    kb = load_kb(name)
+    if not kb:
+        raise HTTPException(status_code=404, detail="Project not found")
+    arc = _get_arc_or_404(kb, arc_name)
+    m = _milestone_or_404(arc, idx)
+    if m.proposal is None:
+        raise HTTPException(status_code=422, detail="This milestone has no pending proposal")
+    if body.action == "accept":
+        if m.proposal.proposed_status == "completed":
+            m.status = "completed"
+            m.actual_chapter = m.proposal.chapter
+        elif m.proposal.proposed_status == "not_completed":
+            m.status = "pending"
+            m.actual_chapter = None
+        m.proposal = None
+    elif body.action == "reject":
+        m.proposal = None
+    else:
+        raise HTTPException(status_code=400, detail="action must be 'accept' or 'reject'")
+    save_kb(name, kb)
+    return {"index": idx, "milestone": m.model_dump()}
+
+
+@router.post("/{name}/arcs/{arc_name:path}/milestones")
+def add_milestone(name: str, arc_name: str, req: MilestoneRequest):
+    from libriscribe.knowledge_base import ArcMilestone
+
+    kb = load_kb(name)
+    if not kb:
+        raise HTTPException(status_code=404, detail="Project not found")
+    arc = _get_arc_or_404(kb, arc_name)
+    data = {k: v for k, v in req.model_dump(exclude_unset=True).items() if v is not None}
+    if not data.get("name"):
+        raise HTTPException(status_code=400, detail="Milestone name is required")
+    arc.milestones.append(ArcMilestone(**data))
+    save_kb(name, kb)
+    return {"index": len(arc.milestones) - 1, "milestone": arc.milestones[-1].model_dump()}
+
+
+@router.put("/{name}/arcs/{arc_name:path}/milestones/{idx}")
+def update_milestone(name: str, arc_name: str, idx: int, req: MilestoneRequest):
+    """Partial edit — including flipping `status` (unflag/reflag anytime)."""
+    kb = load_kb(name)
+    if not kb:
+        raise HTTPException(status_code=404, detail="Project not found")
+    arc = _get_arc_or_404(kb, arc_name)
+    m = _milestone_or_404(arc, idx)
+    for k, v in req.model_dump(exclude_unset=True).items():
+        setattr(m, k, v)
+    save_kb(name, kb)
+    return {"index": idx, "milestone": m.model_dump()}
+
+
+@router.delete("/{name}/arcs/{arc_name:path}/milestones/{idx}", status_code=204)
+def delete_milestone(name: str, arc_name: str, idx: int):
+    kb = load_kb(name)
+    if not kb:
+        raise HTTPException(status_code=404, detail="Project not found")
+    arc = _get_arc_or_404(kb, arc_name)
+    _milestone_or_404(arc, idx)
+    arc.milestones.pop(idx)
+    save_kb(name, kb)
+
+
 @router.get("/{name}/arcs/{arc_name:path}")
 def get_arc(name: str, arc_name: str):
     kb = load_kb(name)
@@ -423,6 +582,20 @@ def delete_arc(name: str, arc_name: str):
     save_kb(name, kb)
 
 
+# ─── Downstream impact (B45 slice 5 — advisory, no LLM) ──────────
+
+@router.get("/{name}/impact/{entity_name:path}")
+def get_entity_impact(name: str, entity_name: str):
+    """Where an entity is referenced across written prose + the outline — so the author can
+    see downstream context before editing. Editing NEVER regenerates anything; this only
+    makes that visible."""
+    kb = load_kb(name)
+    if not kb:
+        raise HTTPException(status_code=404, detail="Project not found")
+    from libriscribe.services.impact import entity_impact
+    return entity_impact(kb, get_projects_dir() / name, entity_name)
+
+
 # ─── Worldbuilding ────────────────────────────────────────────────
 
 @router.get("/{name}/worldbuilding")
@@ -448,6 +621,54 @@ def update_worldbuilding(name: str, req: WorldbuildingRequest):
             setattr(kb.worldbuilding, field, value)
     save_kb(name, kb)
     return kb.worldbuilding.model_dump()
+
+
+class WorldFieldRequest(BaseModel):
+    field: str
+    guidance: str = ""
+
+
+@router.post("/{name}/worldbuilding/generate-field")
+def generate_worldbuilding_field(name: str, body: WorldFieldRequest):
+    """B45: propose text for ONE worldbuilding field — grounded in the lore digest, returned
+    UNSAVED (the author reviews/edits, then saves via the normal worldbuilding PUT). Tiny
+    context by design: one field per call is the local-model sweet spot."""
+    kb = load_kb(name)
+    if not kb:
+        raise HTTPException(status_code=404, detail="Project not found")
+    if not hasattr(Worldbuilding(), body.field):
+        raise HTTPException(status_code=400, detail=f"Unknown worldbuilding field '{body.field}'")
+    from libriscribe.services import task_lock
+    from libriscribe.services.lore_digest import grounding_block
+    from libriscribe.services import lore_prompts
+    from libriscribe.services.project_service import create_llm_client
+
+    current = ""
+    if kb.worldbuilding:
+        current = str(getattr(kb.worldbuilding, body.field, "") or "")
+    hint = lore_prompts.FIELD_DESCRIPTIONS.get(body.field, "")
+    label = body.field.replace("_", " ")
+    prompt = (
+        f"{grounding_block(kb, max_tokens=1500)}\n\n"
+        f"Write the '{label}' entry of the worldbuilding bible for the {kb.genre} book "
+        f"'{kb.title}'."
+        + (f" That means: {hint}." if hint else "")
+        + " Ground it in the established lore above — build on the author's world, never "
+          "contradict it. Write 1-3 tight paragraphs of concrete, usable world detail. "
+          "Return ONLY the entry text — no headings, no commentary."
+        + (f"\n\nCURRENT ENTRY (improve/extend, keep what works):\n{current[:2000]}" if current.strip() else "")
+        + (f"\n\nAUTHOR'S DIRECTION:\n{body.guidance.strip()}" if body.guidance.strip() else "")
+    )
+    if not task_lock.acquire(name, f"World field: {body.field}"):
+        raise HTTPException(status_code=409, detail=task_lock.busy_detail(name))
+    try:
+        text = create_llm_client(kb).generate_content(prompt, max_tokens=1200, temperature=0.7)
+    finally:
+        task_lock.release(name)
+    if not text or not text.strip():
+        raise HTTPException(status_code=422, detail="The model returned nothing — try again.")
+    from libriscribe.utils.prose_sanitizer import sanitize_prose
+    return {"field": body.field, "current": current, "proposed": sanitize_prose(text.strip())}
 
 
 # ─── Cross-References ─────────────────────────────────────────────
@@ -644,7 +865,8 @@ def import_lore(name: str, body: LoreImportRequest):
 # ─── Smart lore intake: parse → review → merge (B12 + B13) ────────
 
 class LoreParseRequest(BaseModel):
-    data: dict | list
+    data: dict | list | None = None
+    raw: str | None = None  # B43: raw file text — server attempts auto-repair of broken JSON
     smart: bool = False
 
 
@@ -674,7 +896,21 @@ def parse_lore(name: str, body: LoreParseRequest):
     if not kb:
         raise HTTPException(status_code=404, detail="Project not found")
 
-    detected = lore_intake.detect_and_adapt(body.data)
+    lore_data = body.data
+    repairs: list[str] = []
+    if lore_data is None:
+        if not body.raw:
+            raise HTTPException(status_code=400, detail="Provide 'data' or 'raw'.")
+        from libriscribe.utils.json_repair import repair_json
+        try:
+            lore_data, repairs = repair_json(body.raw)
+        except json.JSONDecodeError as exc:
+            raise HTTPException(status_code=400, detail=(
+                f"Invalid JSON that could not be auto-repaired: {exc.msg} "
+                f"at line {exc.lineno}, column {exc.colno}"
+            ))
+
+    detected = lore_intake.detect_and_adapt(lore_data)
     cats = detected[0] if detected else lore_intake._empty_cats()
     fmt = detected[1] if detected else "unrecognized"
     used_llm = False
@@ -692,7 +928,7 @@ def parse_lore(name: str, body: LoreParseRequest):
                 used_llm = True
                 fmt = f"{fmt} + AI"
     elif detected is None:
-        mapped = lore_intake.llm_map(_maybe_client(kb), kb.genre, body.data, book_title=kb.title)
+        mapped = lore_intake.llm_map(_maybe_client(kb), kb.genre, lore_data, book_title=kb.title)
         if lore_intake.cats_count(mapped) > 0:
             cats = mapped
             used_llm = True
@@ -705,7 +941,8 @@ def parse_lore(name: str, body: LoreParseRequest):
                    "KoboldAI / SillyTavern World Info. Enable AI-map for other formats.",
         )
 
-    return {"proposal": lore_intake.build_proposal(kb, cats), "format": fmt, "used_llm": used_llm}
+    return {"proposal": lore_intake.build_proposal(kb, cats), "format": fmt, "used_llm": used_llm,
+            "repairs": repairs}
 
 
 class ExtractFieldsRequest(BaseModel):

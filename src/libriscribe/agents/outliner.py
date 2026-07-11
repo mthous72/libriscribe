@@ -172,31 +172,108 @@ class OutlinerAgent(Agent):
             [Repeat for each scene, maintaining the exact same bullet point format]
 
             Be sure to include all main characters relevant to this chapter and create a natural flow between scenes.
+
+            CRITICAL REQUIREMENTS (B39):
+            * Each scene must advance the chapter with a DISTINCT story beat. Never repeat or
+              re-run another scene's beat — every scene must change the situation (escalate,
+              reveal, decide, or move the story).
+            * Every Summary must be 1-2 COMPLETE sentences ending with a period. Never end a
+              summary with an ellipsis ("...") or trail off mid-sentence.
             """
 
-            scene_outline_md = self.llm_client.generate_content(scene_prompt, max_tokens=2000, temperature=0.5)
-            if not scene_outline_md:
+            # B39: parse → validate (truncated summaries, duplicate beats) → one corrective
+            # retry; keep whichever attempt yields more valid scenes, then drop the invalid ones.
+            scenes = self._generate_and_parse_scenes(scene_prompt, chapter.chapter_number)
+            problems = self._find_scene_problems(scenes)
+            if problems or not scenes:
+                logger.warning(
+                    f"Scene outline for Chapter {chapter.chapter_number} has problems, retrying: {problems}"
+                )
+                retry_prompt = (
+                    scene_prompt
+                    + "\n\nA previous attempt at this outline had these problems — do NOT repeat them:\n"
+                    + "\n".join(f"- {p}" for p in problems or ["no scenes could be parsed"])
+                )
+                retry_scenes = self._generate_and_parse_scenes(retry_prompt, chapter.chapter_number)
+                if self._count_valid_scenes(retry_scenes) > self._count_valid_scenes(scenes):
+                    scenes = retry_scenes
+
+            if not scenes:
                 logger.error(f"Scene outline generation failed for Chapter {chapter.chapter_number}.")
-                return
+                return False
 
-            chapter.scenes = []
-            scene_sections = self._split_into_scene_sections(scene_outline_md)
-
-            for scene_number, scene_section in enumerate(scene_sections, 1):
-                scene_data = self._extract_scene_data(scene_section, scene_number)
-                if scene_data:
-                    scene = Scene(**scene_data)
-                    chapter.scenes.append(scene)
-                    logger.debug(f"Added Scene {scene_number} to Chapter {chapter.chapter_number}")
-                else:
-                    logger.warning(f"Failed to extract data for Scene {scene_number} in Chapter {chapter.chapter_number}")
-
-            chapter.scenes.sort(key=lambda s: s.scene_number)
+            chapter.scenes = self._keep_valid_scenes(scenes)
             return True
 
         except Exception as e:
             logger.exception(f"Error generating scene outline for chapter {chapter.chapter_number}: {e}")
             return False
+
+    def _generate_and_parse_scenes(self, scene_prompt: str, chapter_number: int) -> list[Scene]:
+        # max_tokens 2000 clipped the tail scene of 5-scene chapters mid-sentence (B39 defect #5).
+        scene_outline_md = self.llm_client.generate_content(scene_prompt, max_tokens=4000, temperature=0.5)
+        if not scene_outline_md:
+            return []
+        scenes: list[Scene] = []
+        for scene_number, scene_section in enumerate(self._split_into_scene_sections(scene_outline_md), 1):
+            scene_data = self._extract_scene_data(scene_section, scene_number)
+            if scene_data:
+                scenes.append(Scene(**scene_data))
+            else:
+                logger.warning(f"Failed to extract data for Scene {scene_number} in Chapter {chapter_number}")
+        scenes.sort(key=lambda s: s.scene_number)
+        return scenes
+
+    @staticmethod
+    def _summary_truncated(summary: str) -> bool:
+        """A 1-2 sentence summary that doesn't end in terminal punctuation was clipped
+        (token limit) or trailed off — writing a scene from it produces a broken beat."""
+        s = (summary or "").strip()
+        if not s:
+            return True
+        if s.endswith(("...", "…")):
+            return True
+        return s[-1] not in ".!?\"'”’)"
+
+    def _find_scene_problems(self, scenes: list[Scene]) -> list[str]:
+        from difflib import SequenceMatcher
+        problems = []
+        for sc in scenes:
+            if self._summary_truncated(sc.summary):
+                problems.append(f"Scene {sc.scene_number}'s summary is incomplete or ends mid-sentence")
+        for i in range(len(scenes)):
+            for j in range(i + 1, len(scenes)):
+                a = (scenes[i].summary or "").lower().strip()
+                b = (scenes[j].summary or "").lower().strip()
+                if a and b and SequenceMatcher(None, a, b).ratio() >= 0.85:
+                    problems.append(
+                        f"Scenes {scenes[i].scene_number} and {scenes[j].scene_number} repeat the same beat"
+                    )
+        return problems
+
+    def _count_valid_scenes(self, scenes: list[Scene]) -> int:
+        return len(self._keep_valid_scenes(scenes, renumber=False))
+
+    def _keep_valid_scenes(self, scenes: list[Scene], renumber: bool = True) -> list[Scene]:
+        """Drops truncated summaries and the later of any near-duplicate pair; keeps at least
+        one scene if any parsed at all."""
+        from difflib import SequenceMatcher
+        kept: list[Scene] = []
+        for sc in scenes:
+            if self._summary_truncated(sc.summary):
+                continue
+            dup = any(
+                SequenceMatcher(None, (sc.summary or "").lower(), (k.summary or "").lower()).ratio() >= 0.85
+                for k in kept
+            )
+            if not dup:
+                kept.append(sc)
+        if not kept and scenes:
+            kept = [scenes[0]]
+        if renumber:
+            for i, sc in enumerate(kept):
+                sc.scene_number = i + 1
+        return kept
 
     def _split_into_scene_sections(self, scene_outline_md: str) -> list:
         scene_outline_md = scene_outline_md.replace('\r\n', '\n').replace('\r', '\n')
@@ -609,6 +686,51 @@ Return ONLY valid JSON array, no markdown wrapper."""
         except Exception as e:
             logger.warning(f"Failed to generate arc milestones: {e}")
 
+    _PLACEHOLDER_HINTS = ("to be developed", "a new chapter in the unfolding story")
+
+    @classmethod
+    def classify_development(cls, pkb: ProjectKnowledgeBase) -> dict[str, list[int]]:
+        """Split chapters by how developed they are, for the additive 'continue the
+        outline' flow: 'summarize' = placeholder summary (needs summary + scenes),
+        'scene' = real summary but no scenes yet, 'done' = fully developed (never touch)."""
+        buckets: dict[str, list[int]] = {"summarize": [], "scene": [], "done": []}
+        for n in sorted(pkb.chapters):
+            ch = pkb.chapters[n]
+            summary = (ch.summary or "").strip()
+            placeholder = (not summary
+                           or any(h in summary.lower() for h in cls._PLACEHOLDER_HINTS)
+                           or "placeholder" in (ch.title or "").lower())
+            if placeholder:
+                buckets["summarize"].append(n)
+            elif not ch.scenes:
+                buckets["scene"].append(n)
+            else:
+                buckets["done"].append(n)
+        return buckets
+
+    @staticmethod
+    def _milestone_roadmap(pkb: ProjectKnowledgeBase, chapter_numbers: list[int]) -> str:
+        """The author's planned arc beats for the given chapters, as binding outline
+        requirements ('Chapter 7: The Mentor Revealed — ...'). Empty when no milestones
+        target these chapters."""
+        by_chapter: dict[int, list[str]] = {}
+        for arc in (pkb.story_arcs or {}).values():
+            for m in getattr(arc, "milestones", []) or []:
+                tc = getattr(m, "target_chapter", None)
+                if tc in chapter_numbers and getattr(m, "status", "") != "completed":
+                    desc = (m.description or "").strip()
+                    by_chapter.setdefault(tc, []).append(
+                        f"  - [{arc.name}] {m.name}" + (f": {desc}" if desc else "")
+                    )
+        if not by_chapter:
+            return ""
+        lines = ["PLANNED STORY BEATS (the author mapped these to specific chapters — each "
+                 "regenerated chapter MUST deliver its listed beats):"]
+        for n in sorted(by_chapter):
+            lines.append(f"Chapter {n}:")
+            lines.extend(by_chapter[n])
+        return "\n".join(lines)
+
     def execute_partial(
         self,
         pkb: ProjectKnowledgeBase,
@@ -651,8 +773,21 @@ For EACH regenerated chapter, provide:
 Ensure the regenerated chapters maintain continuity with the locked chapters.
 IMPORTANT: The content should be written entirely in {pkb.language}.
 """
+            # Phase-0 parity (was missing here): the partial regen must build on the
+            # author's lore and canon, exactly like the full outline pass.
+            from libriscribe.services.lore_digest import grounding_block
+            lore = grounding_block(pkb)
+            if lore:
+                prompt = f"{lore}\n\n{prompt}"
+
+            # The author's arc milestones map beats to specific chapters — regenerated
+            # chapters must DELIVER those beats, not invent an unrelated plot.
+            roadmap = self._milestone_roadmap(pkb, regenerate_chapters)
+            if roadmap:
+                prompt = f"{prompt}\n{roadmap}"
+
             self.emit("log", {"level": "info", "message": f"Regenerating chapters {regen_nums}..."})
-            response = self.llm_client.generate_content(prompt, max_tokens=3000, temperature=0.5)
+            response = self.llm_client.generate_content(prompt, max_tokens=6000, temperature=0.5)
             if not response:
                 self.emit("log", {"level": "error", "message": "Failed to regenerate outline."})
                 return

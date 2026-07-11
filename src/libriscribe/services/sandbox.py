@@ -22,7 +22,7 @@ from typing import Any
 
 from libriscribe.services.project_service import get_projects_dir
 
-CATEGORIES = ("characters", "locations", "lore", "arcs")
+CATEGORIES = ("characters", "locations", "lore", "arcs", "worldbuilding")
 
 # gap-finder entity_type -> sandbox category
 _GAP_TYPE_TO_CATEGORY = {"character": "characters", "location": "locations",
@@ -145,12 +145,21 @@ def apply_accepted(project_name: str, kb, run_id: str) -> dict[str, Any] | None:
     run = get_run(project_name, run_id)
     if not run:
         return None
-    records: dict[str, list] = {cat: [] for cat in CATEGORIES}
+    records: dict[str, Any] = {cat: [] for cat in CATEGORIES if cat != "worldbuilding"}
+    wb_fields: dict[str, Any] = {}
     accepted = 0
     for c in run.get("candidates", []):
-        if c.get("status") == "accepted" and c.get("category") in records:
+        if c.get("status") != "accepted":
+            continue
+        if c.get("category") == "worldbuilding":
+            # merge_apply consumes worldbuilding as ONE {"fields": ...} dict, not a list
+            wb_fields.update(c.get("fields", {}) or {})
+            accepted += 1
+        elif c.get("category") in records:
             records[c["category"]].append({"name": c["name"], "fields": c.get("fields", {})})
             accepted += 1
+    if wb_fields:
+        records["worldbuilding"] = {"fields": wb_fields}
     summary = lore_intake.merge_apply(kb, records) if accepted else {c: 0 for c in CATEGORIES}
     run["status"] = "applied"
     run["applied_at"] = _now()

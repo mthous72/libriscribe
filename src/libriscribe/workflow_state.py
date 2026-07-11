@@ -143,14 +143,13 @@ def inspect_project_progress(
             or stage_statuses.get("formatting") == "complete"
         )
 
+    # B45 Slice 6: characters/worldbuilding left the default pipeline — they no longer gate
+    # next_step (their fields stay in ProjectProgress for API/display compat; batch generation
+    # survives as opt-in tools).
     if not concept_complete:
         next_step = "concept"
     elif not outline_complete:
         next_step = "outline"
-    elif not characters_complete:
-        next_step = "characters"
-    elif not worldbuilding_complete:
-        next_step = "worldbuilding"
     elif missing_chapters:
         next_step = "chapters"
     elif not manuscript_exists:

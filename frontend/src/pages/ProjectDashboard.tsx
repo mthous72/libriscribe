@@ -3,11 +3,14 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { useProject } from '../hooks/useProject'
 import { useWebSocket } from '../hooks/useWebSocket'
 import { useGenerationStore } from '../store/generationSlice'
-import { startGeneration, cancelGeneration, resumeGeneration, resetGeneration, listChapters, getCost, updateProjectSettings, updateProjectMeta, actOnSuggestions, fetchProviderModels, getActiveModel, listVersions, saveVersion, restoreVersion, getRetrieval, setRetrieval, getStats, getAdvancedSettings } from '../api/client'
+import { startGeneration, cancelGeneration, resumeGeneration, resetGeneration, listChapters, getCost, updateProjectSettings, updateProjectMeta, actOnSuggestions, fetchProviderModels, getActiveModel, listVersions, saveVersion, restoreVersion, getRetrieval, setRetrieval, getStats, getAdvancedSettings, runBatchTool } from '../api/client'
 import ModelPicker from '../components/ModelPicker'
-import { Play, Square, BookOpen, Map, FileText, Download, Save, RefreshCw, Loader2, RotateCcw, Pencil, Sparkles } from 'lucide-react'
+import { Play, Square, BookOpen, FileText, Download, Save, RefreshCw, Loader2, RotateCcw, Pencil, Sparkles, Hammer } from 'lucide-react'
 
-const STAGES = ['concept', 'outline', 'characters', 'worldbuilding', 'chapters', 'formatting']
+// B45: the pipeline is concept → outline → chapters → formatting. Characters/worldbuilding
+// are lorebook work now; their batch generation survives as the opt-in tools below.
+const STAGES = ['concept', 'outline', 'chapters', 'formatting']
+const DISPLAY_STAGES = ['concept', 'outline', 'characters', 'worldbuilding', 'chapters', 'formatting']
 const PROVIDERS = [
   { value: 'openai', label: 'OpenAI' },
   { value: 'claude', label: 'Claude' },
@@ -289,14 +292,13 @@ export default function ProjectDashboard() {
       <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold">{project.title}</h1>
-          <p className="text-gray-400 text-sm">{project.genre} &middot; {project.category} &middot; {project.language}</p>
+          <p className="text-gray-400 text-sm"><span className="text-indigo-400 font-medium">Automation &amp; settings</span> &middot; {project.genre} &middot; {project.category} &middot; {project.language}</p>
           {project.logline && <p className="text-gray-500 text-sm mt-1 italic">{project.logline}</p>}
         </div>
         <div className="flex flex-wrap gap-2 shrink-0">
+          <button onClick={() => navigate(`/projects/${name}`)} className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 rounded-lg text-sm flex items-center gap-1" title="Back to the workbench"><Hammer size={14} /> Workbench</button>
           <button onClick={openMetaEditor} className="px-3 py-1.5 bg-gray-800 hover:bg-gray-700 rounded-lg text-sm flex items-center gap-1" title="Edit story details"><Pencil size={14} /> Edit details</button>
-          <button onClick={() => navigate(`/projects/${name}/wizard`)} className="px-3 py-1.5 bg-gray-800 hover:bg-gray-700 rounded-lg text-sm flex items-center gap-1" title="Answer questions about your story; the AI elaborates them into staged lore"><Sparkles size={14} /> Wizard</button>
-          <button onClick={() => navigate(`/projects/${name}/lorebook`)} className="px-3 py-1.5 bg-gray-800 hover:bg-gray-700 rounded-lg text-sm flex items-center gap-1"><BookOpen size={14} /> Lorebook</button>
-          <button onClick={() => navigate(`/projects/${name}/outline`)} className="px-3 py-1.5 bg-gray-800 hover:bg-gray-700 rounded-lg text-sm flex items-center gap-1"><Map size={14} /> Outline</button>
+          <button onClick={() => navigate(`/projects/${name}/lorebook`)} className="px-3 py-1.5 bg-gray-800 hover:bg-gray-700 rounded-lg text-sm flex items-center gap-1"><BookOpen size={14} /> Lore tools</button>
         </div>
       </div>
 
@@ -415,7 +417,7 @@ export default function ProjectDashboard() {
 
       {/* Pipeline Stages */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">
-        {STAGES.map(stage => {
+        {DISPLAY_STAGES.map(stage => {
           const status = stageStatuses[stage] || progress?.stage_statuses?.[stage] || 'pending'
           const colors: Record<string, string> = {
             complete: 'bg-green-900 border-green-700 text-green-300',
@@ -476,6 +478,17 @@ export default function ProjectDashboard() {
             }} className="px-3 py-2 bg-gray-800 hover:bg-gray-700 rounded-lg text-xs" title="Legacy behavior: runs every remaining stage AND every remaining chapter without pausing for review">
               Run all remaining
             </button>
+            <select defaultValue="" onChange={async e => {
+              const v = e.target.value; e.target.value = ''
+              if (!v) return
+              const label = v === 'characters' ? 'a full cast (with voice profiles; collisions stage to the sandbox for review)' : 'the worldbuilding bible (fills empty fields only; conflicts stage to the sandbox)'
+              if (!confirm(`Batch-generate ${label}?\n\nDay-to-day character/world work lives in the workbench lore section — this tool is for seeding a project.`)) return
+              try { await runBatchTool(name!, v as any); refresh() } catch (err: any) { alert(err?.response?.data?.detail || 'Tool failed to start') }
+            }} className="px-2 py-2 bg-gray-800 border border-gray-700 rounded-lg text-xs" title="Opt-in batch generation for the demoted stages (cast / world) — for one-shot seeding, not everyday editing">
+              <option value="" disabled>Batch tools…</option>
+              <option value="characters">Generate cast (AI)</option>
+              <option value="worldbuilding">Generate world (AI)</option>
+            </select>
           </>
         ) : (
           <button onClick={() => handleStart()} className="flex items-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-500 rounded-lg text-sm font-medium">

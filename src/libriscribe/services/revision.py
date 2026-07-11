@@ -43,4 +43,5 @@ def revise_chapter(client, kb, project_dir: Path, chapter_number: int, guidance:
     )
     if not revised or not revised.strip():
         return None
-    return {"original": original, "revised": revised.strip()}
+    from libriscribe.utils.prose_sanitizer import sanitize_prose
+    return {"original": original, "revised": sanitize_prose(revised)}

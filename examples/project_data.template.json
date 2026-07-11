@@ -204,7 +204,8 @@
           "target_chapter": 12,
           "actual_chapter": null,
           "description": "The Compact breaches the Keep.",
-          "status": "pending"
+          "status": "pending",
+          "proposal": null
         }
       ]
     }

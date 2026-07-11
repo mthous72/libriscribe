@@ -13,7 +13,11 @@ from libriscribe.services.project_service import get_projects_dir
 
 logger = logging.getLogger(__name__)
 
-STAGE_ORDER = ["concept", "outline", "characters", "worldbuilding", "chapters", "formatting"]
+# B45 Slice 6: characters/worldbuilding left the default pipeline — ALL character/world work
+# lives in the lorebook (per-item, human-approved). Batch generation survives only as opt-in
+# tools (POST /{name}/tools/characters|worldbuilding → run_single_stage).
+STAGE_ORDER = ["concept", "outline", "chapters", "formatting"]
+TOOL_STAGES = ("characters", "worldbuilding")
 
 
 class GenerationService:
@@ -28,16 +32,23 @@ class GenerationService:
         ws_queue: asyncio.Queue | None = None,
         mode: str = "",
         chapter: int | None = None,
+        force_stages: list[str] | None = None,
     ) -> GenerationJob:
         loop = asyncio.get_running_loop()
         queue = ws_queue or asyncio.Queue()
         callback = build_event_callback(project_name, queue, loop)
 
         task = asyncio.create_task(
-            self._run_pipeline(project_name, start_from_stage, streaming, queue, callback, loop, mode, chapter)
+            self._run_pipeline(project_name, start_from_stage, streaming, queue, callback, loop, mode, chapter,
+                               force_stages=force_stages)
         )
         job = self.job_manager.create_job(project_name, task, queue)
         return job
+
+    async def run_single_stage(self, project_name: str, stage: str) -> GenerationJob:
+        """B45: run exactly ONE stage as a job (streaming + cancel for free) regardless of
+        pipeline gating — the opt-in batch tools (cast/world) use this."""
+        return await self.start_generation(project_name, force_stages=[stage])
 
     @staticmethod
     def _effective_mode(kb, override: str = "") -> str:
@@ -56,6 +67,7 @@ class GenerationService:
         loop: asyncio.AbstractEventLoop,
         mode: str = "",
         chapter: int | None = None,
+        force_stages: list[str] | None = None,
     ):
         from libriscribe.services import task_lock
         lock_held = task_lock.acquire(project_name, "Generation")
@@ -84,13 +96,18 @@ class GenerationService:
             # Determine which stages to run
             project_dir = get_projects_dir() / project_name
             progress = inspect_project_progress(project_dir, kb)
-            stages_to_run = self._compute_stages(progress, start_from_stage, kb)
+            if force_stages:
+                # B45 tools path: exactly these stages, no gating, no step-trim.
+                stages_to_run = list(force_stages)
+                step_mode = False
+            else:
+                stages_to_run = self._compute_stages(progress, start_from_stage, kb)
 
-            # Phase 1 (B30): step mode runs exactly ONE stage per request, then stops so the
-            # author reviews/edits before explicitly running the next. 'auto' = legacy full run.
-            step_mode = self._effective_mode(kb, mode) == "step"
-            if step_mode:
-                stages_to_run = stages_to_run[:1]
+                # Phase 1 (B30): step mode runs exactly ONE stage per request, then stops so the
+                # author reviews/edits before explicitly running the next. 'auto' = legacy full run.
+                step_mode = self._effective_mode(kb, mode) == "step"
+                if step_mode:
+                    stages_to_run = stages_to_run[:1]
 
             for stage in stages_to_run:
                 # Check cancellation
@@ -147,10 +164,6 @@ class GenerationService:
             stages.append("concept")
         if not progress.outline_complete:
             stages.append("outline")
-        if progress.characters_required and not progress.characters_complete:
-            stages.append("characters")
-        if progress.worldbuilding_required and not progress.worldbuilding_complete:
-            stages.append("worldbuilding")
         if progress.missing_chapters:
             stages.append("chapters")
         if not progress.manuscript_exists:

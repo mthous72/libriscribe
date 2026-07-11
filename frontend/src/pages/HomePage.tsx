@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { listProjects, deleteProject, importProject } from '../api/client'
+import { parseJsonVerbose } from '../utils/parseJsonFile'
 import { Plus, Trash2, BookOpen, Upload } from 'lucide-react'
 
 export default function HomePage() {
@@ -15,13 +16,23 @@ export default function HomePage() {
     if (!file) return
     setImporting(true)
     try {
-      const bundle = JSON.parse(await file.text())
-      const res = await importProject({ bundle })
-      if (res.renamed) alert(`Imported as "${res.project_name}" — a project named "${res.requested_name}" already existed.`)
+      const text = await file.text()
+      let res
+      try {
+        res = await importProject({ bundle: parseJsonVerbose(text) })
+      } catch (err: any) {
+        // B43: broken JSON — send the raw text so the server can attempt auto-repair
+        if (!(err instanceof SyntaxError)) throw err
+        res = await importProject({ raw: text })
+      }
+      const notes: string[] = []
+      if (res.repairs?.length) notes.push(`The file had errors that were auto-repaired:\n- ${res.repairs.join('\n- ')}`)
+      if (res.renamed) notes.push(`Imported as "${res.project_name}" — a project named "${res.requested_name}" already existed.`)
+      if (notes.length) alert(notes.join('\n\n'))
       navigate(`/projects/${res.project_name}`)
     } catch (err: any) {
-      if (err instanceof SyntaxError) alert('That file is not valid JSON.')
-      else alert(err?.response?.data?.detail || 'Import failed')
+      if (err instanceof SyntaxError) alert(`"${file.name}" could not be imported.\n\n${err.message}`)
+      else alert(err?.response?.data?.detail || err?.message || 'Import failed')
     } finally {
       setImporting(false)
       if (fileRef.current) fileRef.current.value = ''

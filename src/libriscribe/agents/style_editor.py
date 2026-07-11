@@ -83,6 +83,8 @@ class StyleEditorAgent(Agent):
                     revised_text = response
 
             if revised_text:
+                from libriscribe.utils.prose_sanitizer import sanitize_prose
+                revised_text = sanitize_prose(revised_text)
                 write_markdown_file(chapter_path, revised_text)
                 self.emit("log", {"level": "info", "message": f"Style improvements applied to Chapter {chapter_number}!"})
             else:

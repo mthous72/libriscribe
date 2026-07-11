@@ -3,19 +3,33 @@ import { useGenerationStore } from '../store/generationSlice'
 
 export function useWebSocket(projectName: string | undefined) {
   const wsRef = useRef<WebSocket | null>(null)
-  const { addLog, setStreamBuffer, setStageStatus, setPendingReview, setJobStatus } = useGenerationStore()
+  const reconnectTimer = useRef<number | null>(null)
+  const disposed = useRef(false)
+  const {
+    addLog, appendStreamChunk, clearStreamBuffer, setStageStatus, setPendingReview, setJobStatus,
+  } = useGenerationStore()
 
   const connect = useCallback(() => {
     if (!projectName) return
 
+    // Never leave a previous socket alive: a duplicated connection makes every
+    // stream_chunk append twice and turns the live preview into interleaved garbage.
+    if (wsRef.current) {
+      wsRef.current.onclose = null
+      wsRef.current.onmessage = null
+      wsRef.current.close()
+    }
+
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
     const ws = new WebSocket(`${protocol}//${window.location.host}/ws/${projectName}`)
+    wsRef.current = ws
 
     ws.onopen = () => {
       console.log(`WS connected for ${projectName}`)
     }
 
     ws.onmessage = (event) => {
+      if (wsRef.current !== ws) return // stale socket — drop its events
       try {
         const msg = JSON.parse(event.data)
         const { type, payload } = msg
@@ -25,6 +39,7 @@ export function useWebSocket(projectName: string | undefined) {
             setJobStatus(payload.current_status || 'idle')
             break
           case 'stage_started':
+            if (payload.stage === 'chapters') clearStreamBuffer()
             setStageStatus(payload.stage, 'in_progress')
             addLog(`[${payload.stage}] ${payload.message}`)
             break
@@ -36,7 +51,7 @@ export function useWebSocket(projectName: string | undefined) {
             addLog(`[${payload.agent || ''}] ${payload.message}`)
             break
           case 'stream_chunk':
-            setStreamBuffer(prev => prev + (payload.text || ''))
+            appendStreamChunk(payload.text || '', payload.chapter, payload.scene)
             break
           case 'stream_complete':
             addLog(`Scene ${payload.scene} complete (${payload.word_count} words)`)
@@ -72,17 +87,28 @@ export function useWebSocket(projectName: string | undefined) {
 
     ws.onclose = () => {
       console.log(`WS disconnected for ${projectName}`)
-      // Auto-reconnect after 3s
-      setTimeout(() => connect(), 3000)
+      // Reconnect only if this is still the active socket and the hook is still mounted —
+      // otherwise every unmount/server-restart left a zombie timer opening extra sockets.
+      if (disposed.current || wsRef.current !== ws) return
+      reconnectTimer.current = window.setTimeout(() => connect(), 3000)
     }
-
-    wsRef.current = ws
-  }, [projectName, addLog, setStreamBuffer, setStageStatus, setPendingReview, setJobStatus])
+  }, [projectName, addLog, appendStreamChunk, clearStreamBuffer, setStageStatus, setPendingReview, setJobStatus])
 
   useEffect(() => {
+    disposed.current = false
     connect()
     return () => {
-      wsRef.current?.close()
+      disposed.current = true
+      if (reconnectTimer.current !== null) {
+        window.clearTimeout(reconnectTimer.current)
+        reconnectTimer.current = null
+      }
+      if (wsRef.current) {
+        wsRef.current.onclose = null
+        wsRef.current.onmessage = null
+        wsRef.current.close()
+        wsRef.current = null
+      }
     }
   }, [connect])
 

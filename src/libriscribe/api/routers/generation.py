@@ -15,6 +15,14 @@ async def start_generation(name: str, req: StartGenerationRequest | None = None)
     svc = get_generation_service()
     jm = get_job_manager()
 
+    # B45: characters/worldbuilding are no longer pipeline stages.
+    if req.start_from_stage in ("characters", "worldbuilding"):
+        raise HTTPException(
+            status_code=400,
+            detail=(f"'{req.start_from_stage}' is not a pipeline stage anymore — character and "
+                    f"world work lives in the lorebook. For batch generation use "
+                    f"POST /api/projects/{name}/tools/{req.start_from_stage}."))
+
     # Check if already running
     existing = jm.get_job(name)
     if existing and existing.status == "running":
@@ -31,6 +39,26 @@ async def start_generation(name: str, req: StartGenerationRequest | None = None)
         mode=req.mode,
         chapter=req.chapter,
     )
+    return jm.to_status_dict(name)
+
+
+@router.post("/{name}/tools/{stage}", response_model=JobStatus)
+async def run_batch_tool(name: str, stage: str):
+    """B45: opt-in batch generation for the demoted stages — 'characters' (cast w/ voice
+    profiles; collisions stage to the sandbox per B42) and 'worldbuilding' (fill-empty-only;
+    conflicts stage to the sandbox). Runs as a normal job: streaming + cancel work."""
+    from libriscribe.services.generation_service import TOOL_STAGES
+    if stage not in TOOL_STAGES:
+        raise HTTPException(status_code=400, detail=f"Unknown tool '{stage}' — expected one of {list(TOOL_STAGES)}")
+    svc = get_generation_service()
+    jm = get_job_manager()
+    existing = jm.get_job(name)
+    if existing and existing.status == "running":
+        raise HTTPException(status_code=409, detail="Generation already in progress")
+    from libriscribe.services import task_lock
+    if task_lock.current(name):
+        raise HTTPException(status_code=409, detail=task_lock.busy_detail(name))
+    await svc.run_single_stage(name, stage)
     return jm.to_status_dict(name)
 
 
@@ -75,6 +103,77 @@ def resume_generation(name: str, req: ResumeRequest):
 def get_current_job(name: str):
     jm = get_job_manager()
     return jm.to_status_dict(name)
+
+
+@router.post("/{name}/develop-outline")
+def develop_outline(name: str):
+    """Continue the outline from where it currently is — ADDITIVE, never overwrites.
+
+    Placeholder chapters ('summary to be developed') get a summary + scenes; chapters
+    with a real summary but no scenes get scenes only; developed chapters are untouched.
+    The intent-shaped counterpart to regenerate-outline (whose lock-then-regen model
+    read as overwrite-by-default)."""
+    from libriscribe.services.project_service import load_kb, save_kb, create_llm_client
+    from libriscribe.agents.outliner import OutlinerAgent
+
+    kb = load_kb(name)
+    if not kb:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    buckets = OutlinerAgent.classify_development(kb)
+    if not buckets["summarize"] and not buckets["scene"]:
+        raise HTTPException(status_code=400, detail="The outline is already fully developed.")
+
+    outliner = OutlinerAgent(create_llm_client(kb))
+    if buckets["summarize"]:
+        outliner.execute_partial(
+            kb,
+            locked_chapters=buckets["done"] + buckets["scene"],
+            regenerate_chapters=buckets["summarize"],
+        )
+    for n in buckets["scene"]:
+        outliner.generate_scene_outline(kb, kb.chapters[n])
+    save_kb(name, kb)
+
+    return {
+        "developed": buckets["summarize"],
+        "scenes_added": buckets["scene"],
+        "untouched": buckets["done"],
+        "chapters": [
+            {"chapter_number": ch.chapter_number, "title": ch.title,
+             "summary": ch.summary, "scene_count": len(ch.scenes)}
+            for ch in (kb.chapters[n] for n in sorted(kb.chapters))
+        ],
+    }
+
+
+@router.post("/{name}/chapters/{n}/develop-scenes")
+def develop_scenes(name: str, n: int):
+    """B45: (re)generate the scene outline for ONE chapter — validate-retry-keep-valid,
+    same primitive develop-outline uses, scoped to a single chapter."""
+    from libriscribe.services.project_service import load_kb, save_kb, create_llm_client
+    from libriscribe.services import task_lock
+    from libriscribe.agents.outliner import OutlinerAgent
+
+    kb = load_kb(name)
+    if not kb:
+        raise HTTPException(status_code=404, detail="Project not found")
+    chapter = kb.get_chapter(n)
+    if not chapter:
+        raise HTTPException(status_code=404, detail=f"Chapter {n} is not in the outline")
+    if not (chapter.summary or "").strip():
+        raise HTTPException(status_code=422,
+                            detail=f"Chapter {n} has no summary yet — write one first (scenes are derived from it).")
+
+    if not task_lock.acquire(name, f"Scene outline: Chapter {n}"):
+        raise HTTPException(status_code=409, detail=task_lock.busy_detail(name))
+    try:
+        OutlinerAgent(create_llm_client(kb)).generate_scene_outline(kb, chapter)
+        save_kb(name, kb)
+    finally:
+        task_lock.release(name)
+    return {"chapter_number": n,
+            "scenes": [s.model_dump() for s in sorted(chapter.scenes, key=lambda s: s.scene_number)]}
 
 
 @router.post("/{name}/regenerate-outline")

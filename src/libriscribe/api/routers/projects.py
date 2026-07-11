@@ -50,18 +50,37 @@ def create_project(req: CreateProjectRequest):
 
 
 class ImportProjectRequest(BaseModel):
-    bundle: dict
+    bundle: dict | None = None
+    raw: str | None = None  # B43: raw file text — server attempts auto-repair of broken JSON
     target_name: str | None = None
 
 
 @router.post("/import")
 def import_project(body: ImportProjectRequest):
-    """Import a project from a .libriscribe.json bundle. Auto-renames on collision."""
+    """Import a project from a .libriscribe.json bundle. Auto-renames on collision.
+    When the client's JSON parse fails it sends the raw text instead; damaged files are
+    auto-repaired where possible and every repair is reported back (B43)."""
+    bundle = body.bundle
+    repairs: list[str] = []
+    if bundle is None:
+        if not body.raw:
+            raise HTTPException(status_code=400, detail="Provide 'bundle' or 'raw'.")
+        from libriscribe.utils.json_repair import repair_json
+        try:
+            bundle, repairs = repair_json(body.raw)
+        except json.JSONDecodeError as exc:
+            raise HTTPException(status_code=400, detail=(
+                f"Invalid JSON that could not be auto-repaired: {exc.msg} "
+                f"at line {exc.lineno}, column {exc.colno}"
+            ))
+        if not isinstance(bundle, dict):
+            raise HTTPException(status_code=400, detail="Repaired JSON is not an object/bundle.")
     try:
-        result = project_service.import_project_bundle(body.bundle, body.target_name)
+        result = project_service.import_project_bundle(bundle, body.target_name)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
     result["detail"] = project_service.get_project_detail(result["project_name"])
+    result["repairs"] = repairs
     return result
 
 
@@ -101,8 +120,10 @@ def export_story(name: str):
     text = project_service.export_story_text(name)
     if text is None:
         raise HTTPException(status_code=404, detail="Project not found")
+    # UTF-8 BOM so Windows editors that ignore the HTTP charset still decode the
+    # em dashes/curly quotes correctly instead of showing "â" mojibake.
     return PlainTextResponse(
-        content=text,
+        content="﻿" + text,
         headers={"Content-Disposition": f'attachment; filename="{name}.txt"'},
     )
 
@@ -447,6 +468,89 @@ def get_project_progress(name: str):
     }
 
 
+@router.get("/{name}/workbench-tree")
+def get_workbench_tree(name: str):
+    """B45: one cheap aggregate powering the Story Workbench tree — KB + chapter files, no LLM.
+
+    Statuses are DERIVED here (file existence, non-empty fields), never stored."""
+    from libriscribe.services.scene_prose import read_chapter_split
+
+    project_dir = project_service.get_projects_dir() / name
+    kb = project_service.load_kb(name)
+    if not kb:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    progress = inspect_project_progress(project_dir, kb)
+
+    total = kb.num_chapters
+    if isinstance(total, tuple):
+        total = total[1]
+    if not isinstance(total, int) or total < 1:
+        total = 0
+    chapter_numbers = sorted(set(kb.chapters.keys()) | set(range(1, total + 1)))
+
+    chapters = []
+    for n in chapter_numbers:
+        ch = kb.get_chapter(n)
+        split = read_chapter_split(project_dir, n)
+        prose_words = {b.scene_number: b.word_count for b in split.scenes} if split else {}
+        scenes = []
+        if ch:
+            for sc in ch.scenes:
+                scenes.append({
+                    "scene_number": sc.scene_number,
+                    "summary_set": bool(sc.summary and sc.summary.strip()),
+                    "has_prose": sc.scene_number in prose_words,
+                    "word_count": prose_words.get(sc.scene_number, 0),
+                })
+        chapters.append({
+            "chapter_number": n,
+            "title": ch.title if ch else "",
+            "summary_set": bool(ch and ch.summary and ch.summary.strip()),
+            "has_file": split is not None,
+            "unstructured": bool(split and split.unstructured),
+            "word_count": sum(prose_words.values()),
+            "scenes": scenes,
+        })
+
+    def _character_fields_set(c) -> int:
+        core = (c.physical_description, c.personality_traits, c.background, c.motivations, c.role)
+        return sum(1 for f in core if f and f.strip())
+
+    worldbuilding_fields_set = 0
+    if kb.worldbuilding:
+        worldbuilding_fields_set = sum(
+            1 for v in kb.worldbuilding.model_dump().values()
+            if isinstance(v, str) and v.strip()
+        )
+
+    return {
+        "stage_statuses": progress.stage_statuses,
+        "next_step": progress.next_step,
+        "outline_set": bool(kb.outline and kb.outline.strip()),
+        "num_chapters": total,
+        "chapters": chapters,
+        "characters": [
+            {"name": c.name, "role": c.role,
+             "fields_set": _character_fields_set(c),
+             "has_voice": c.voice_profile is not None}
+            for c in kb.characters.values()
+        ],
+        "locations": [{"name": loc.name} for loc in kb.locations.values()],
+        "lore": [{"name": e.name, "entry_type": e.entry_type} for e in kb.lore_entries.values()],
+        "arcs": [
+            {"name": a.name, "arc_type": a.arc_type, "status": a.status,
+             "milestones": [m.model_dump() for m in a.milestones]}
+            for a in kb.story_arcs.values()
+        ],
+        "threads": [
+            {"name": t.name, "thread_type": t.thread_type, "status": t.status}
+            for t in kb.narrative_threads.values()
+        ],
+        "worldbuilding_fields_set": worldbuilding_fields_set,
+    }
+
+
 @router.get("/{name}/chapters", response_model=list[ChapterMeta])
 def list_chapters(name: str):
     project_dir = project_service.get_projects_dir() / name
@@ -523,6 +627,134 @@ def save_chapter(name: str, n: int, body: ChapterContent):
         "content": body.content,
         "word_count": len(body.content.split()),
     }
+
+
+class ChapterMetaUpdate(BaseModel):
+    title: str | None = None
+    summary: str | None = None
+
+
+@router.put("/{name}/chapters/{n}/meta")
+def update_chapter_meta(name: str, n: int, body: ChapterMetaUpdate):
+    """B45: edit a chapter's KB title/summary (outline data — prose lives in chapter_{n}.md).
+
+    Upserts: editing a planned-but-empty chapter creates its KB entry."""
+    from libriscribe.knowledge_base import Chapter
+
+    kb = project_service.load_kb(name)
+    if not kb:
+        raise HTTPException(status_code=404, detail="Project not found")
+    ch = kb.get_chapter(n)
+    if ch is None:
+        ch = Chapter(chapter_number=n)
+        kb.add_chapter(ch)
+    if body.title is not None:
+        ch.title = body.title
+    if body.summary is not None:
+        ch.summary = body.summary
+    project_service.save_kb(name, kb)
+    return {"chapter_number": n, "title": ch.title, "summary": ch.summary,
+            "scene_count": len(ch.scenes)}
+
+
+@router.get("/{name}/chapters/{n}/scene-prose")
+def list_scene_prose(name: str, n: int):
+    """B45: per-scene prose presence/word counts for one chapter (revised file preferred)."""
+    from libriscribe.services.scene_prose import read_chapter_split
+
+    project_dir = project_service.get_projects_dir() / name
+    if not project_dir.exists():
+        raise HTTPException(status_code=404, detail="Project not found")
+    split = read_chapter_split(project_dir, n)
+    if split is None:
+        return {"exists": False, "unstructured": False, "scenes": []}
+    return {
+        "exists": True,
+        "unstructured": split.unstructured,
+        "scenes": [
+            {"scene_number": b.scene_number,
+             "has_prose": bool(b.body.strip()),
+             "word_count": b.word_count}
+            for b in split.scenes
+        ],
+    }
+
+
+@router.get("/{name}/chapters/{n}/scene-prose/{s}")
+def get_scene_prose(name: str, n: int, s: int):
+    """B45: one scene's prose (body only, without its '### Scene N' marker)."""
+    from libriscribe.services.scene_prose import read_chapter_split
+
+    project_dir = project_service.get_projects_dir() / name
+    split = read_chapter_split(project_dir, n)
+    if split is None:
+        raise HTTPException(status_code=404, detail=f"Chapter {n} has no prose file")
+    if split.unstructured:
+        raise HTTPException(
+            status_code=409,
+            detail=f"Chapter {n} has no scene markers — edit it at the chapter level.")
+    block = split.get_scene(s)
+    if block is None:
+        raise HTTPException(status_code=404, detail=f"Chapter {n} has no prose for scene {s}")
+    return {"scene_number": s, "text": block.body, "word_count": block.word_count}
+
+
+class SceneProseUpdate(BaseModel):
+    text: str
+
+
+@router.put("/{name}/chapters/{n}/scene-prose/{s}")
+def save_scene_prose(name: str, n: int, s: int, body: SceneProseUpdate):
+    """B45: splice one scene's prose into the chapter file — every other scene's bytes
+    survive untouched. Writes to the file reads resolve to (revised preferred)."""
+    from libriscribe.services.scene_prose import splice_scene
+    from libriscribe.utils.file_utils import resolve_chapter_path
+
+    kb = project_service.load_kb(name)
+    if not kb:
+        raise HTTPException(status_code=404, detail="Project not found")
+    project_dir = project_service.get_projects_dir() / name
+    path = resolve_chapter_path(project_dir, n)
+    existing = read_markdown_file(str(path)) if path.exists() else ""
+    ch = kb.get_chapter(n)
+    try:
+        new_text = splice_scene(existing, s, body.text,
+                                chapter_number=n, chapter_title=ch.title if ch else "")
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
+    write_markdown_file(str(path), new_text)
+    return {"chapter_number": n, "scene_number": s,
+            "word_count": len(body.text.split()),
+            "chapter_word_count": len(new_text.split())}
+
+
+class SceneWriteRequest(BaseModel):
+    guidance: str = ""
+
+
+@router.post("/{name}/chapters/{n}/scenes/{s}/write")
+def write_single_scene(name: str, n: int, s: int, body: SceneWriteRequest | None = None):
+    """B45: write/rewrite ONE scene with the full steering stack. Returns {original, revised}
+    WITHOUT saving — the author diffs, then keeps via PUT scene-prose (same contract as
+    chapter revise)."""
+    kb = project_service.load_kb(name)
+    if not kb:
+        raise HTTPException(status_code=404, detail="Project not found")
+    from libriscribe.services import scene_writer, task_lock
+
+    if not task_lock.acquire(name, f"Scene {n}.{s} write"):
+        raise HTTPException(status_code=409, detail=task_lock.busy_detail(name))
+    try:
+        result = scene_writer.write_scene(
+            kb, project_service.get_projects_dir() / name, n, s,
+            guidance=(body.guidance if body else ""))
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+    finally:
+        task_lock.release(name)
+    if result is None:
+        raise HTTPException(status_code=422, detail="Scene generation returned no prose — try again.")
+    return result
 
 
 class ReviseRequest(BaseModel):

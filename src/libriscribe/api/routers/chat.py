@@ -169,6 +169,22 @@ _INTENT_LENS = {
         "limits), the TEXTURE of daily life (culture, economy, beliefs), its HISTORY and how it "
         "presses on the present, and the CONFLICTS the setting itself creates for the story."
     ),
+    # B45: story-spine focus types — the workbench brainstorms concept/chapters/scenes too.
+    "concept": (
+        "Developing the CONCEPT means sharpening the PREMISE and hook, the central CONFLICT and "
+        "stakes, what makes it DISTINCT within its genre, the promise to the reader, and a "
+        "logline that actually captures it."
+    ),
+    "chapter": (
+        "Developing a chapter means its PURPOSE in the larger arc (what must be true after it "
+        "that wasn't before), ESCALATION from the previous chapter, the SEQUENCE of scenes that "
+        "carries it, and where it leaves each character."
+    ),
+    "scene": (
+        "Developing a scene means its GOAL (whose scene is it and what do they want), the "
+        "CONFLICT or turn at its center, the concrete STORY-STATE CHANGE from first line to "
+        "last, and grounding in its SETTING. A scene that ends where it began isn't done."
+    ),
 }
 
 
@@ -440,11 +456,94 @@ _FOCUS_STORE = {
 }
 
 
-def _get_focus_entity(kb, focus_type: str, focus_name: str):
+def _prose_excerpt(project_name: str, chapter_number: int, scene_number: int | None = None,
+                   max_words: int = 300) -> str:
+    """Head/tail excerpt of a chapter's (or one scene's) prose — enough texture for the chat
+    without flooding a local model's context."""
+    from libriscribe.services.scene_prose import read_chapter_split
+
+    try:
+        split = read_chapter_split(get_projects_dir() / project_name, chapter_number)
+    except Exception:
+        return ""
+    if split is None:
+        return ""
+    if scene_number is not None:
+        block = split.get_scene(scene_number)
+        text = block.body if block else ""
+    else:
+        text = "\n\n".join(b.body for b in split.scenes) or split.header
+    words = text.split()
+    if not words:
+        return ""
+    if len(words) <= max_words:
+        return text
+    half = max_words // 2
+    return " ".join(words[:half]) + "\n[…]\n" + " ".join(words[-half:])
+
+
+def _parse_chapter_scene(focus_name: str) -> tuple[int | None, int | None]:
+    """'3' -> (3, None); '3.2' -> (3, 2); anything else -> (None, None)."""
+    parts = str(focus_name or "").strip().split(".")
+    try:
+        chapter = int(parts[0])
+    except (ValueError, IndexError):
+        return None, None
+    if len(parts) == 1:
+        return chapter, None
+    try:
+        return chapter, int(parts[1])
+    except ValueError:
+        return chapter, None
+
+
+def _get_focus_entity(kb, focus_type: str, focus_name: str, project_name: str | None = None):
+    """The focused record (pydantic model OR plain dict) + a resolved display name.
+
+    B45 additions: 'concept' (project meta), 'chapter' (name = '3'), 'scene' (name = '3.2') —
+    chapter/scene records include a short prose excerpt when the chapter file exists."""
     # The World is a singleton record, not a named entity in a store.
     if focus_type == "world":
         from libriscribe.knowledge_base import Worldbuilding
         return (kb.worldbuilding or Worldbuilding()), "World"
+    if focus_type == "concept":
+        record = {
+            "title": kb.title, "genre": kb.genre, "category": kb.category,
+            "logline": kb.logline, "tone": kb.tone, "target_audience": kb.target_audience,
+            "description": kb.description, "num_chapters": kb.num_chapters,
+        }
+        return record, "the story concept"
+    if focus_type in ("chapter", "scene"):
+        ch_num, sc_num = _parse_chapter_scene(focus_name)
+        chapter = kb.get_chapter(ch_num) if ch_num else None
+        if chapter is None:
+            return None, focus_name
+        if focus_type == "chapter":
+            record = {
+                "title": chapter.title,
+                "summary": chapter.summary,
+                "scenes": [f"Scene {s.scene_number}: {s.summary}" for s in chapter.scenes],
+            }
+            if project_name:
+                excerpt = _prose_excerpt(project_name, ch_num)
+                if excerpt:
+                    record["prose_excerpt"] = excerpt
+            label = f"Chapter {ch_num}" + (f": {chapter.title}" if chapter.title else "")
+            return record, label
+        scene = next((s for s in chapter.scenes if s.scene_number == sc_num), None)
+        if scene is None:
+            return None, focus_name
+        record = {k: v for k, v in scene.model_dump().items() if k != "scene_number"}
+        record["chapter_summary"] = chapter.summary
+        neighbors = [f"Scene {s.scene_number}: {s.summary}" for s in chapter.scenes
+                     if s.scene_number in (sc_num - 1, sc_num + 1) and s.summary]
+        if neighbors:
+            record["neighboring_scenes"] = neighbors
+        if project_name:
+            excerpt = _prose_excerpt(project_name, ch_num, sc_num)
+            if excerpt:
+                record["prose_excerpt"] = excerpt
+        return record, f"Chapter {ch_num}, Scene {sc_num}"
     attr = _FOCUS_STORE.get(focus_type)
     if not attr:
         return None, focus_name
@@ -485,19 +584,21 @@ def _focus_context(kb, name: str, focus_type: str, focus_name: str, message: str
     """
     from libriscribe.services.context_builder import TokenBudget
 
-    entity, resolved = _get_focus_entity(kb, focus_type, focus_name)
+    entity, resolved = _get_focus_entity(kb, focus_type, focus_name, project_name=name)
     if entity is None:
         return None
 
     budget = TokenBudget(6000)
     lines = [f"{focus_type.title()} '{resolved}':"]
-    for k, v in entity.model_dump().items():
+    fields = entity if isinstance(entity, dict) else entity.model_dump()
+    for k, v in fields.items():
         if k == "name" or v in (None, "", [], {}):
             continue
         if isinstance(v, (list, dict)):
             v = json.dumps(v, default=str)
         text = str(v)
-        lines.append(f"  - {k}: {text[:400] + '...' if len(text) > 400 else text}")
+        cap = 2000 if k == "prose_excerpt" else 400  # excerpts carry the scene's texture
+        lines.append(f"  - {k}: {text[:cap] + '...' if len(text) > cap else text}")
     record = budget.consume("\n".join(lines))
 
     surrounding: list[str] = []
@@ -534,6 +635,22 @@ def _focus_context(kb, name: str, focus_type: str, focus_name: str, message: str
                     break
         except Exception:
             pass
+
+    # 1b) Scene/chapter focus: the characters appearing in the scene(s) ARE the companions.
+    if focus_type in ("scene", "chapter"):
+        ch_num, sc_num = _parse_chapter_scene(focus_name)
+        chapter = kb.get_chapter(ch_num) if ch_num else None
+        if chapter:
+            for s in chapter.scenes:
+                if focus_type == "scene" and s.scene_number != sc_num:
+                    continue
+                for rn in (s.characters or []):
+                    if budget.exhausted() or rn.lower() in seen:
+                        continue
+                    brief = _entity_brief(kb, rn)
+                    if brief:
+                        add(brief)
+                        seen.add(rn.lower())
 
     # 2) Arcs the focused entity is involved in.
     if focus_type != "arc":
@@ -861,7 +978,10 @@ def parse_to_proposal(name: str, body: ParseRequest):
     from libriscribe.services import lore_intake
 
     client = _utility_client_for(kb)
-    if body.focus_type and body.focus_name:
+    # B45: story-spine focus types (concept/chapter/scene) apply through their own item
+    # endpoints, not lore_intake — a spine-focused parse falls back to generic extraction so
+    # "Apply to lore" still captures any entities the reply mentioned.
+    if body.focus_type and body.focus_name and body.focus_type not in ("concept", "chapter", "scene"):
         cats = lore_intake.extract_focused(client, kb, body.focus_type, body.focus_name, text,
                                            aspect=body.focus_aspect)
     else:

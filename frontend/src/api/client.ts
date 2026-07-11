@@ -14,7 +14,7 @@ export const listProjects = () => api.get('/projects').then(r => r.data)
 export const createProject = (data: any) => api.post('/projects', data).then(r => r.data)
 export const getProject = (name: string) => api.get(`/projects/${name}`).then(r => r.data)
 export const deleteProject = (name: string) => api.delete(`/projects/${name}`)
-export const importProject = (body: { bundle: any, target_name?: string }) => api.post('/projects/import', body).then(r => r.data)
+export const importProject = (body: { bundle?: any, raw?: string, target_name?: string }) => api.post('/projects/import', body).then(r => r.data)
 export const getProjectProgress = (name: string) => api.get(`/projects/${name}/progress`).then(r => r.data)
 export const updateProjectSettings = (name: string, body: { llm_provider?: string, model?: string, utility_model?: string, fallback_chain?: string[], max_concurrency?: number, generation_mode?: string, prose_register?: number, auto_polish?: boolean }) => api.put(`/projects/${name}/settings`, body).then(r => r.data)
 export const updateProjectMeta = (name: string, body: { title?: string, genre?: string, category?: string, language?: string, description?: string, num_chapters?: number | string, target_word_count?: number | null, logline?: string, tone?: string, target_audience?: string, book_length?: string }) => api.put(`/projects/${name}/meta`, body).then(r => r.data)
@@ -91,7 +91,7 @@ export const deleteArc = (name: string, arcName: string) => api.delete(`/project
 
 export const importLore = (name: string, body: { data: any, smart?: boolean }) => api.post(`/projects/${name}/lore/import`, body).then(r => r.data)
 // Smart lore intake (B12 + B13): parse → review → merge
-export const parseLore = (name: string, body: { data: any, smart?: boolean }) => api.post(`/projects/${name}/lore/parse`, body).then(r => r.data)
+export const parseLore = (name: string, body: { data?: any, raw?: string, smart?: boolean }) => api.post(`/projects/${name}/lore/parse`, body).then(r => r.data)
 export const parseChat = (name: string, body: { text: string, focus_type?: string | null, focus_name?: string | null, focus_aspect?: string | null }) => api.post(`/projects/${name}/chat/parse`, body).then(r => r.data)
 export const parseChatDebug = (name: string, body: { text: string, focus_type?: string | null, focus_name?: string | null, focus_aspect?: string | null }) => api.post(`/projects/${name}/chat/parse/debug`, body).then(r => r.data)
 export const applyParsed = (name: string, records: any) => api.post(`/projects/${name}/lore/apply-parsed`, { records }).then(r => r.data)
@@ -128,6 +128,39 @@ export const updateScene = (name: string, chapterNum: number, sceneNum: number, 
 export const createScene = (name: string, chapterNum: number, body: any) => api.post(`/projects/${name}/scenes/${chapterNum}`, body).then(r => r.data)
 export const deleteScene = (name: string, chapterNum: number, sceneNum: number) => api.delete(`/projects/${name}/scenes/${chapterNum}/${sceneNum}`)
 
+// ─── Story Workbench (B45) ───────────────────────────────
+export interface TreeScene { scene_number: number, summary_set: boolean, has_prose: boolean, word_count: number }
+export interface TreeChapter { chapter_number: number, title: string, summary_set: boolean, has_file: boolean, unstructured: boolean, word_count: number, scenes: TreeScene[] }
+export interface WorkbenchTree {
+  stage_statuses: Record<string, string>
+  next_step: string
+  outline_set: boolean
+  num_chapters: number
+  chapters: TreeChapter[]
+  characters: { name: string, role: string, fields_set: number, has_voice: boolean }[]
+  locations: { name: string }[]
+  lore: { name: string, entry_type: string }[]
+  arcs: { name: string, arc_type: string, status: string, milestones: any[] }[]
+  threads: { name: string, thread_type: string, status: string }[]
+  worldbuilding_fields_set: number
+}
+export const getWorkbenchTree = (name: string): Promise<WorkbenchTree> => api.get(`/projects/${name}/workbench-tree`).then(r => r.data)
+export const listSceneProse = (name: string, chapterNum: number): Promise<{ exists: boolean, unstructured: boolean, scenes: { scene_number: number, has_prose: boolean, word_count: number }[] }> => api.get(`/projects/${name}/chapters/${chapterNum}/scene-prose`).then(r => r.data)
+export const getSceneProse = (name: string, chapterNum: number, sceneNum: number): Promise<{ scene_number: number, text: string, word_count: number }> => api.get(`/projects/${name}/chapters/${chapterNum}/scene-prose/${sceneNum}`).then(r => r.data)
+export const updateChapterMeta = (name: string, chapterNum: number, body: { title?: string, summary?: string }) => api.put(`/projects/${name}/chapters/${chapterNum}/meta`, body).then(r => r.data)
+export const saveSceneProse = (name: string, chapterNum: number, sceneNum: number, text: string) => api.put(`/projects/${name}/chapters/${chapterNum}/scene-prose/${sceneNum}`, { text }).then(r => r.data)
+export const writeScene = (name: string, chapterNum: number, sceneNum: number, guidance = ''): Promise<{ original: string, revised: string }> => api.post(`/projects/${name}/chapters/${chapterNum}/scenes/${sceneNum}/write`, { guidance }, { timeout: 0 }).then(r => r.data)
+export const developScenes = (name: string, chapterNum: number) => api.post(`/projects/${name}/chapters/${chapterNum}/develop-scenes`, null, { timeout: 0 }).then(r => r.data)
+export const proposeVoiceProfile = (name: string, charName: string): Promise<{ character: string, voice_profile: any }> => api.post(`/projects/${name}/characters/${encPath(charName)}/voice-profile`, null, { timeout: 0 }).then(r => r.data)
+export const generateWorldField = (name: string, field: string, guidance = ''): Promise<{ field: string, current: string, proposed: string }> => api.post(`/projects/${name}/worldbuilding/generate-field`, { field, guidance }, { timeout: 0 }).then(r => r.data)
+// Milestones (B45 slice 4) — index-addressed; the AI proposes, the user owns `status`.
+export const addMilestone = (name: string, arcName: string, body: any) => api.post(`/projects/${name}/arcs/${encPath(arcName)}/milestones`, body).then(r => r.data)
+export const updateMilestone = (name: string, arcName: string, idx: number, body: any) => api.put(`/projects/${name}/arcs/${encPath(arcName)}/milestones/${idx}`, body).then(r => r.data)
+export const deleteMilestone = (name: string, arcName: string, idx: number) => api.delete(`/projects/${name}/arcs/${encPath(arcName)}/milestones/${idx}`)
+export const verifyMilestones = (name: string, chapter: number): Promise<{ chapter: number, results: any[] }> => api.post(`/projects/${name}/milestones/verify`, { chapter }, { timeout: 0 }).then(r => r.data)
+export const actOnMilestoneProposal = (name: string, arcName: string, idx: number, action: 'accept' | 'reject') => api.post(`/projects/${name}/arcs/${encPath(arcName)}/milestones/${idx}/proposal`, { action }).then(r => r.data)
+export const runBatchTool = (name: string, stage: 'characters' | 'worldbuilding') => api.post(`/projects/${name}/tools/${stage}`).then(r => r.data)
+
 // ─── Lore Sync / Analysis ────────────────────────────────
 export const analyzeCharacter = (name: string, charName: string, body?: any) => api.post(`/projects/${name}/analyze/character/${encPath(charName)}`, body || {}).then(r => r.data)
 export const analyzeLocation = (name: string, locName: string, body?: any) => api.post(`/projects/${name}/analyze/location/${encPath(locName)}`, body || {}).then(r => r.data)
@@ -148,6 +181,7 @@ export const updateThread = (name: string, threadName: string, body: any) => api
 export const deleteThread = (name: string, threadName: string) => api.delete(`/projects/${name}/threads/${encPath(threadName)}`)
 
 // ─── Outline Regeneration ───────────────────────────────
+export const developOutline = (name: string) => api.post(`/projects/${name}/develop-outline`).then(r => r.data)
 export const regenerateOutline = (name: string, body: { locked_chapters: number[], regenerate_chapters: number[] }) => api.post(`/projects/${name}/regenerate-outline`, body).then(r => r.data)
 
 // ─── Brainstorm chat (B9) ───────────────────────────────

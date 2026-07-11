@@ -114,6 +114,17 @@ class LoreEntry(BaseModel):
     tags: list[str] = Field(default_factory=list)
 
 
+class MilestoneProposal(BaseModel):
+    """B45: an AI verdict on whether the prose actually delivered a milestone — a PROPOSAL
+    only. The user owns `status`; the AI never writes it. Evidence is a quote from the prose
+    (checked as a real substring by the verifier's trust guard)."""
+    proposed_status: str = "uncertain"  # 'completed' | 'not_completed' | 'uncertain'
+    evidence: str = ""
+    reasoning: str = ""
+    chapter: int | None = None          # the chapter graded against
+    created_at: str = ""
+
+
 class ArcMilestone(BaseModel):
     name: str
     milestone_type: str = "rising_action"
@@ -121,6 +132,7 @@ class ArcMilestone(BaseModel):
     actual_chapter: int | None = None
     description: str = ""
     status: str = "pending"
+    proposal: MilestoneProposal | None = None  # B45: AI proposal awaiting the user
 
 
 class StoryArc(BaseModel):

@@ -1,17 +1,30 @@
 import { useEffect, useState } from 'react'
-import { Routes, Route, Link, useLocation } from 'react-router-dom'
+import { Routes, Route, Link, Navigate, useLocation, useParams } from 'react-router-dom'
 import BrainstormDrawer from './components/BrainstormDrawer'
 import { Power, Menu, X } from 'lucide-react'
 import HomePage from './pages/HomePage'
 import NewProjectPage from './pages/NewProjectPage'
 import ProjectDashboard from './pages/ProjectDashboard'
-import ChapterEditorPage from './pages/ChapterEditorPage'
 import LorebookPage from './pages/LorebookPage'
-import OutlinePage from './pages/OutlinePage'
+import WorkbenchPage from './pages/WorkbenchPage'
 import WizardPage from './pages/WizardPage'
 import SettingsPage from './pages/SettingsPage'
 import { useUiStore } from './store/uiSlice'
 import { shutdownApp } from './api/client'
+
+// B45 Slice 6: legacy URLs land in the workbench, selected on the equivalent item.
+function ChapterRedirect() {
+  const { name, n } = useParams()
+  return <Navigate to={`/projects/${name}?sel=chapter:${n}`} replace />
+}
+function OutlineRedirect() {
+  const { name } = useParams()
+  return <Navigate to={`/projects/${name}?sel=outline`} replace />
+}
+function WorkbenchRedirect() {
+  const { name } = useParams()
+  return <Navigate to={`/projects/${name}`} replace />
+}
 
 export default function App() {
   const dirty = useUiStore(s => s.dirty)
@@ -108,16 +121,21 @@ export default function App() {
         <Routes>
           <Route path="/" element={<HomePage />} />
           <Route path="/projects/new" element={<NewProjectPage />} />
-          <Route path="/projects/:name" element={<ProjectDashboard />} />
-          <Route path="/projects/:name/chapters/:n" element={<ChapterEditorPage />} />
+          {/* B45: the workbench IS the project view; the old dashboard lives on as Automation. */}
+          <Route path="/projects/:name" element={<WorkbenchPage />} />
+          <Route path="/projects/:name/automation" element={<ProjectDashboard />} />
+          <Route path="/projects/:name/chapters/:n" element={<ChapterRedirect />} />
           <Route path="/projects/:name/lorebook" element={<LorebookPage />} />
           <Route path="/projects/:name/lorebook/*" element={<LorebookPage />} />
-          <Route path="/projects/:name/outline" element={<OutlinePage />} />
+          <Route path="/projects/:name/outline" element={<OutlineRedirect />} />
+          <Route path="/projects/:name/workbench" element={<WorkbenchRedirect />} />
           <Route path="/projects/:name/wizard" element={<WizardPage />} />
           <Route path="/settings" element={<SettingsPage />} />
         </Routes>
       </main>
-      {projectName && <BrainstormDrawer key={projectName} projectName={projectName} />}
+      {/* The workbench (the plain project route) docks its own brainstorm pane — the overlay
+          drawer only serves the remaining utility pages. */}
+      {projectName && /\/(lorebook|wizard|automation)/.test(location.pathname) && <BrainstormDrawer key={projectName} projectName={projectName} />}
     </div>
   )
 }

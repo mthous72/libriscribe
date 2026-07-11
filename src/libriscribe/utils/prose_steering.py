@@ -44,6 +44,45 @@ def writing_system_prompt(kb) -> str:
     return CREATIVE_WRITING_SYSTEM_PROMPT
 
 
+def _first_last_sentence(prose: str) -> tuple[str, str]:
+    import re
+    lines = [l.strip() for l in prose.splitlines() if l.strip() and not l.strip().startswith("#")]
+    if not lines:
+        return "", ""
+    first = re.split(r"(?<=[.!?])\s", lines[0])[0].strip()
+    last = re.split(r"(?<=[.!?])\s", lines[-1])[-1].strip()
+    return first, last
+
+
+def scene_recap_block(entries) -> str:
+    """B40: rolling recap of ALL previously written scenes — (label, beat, prose) triples,
+    e.g. ("Chapter 2, Scene 1", <outline summary>, <scene text>).
+
+    The verbatim continuity tail only reaches back a scene or two; this compact digest keeps
+    EVERY prior beat and opening visible, so late scenes stop re-running early beats
+    (minimizing — not eliminating — repetition across chapters). Deterministic: the planned
+    beat comes from the outline, opened/ended lines from the actual prose."""
+    lines = []
+    for label, beat, prose in entries or []:
+        first, last = _first_last_sentence(prose or "")
+        line = f"- {label}: {(beat or '').strip()}".rstrip(": ")
+        if first:
+            line += f'\n  opened with: "{first}"'
+        if last and last != first:
+            line += f'\n  ended with: "{last}"'
+        lines.append(line)
+    if not lines:
+        return ""
+    return (
+        "=== EVERY SCENE ALREADY WRITTEN (do not repeat any of this) ===\n"
+        + "\n".join(lines)
+        + "\nThese beats are DONE. Do not re-run or re-describe any of them. Your scene must "
+        "move the story FORWARD from where the last one ended, and must not open with the "
+        "same image, sense, or sentence shape as any opening above. If your scene brief "
+        "overlaps anything above, skip the overlap — depict only what is NEW."
+    )
+
+
 def continuity_block(prior_prose: str, max_words: int = 2000) -> str:
     """The tail of the prose written immediately before this scene, plus the rules that stop a
     small model from re-describing and recycling imagery (the top cause of repetitive output).

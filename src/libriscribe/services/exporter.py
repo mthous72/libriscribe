@@ -92,16 +92,23 @@ def build_docx(kb, project_dir: Path) -> bytes | None:
         body.append(_para(kb.logline))
     body.append(_para(""))
 
+    from libriscribe.utils.prose_sanitizer import sanitize_prose
+
     for n, text in chapters:
         title = f"Chapter {n}"
-        lines = text.splitlines()
+        lines = sanitize_prose(text).splitlines()
         prose_lines: list[str] = []
         for ln in lines:
-            if ln.startswith("#"):
-                heading = ln.lstrip("#").strip()
+            stripped = ln.strip()
+            if stripped.startswith("#"):
+                heading = stripped.lstrip("#").strip()
                 if heading and title == f"Chapter {n}" and not prose_lines:
                     title = heading if heading.lower().startswith("chapter") else f"Chapter {n}: {heading}"
-                    continue
+                # B39: every other heading is a scene marker / scaffolding, never prose.
+                continue
+            # legacy scene titles / plain-text summary echoes from pre-B39 chapter files
+            if re.match(r"(\*\*)?Scene\s+\d+\s*:", stripped):
+                continue
             prose_lines.append(ln)
         body.append(_para(title, style="Heading1"))
         for para_text in re.split(r"\n\s*\n", "\n".join(prose_lines)):

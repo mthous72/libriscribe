@@ -131,24 +131,9 @@ class ProjectManagerAgent:
         except Exception as e:
             self.logger.warning(f"Failed to generate chapter summary: {e}")
 
-    def _update_arc_milestones(self, chapter_number: int) -> None:
-        """After a chapter is written, update arc milestone statuses."""
-        if not self.project_knowledge_base:
-            return
-        try:
-            for arc in self.project_knowledge_base.story_arcs.values():
-                for milestone in arc.milestones:
-                    if milestone.target_chapter == chapter_number and milestone.status == "pending":
-                        milestone.status = "completed"
-                        milestone.actual_chapter = chapter_number
-                    elif (
-                        milestone.target_chapter is not None
-                        and milestone.target_chapter == chapter_number + 1
-                        and milestone.status == "pending"
-                    ):
-                        milestone.status = "in_progress"
-        except Exception as e:
-            self.logger.warning(f"Failed to update arc milestones: {e}")
+    # B45: the old _update_arc_milestones auto-completed a milestone purely because a chapter
+    # with the matching NUMBER existed — no prose was ever checked. Removed. Milestones now
+    # verify through services/milestone_verifier (AI grades the prose, user approves the flag).
 
     def _analyze_threads(self, chapter_number: int) -> None:
         """Analyzes a chapter for narrative threads after it is written."""
@@ -497,7 +482,6 @@ class ProjectManagerAgent:
                 output_path=str(self.project_dir / f"chapter_{chapter_number}.md"),
             )
         self._generate_chapter_summary(chapter_number)
-        self._update_arc_milestones(chapter_number)
         self._analyze_threads(chapter_number)
         self.save_project_data()
         self._mark_stage_finished("chapters")

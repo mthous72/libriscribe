@@ -31,7 +31,13 @@ class _CaptureClient:
         self.prompts.append(prompt)
         self.kwargs.append(kw)
         self.n += 1
-        return f"Unique scene prose number {self.n} with the emberlight motif."
+        # Distinct prose per scene — near-identical outputs would (correctly) trip the
+        # B40 freshness enforcement and add a retry call.
+        openings = {
+            1: "Unique scene prose number 1 with the emberlight motif.",
+            2: "A cold wind scoured the parapet while the sentries changed.",
+        }
+        return openings.get(self.n, f"Entirely different passage number {self.n} in the cellars.")
 
 
 class SceneContinuityTests(unittest.TestCase):

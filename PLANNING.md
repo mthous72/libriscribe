@@ -3,7 +3,7 @@
 Living planning doc. Features are specced here **before** implementation. Nothing
 in "Backlog" is built until it has been promoted to a full spec and approved.
 
-Last updated: 2026-07-07
+Last updated: 2026-07-10
 
 > **B-numbers are stable historical IDs, not build order.** The build order is the **Roadmap** below. Detailed specs keep their original B-number wherever they already live in this doc.
 
@@ -1605,3 +1605,275 @@ Once we ship the **first** feature derived from Writingway (likely B14), update 
   author with a Buy-Me-a-Coffee pointer).
 - **Trigger:** first Writingway-derived feature merged. **Until then, keep it out of the
   README.**
+
+---
+
+## Epic B39: First-draft prose quality — de-scaffold, sanitize, non-overlapping scene beats — ✅ **BUILT (2026-07-08)**
+
+> Slices A–C + automated D built same day (approved verbally). New `utils/prose_sanitizer.py`
+> (+ `tests/test_prose_quality.py`, 20 tests, artifacts from the Helix draft as fixtures).
+> Verified end-to-end against the real `test_novel-2` project: story export now has 1 chapter
+> header, 0 scene labels, 0 mojibake, 0 double-hyphens. **Slice-D bake-off run 2026-07-09:**
+> fresh generation confirmed clean (structure, encoding, echoes all fixed; disk/export bytes
+> verified). Story .txt download now carries a UTF-8 BOM so Latin-1-defaulting editors stop
+> rendering em dashes as "â" (the bake-off file *looked* garbled only in the viewer). Residuals
+> observed → B40 below (phrase-tic repetition) + note that Slice C only bites when scenes are
+> re-outlined, not on chapter rewrite against an old outline.
+
+### B40. Deterministic repetition guard — scene-opening & phrase-tic ban list — ✅ **BUILT (2026-07-09)**
+
+> Built as raised, plus per-user direction ("context to spare"): a **rolling all-scenes recap**
+> — every scene of every previous chapter AND every scene written so far in the current one
+> gets a compact entry (planned beat + actual opening + actual ending) in each scene prompt.
+> New `utils/repetition_guard.py` (n-gram detector, name-aware so characters/places are never
+> banned; ban-list block for generation, overuse-report block for the editor pass) +
+> `scene_recap_block` in prose_steering. Scene prompt stack is now register > canon > all-scenes
+> recap > verbatim continuity tail > ban list > brief, assembled in ONE shared
+> `_build_scene_prompt`. **Also fixed:** the streaming write path (the default for the web UI)
+> had NEVER carried the continuity/canon/register blocks — d27f8e2's continuity fix only
+> applied to the non-streaming path; both paths now share the same stack. Real-project check:
+> chapter-2 scene prompt ≈ 4k tokens with full recap. 410 tests pass
+> (`tests/test_repetition_guard.py`).
+>
+> **Follow-up fix (2026-07-09):** "live stream preview was incomprehensible garbage" —
+> root cause in `useWebSocket.ts`: the cleanup-triggered `onclose` scheduled a reconnect
+> anyway, so every unmount / server restart / navigation stacked additional live sockets,
+> and EACH appended every `stream_chunk` to the shared buffer (interleaved duplicate text;
+> the saved chapter was always clean — server side was fine). Fixed: reconnect only for the
+> active socket while mounted, stale sockets' events dropped, timer cleared, previous socket
+> closed before opening a new one. Also: preview buffer now clears when a chapter run starts
+> and labels scene boundaries ("────── Chapter 1 — Scene 2 ──────"). Frontend rebuilt.
+>
+> **v2 (2026-07-09, after bake-off round 2 — openings fixed, but word-level repetition and
+> beat rehash remained):**
+> 1. **Staggered-fragment merge** — one long repeated phrase used to surface as 3 overlapping
+>    n-gram fragments; now chain-merged into the full phrase.
+> 2. **Word-level bans** — single content words repeated conspicuously ("skin" ×19) are now
+>    detected (name/stopword-aware, density threshold) and listed as "use at most once".
+> 3. **Enforcement, not just instruction** — after each scene is generated, a deterministic
+>    `find_violations` check (banned-phrase reuse, opening that mirrors an earlier scene)
+>    triggers ONE regenerate-with-named-violations retry; the retry is kept only if
+>    measurably fresher. Small models ignore advisory rules; this closes the loop.
+> 4. **Progression contract** — scene prompts + recap now state: the scene must end in a
+>    different story state than it began; anything already depicted must not be re-depicted —
+>    continue from its aftermath ("every new scene progresses the story, not rehashes").
+> Note: beat overlap ultimately originates in the outline (old S4/S5 were the same planned
+> beat); a fresh outline generation gets Slice-C validation — chapter rewrites against an old
+> outline can only soften it via #4.
+
+### Reasoning-model support (LLM client) — ✅ **BUILT (2026-07-09)**
+User switched to `qwen3.6-35b-a3b-uncensored-genesis-hermes` (Hermes-style reasoner) and every
+stage failed with `empty_response`: the model spends its tokens in a private think channel
+FIRST (measured ~2.5k thinking tokens for a two-sentence ask), so budgets sized for the answer
+came back with `content=""`, `finish_reason=length`, all tokens counted as `reasoning_tokens`.
+Built into `llm_client` (openai/openrouter/local paths):
+1. **Escalating budget retry** — on `length` + reasoning tokens observed, re-call with
+   +6144 then +16384 headroom (ordinary truncation without reasoning is NOT retried — scene
+   caps stay intentional).
+2. **Learned per-model allowance** — worst observed thinking cost (+1024 margin) is added
+   preemptively to every later call for that model, including STREAMING (which can't retry).
+3. **Think-tag hygiene** — `<think>/<reasoning>` blocks stripped from non-streaming responses;
+   a stateful chunk-boundary-safe filter strips them from streams; `sanitize_prose` strips as
+   belt-and-braces; chapter writer falls back to the non-streaming adaptive path when a
+   streamed scene yields zero prose.
+Live-verified against LM Studio: first call escalates and recovers; second call passes on the
+learned allowance with no wasted attempt. `tests/test_reasoning_models.py` (14 tests).
+**Operator note:** with a thinking model, 16k context is tight (≈7k prompt + 2.5k think + 5k
+prose); prefer 24–32k if VRAM allows.
+
+### B43. Import auto-repair — fix damaged JSON on import, report every fix — ✅ **BUILT (2026-07-09, user-directed)**
+Trigger: a hand-merged bundle failed import with "Extra data" — two orphan duplicate chapter
+blocks (merge debris dangling after their object closed, each dragging an extra `}`) plus a
+missing comma. New `utils/json_repair.py`: strict parse first; on failure applies targeted
+repairs — BOM strip, orphan-block removal (string-aware brace counting; orphan = key line
+directly after `}`/`},` at deeper indent), missing-comma insertion, trailing-comma removal
+(incl. Python 3.13+ "Illegal trailing comma" message), mojibake repair on parsed string
+values — and returns a human-readable repair list. Unrepairable input re-raises the original
+error. Both import doors (`/projects/import`, `/lore/parse`) accept a new `raw` field; the
+frontend falls back to raw upload when client-side parse fails and shows "auto-repaired:
+[list]". Verified end-to-end against the real broken file (3 repairs, imports clean).
+`tests/test_json_repair.py` (11 tests). 447 total pass.
+
+### B45. Story Workbench — granular, brainstorm-first UI restructure ✅ **BUILT — ALL 6 SLICES (2026-07-10, user-directed)**
+User direction: "maximum control and brainstorming ability… work through every single object
+within the JSON… one item at a time, in order, with the ability to go back and make updates
+without changing the future content… Too much 'Big' automation… small bites of the whale."
+Full plan: `~/.claude/plans/i-want-to-rethink-splendid-eich.md`.
+
+**Binding decisions:** (1) a persistent three-pane workbench (story tree | item editor | docked
+brainstorm pane) REPLACES the page-per-concern UI as THE project view — the brainstorm drawer
+becomes a real docked pane; (2) ALL character work lives in lore (voice-profile generation
+becomes a per-character lore action; the `characters` pipeline stage is removed; worldbuilding
+same treatment, per-field); (3) milestone completion becomes AI-verified / HUMAN-approved —
+AI writes only a `proposal` (verdict + evidence quote + reasoning), the user owns `status` and
+can flip any flag anytime; the fake chapter-number auto-complete
+(`ProjectManagerAgent._update_arc_milestones`) is deleted; (4) editing an earlier item never
+cascades — advisory downstream-impact hints only.
+
+**Slices (each independently shippable, verified against test_novel-2):**
+1. ✅ **BUILT (2026-07-10)** Workbench shell at `/projects/:name/workbench` — `services/scene_prose.py`
+   splitter, `GET …/scene-prose[/{s}]`, `GET …/workbench-tree` aggregate, `PUT …/chapters/{n}/meta`
+   (chapter title/summary upsert — didn't exist anywhere); StoryTree (derived status dots) +
+   ItemEditorHost + Prev/Next story walk + URL-addressable selection (`?sel=scene:3.2`);
+   editors: Concept (w/ suggestion apply/dismiss), Outline (develop-remaining), Chapter (meta +
+   prose + revise-diff + write-chapter), Scene (fields + prose view), World, generic lore-entity
+   (FieldEditor stack EXTRACTED to `components/lore/fields.tsx` and re-imported by LorebookPage —
+   no fork), Milestone (read-only until Slice 4); GenerationStrip. `tests/test_scene_prose.py`
+   (10) → 461 pass; responsive suite grew to 56 (workbench at all phone widths).
+2. ✅ **BUILT (2026-07-10)** Docked brainstorm pane — ALL drawer logic extracted to
+   `components/BrainstormPanel.tsx` (variant drawer|docked; drawer is now a thin wrapper);
+   chat focus extended to `concept | chapter ("3") | scene ("3.2")` with intent lenses, prose
+   excerpts (head/tail, scene-scoped), scene-character briefs in surrounding lore; focus
+   FOLLOWS tree selection (lock toggle); "Apply to this item" writes a reply into a chosen
+   field of the focused scene/chapter/concept (spine-focused parse falls back to generic
+   Apply-to-lore). `tests/test_chat_focus_spine.py` (5).
+3. ✅ **BUILT (2026-07-10)** Small bites — `scene_prose.splice_scene` (byte-preserving,
+   refuses unstructured) + `PUT …/scene-prose/{s}` (writes to the revised-preferred file);
+   `services/scene_writer.py` + `POST …/scenes/{s}/write` — ONE scene with the full steering
+   stack (canon/recap/continuity/guard + freshness enforcement + optional author guidance),
+   diff→keep, never auto-saves; `POST …/chapters/{n}/develop-scenes`; per-character
+   `POST …/voice-profile` (unsaved proposal); `POST …/worldbuilding/generate-field` (one
+   grounded field per call). Scene prose editable inline. `tests/test_scene_writer.py` (12).
+4. ✅ **BUILT (2026-07-10)** Real milestones — `MilestoneProposal` (additive default ⇒ zero
+   migration), index-addressed milestone CRUD registered BEFORE the greedy `{arc_name:path}`
+   routes, `POST /milestones/verify {chapter}` (utility model, head+tail prose, strict
+   delivered-not-foreshadowed rubric), evidence-substring trust guard downgrades fabricated
+   quotes to 'uncertain', accept/reject endpoints (accepting a not-delivered verdict RE-OPENS
+   a faked flag), full MilestoneEditor (status flips freely — typical of all flags), tree
+   'review' badges, ChapterEditor "Check milestones (AI)". THE FAKE numeric auto-complete
+   (`ProjectManagerAgent._update_arc_milestones`) is DELETED. `tests/test_milestone_verifier.py` (12).
+5. ✅ **BUILT (2026-07-10)** Impact hints — `services/impact.py` word-boundary scan (prose
+   mentions + outline scene fields), `GET /{name}/impact/{entity}`, ImpactHint strip in lore
+   editors: "Referenced in … — editing here never regenerates any of them." `tests/test_impact.py` (3).
+6. ✅ **BUILT (2026-07-10)** Promotion — `/projects/:name` IS the workbench (header links:
+   Wizard · Lore tools · Automation); old dashboard lives on at `/projects/:name/automation`
+   ("Automation & settings": step/auto run, write-chapter, reset, exports, versions, LLM
+   config + new "Batch tools…" cast/world); `STAGE_ORDER = concept→outline→chapters→formatting`,
+   `next_step` skips the demoted stages, `start_from_stage=characters|worldbuilding` → 400
+   pointing at `POST /{name}/tools/{stage}` (job-based `run_single_stage`, streaming+cancel);
+   redirects: `/chapters/:n → ?sel=chapter:N`, `/outline → ?sel=outline`, `/workbench → /`;
+   OutlinePage + ChapterEditorPage DELETED (rewrite-unlocked + locks absorbed into the
+   workbench OutlineEditor); LorebookPage KEPT as "Lore tools" (deliberate deviation from the
+   original delete plan — its Sandbox/Gaps/References/Graph/Import utilities have no workbench
+   home yet); drawer mounts only on lorebook/wizard/automation. `tests/test_pipeline_demotion.py` (3).
+
+**Verification (2026-07-10): 496 backend tests pass** (451 baseline + 45 new across
+scene_prose/scene_writer/chat-focus/milestones/impact/demotion; 1 workflow_state assertion
+updated for the demoted pipeline; KB template regenerated for the proposal field). Frontend
+builds clean; **56 Playwright responsive checks pass** (workbench + automation at all phone
+widths; legacy chapter-URL redirect exercised by the modal test). Live LLM actions (scene
+write, voice profile, world field, milestone verify) await the user's LM Studio session.
+
+### B44. "Develop remaining chapters" — intent-shaped outline continuation ✅ **BUILT (2026-07-09, user-directed)**
+User feedback: the lock-then-"Regen Unlocked" flow was a Norman door — the natural task
+("continue building the outline") required understanding an inverted, overwrite-by-default
+model with a jargon button. Fixes:
+1. **New primary action** `POST /{name}/develop-outline` + "Develop remaining" button:
+   ADDITIVE by design — placeholder chapters get summary+scenes, real-summary-but-no-scenes
+   chapters get scenes only, developed chapters are structurally untouched (they're passed as
+   locked context). `OutlinerAgent.classify_development` buckets chapters (placeholder
+   heuristics: blank / "to be developed" / "placeholder" title).
+2. **Safe by default:** chapters with scenes now start LOCKED when the Outline page loads;
+   rewriting developed work is opt-in.
+3. **Honest destructive action:** "Regen Unlocked" renamed "Rewrite unlocked…", confirm
+   dialog names exactly which chapters are rewritten and which are kept.
+`tests/test_partial_outline.py` grew to 4 tests. 451 total pass. Frontend rebuilt.
+
+### Fix — partial outline regen ("Regen Unlocked") now lore-grounded + milestone-aware ✅ (2026-07-09)
+The lock-chapters + Regen-Unlocked flow (Outline page → `execute_partial`) already supports
+"continue building scenes from where the outline is, without overwriting" — but its prompt
+was bare (Phase-0 grounding never reached it) and ignored arc milestones. Now: the lore/canon
+grounding block is prepended, and a **milestone roadmap** lists the author's planned beats per
+regenerated chapter as binding requirements (completed milestones and other chapters'
+milestones excluded). Token budget 3000→6000 for many-chapter regens. Regenerated chapters
+still get Slice-C scene validation via the shared scene outliner.
+`tests/test_partial_outline.py` (3 tests). 450 total pass.
+
+### B42. Lore-safe character & worldbuilding generation — ✅ **BUILT (2026-07-09, user-directed)**
+User directive: generation must NEVER overwrite lore; changes to existing entries are
+suggestions requiring explicit approval. Previously: character stage overwrote same-name
+lorebook characters field-by-field; worldbuilding stage replaced the ENTIRE worldbuilding
+object (Phase 0 protected only concept/outline).
+- **Characters:** prompt now carries the lore digest + an existing-characters directive
+  ("build around them, don't recreate"). Name collisions no longer touch the KB — the
+  generated profile lands in the **B27 sandbox** as a pending `update` candidate (voice
+  profile of the existing character also untouched). New names still add directly.
+- **Worldbuilding:** prompt lore-grounded; generated values fill EMPTY fields directly
+  (nothing to protect), while fields the author already wrote become ONE pending sandbox
+  candidate listing the conflicting fields. Wholesale replacement removed.
+- **Sandbox:** new `worldbuilding` category (apply merges accepted field dicts via
+  `merge_apply`'s existing worldbuilding path); Lorebook→Sandbox UI shows the new category
+  and labels the new seed kinds. Frontend rebuilt.
+- `tests/test_lore_safe_generation.py` (6 tests: no-overwrite, staging, accept-applies,
+  blank-worldbuilding fast path). 436 total pass.
+Bake-off residual: with prose-level continuity rules in place, a 12B writing model still opens
+3 of 5 scenes with near-identical establishing shots ("smell of ozone and stale grease…",
+"single flickering lamp") and recycles tics within one chapter ("as if burned" ×3, "heart
+hammering against his ribs" ×4). Instruction-only steering ("don't reuse imagery") is too weak
+for small local models. Idea: **deterministic** guard — after each scene, n-gram/phrase-scan
+the prose so far, extract the distinctive repeated phrases and each scene's opening image, and
+inject them into the next scene's prompt as an explicit named BAN LIST ("you may not use:
+…"); optionally also a post-chapter repetition report (Gaps-style). Small models follow named
+bans far better than abstract style rules. Effort: S/M. Depends on: nothing (extends
+`continuity_block`).
+
+**Trigger:** real chapter-1 output ("The Helix Chronicles", `test_novel-2.txt`, local Gemma
+writing model). Diagnosis mapped every defect in that export to a specific code path. Note:
+the draft **predates** today's continuity work (`d27f8e2` scene continuity + `c44a8d3` context
+budgets) — the worst symptom (every scene re-opening with the same copper-air/ozone-workshop
+establishing shot and recycled imagery) should already be substantially fixed; Slice D verifies.
+
+**Defects found → root causes:**
+
+| # | Symptom in the export | Root cause |
+|---|----------------------|------------|
+| 1 | `Scene 1: Maren navigates the claustroph...` headers, truncated mid-word, in the reader's text | `chapter_writer.py` builds scene titles as `summary[:30] + "..."` and **instructs the model to begin with that title**; export keeps heading text |
+| 2 | Full scene summary echoed as the scene's first paragraph (title line then "Scene 1: Maren navigates the claustrophobic, neon-drenched slums…") | model told to open with the title; prompt shows the summary with no "don't restate it" rule |
+| 3 | Chapter heading printed twice at the top | `export_story_text` adds a `Chapter n: title` header **and** `_strip_markdown` keeps the text of the chapter's `## Chapter n:` heading (only removes `#` marks) |
+| 4 | Scenes 3, 4, 5 are the same story beat (diagnostic-touch-escalates), scene 5 nearly re-runs scene 4 | scene outlines generated without seeing sibling scenes; no distinct-beat/progression requirement, no dedup validation |
+| 5 | Scene 5's own summary is truncated ("Maren realizes that CEE is not...") | scene outlining `max_tokens: 2000` too small for 3–5 detailed scenes → tail scene cut mid-sentence; parser accepts truncated summaries silently |
+| 6 | Mojibake (`scrapâ€"the` rendered as `scrapâthe`), inconsistent `--` vs em dash, stray paragraph-leading hyphens (`-No scuffs`), `CEE'S` caps error | emitted by the local model itself (per-scene inconsistency; client decode paths are UTF-8-correct) — no sanitation pass exists |
+| 7 | Editor pass would *re-add* the bold scene titles even if generation stopped emitting them | `agents/editor.py` prompt explicitly demands `**Scene X: Title**` on every scene |
+
+### Slice A — scaffolding out of the prose (effort: S)
+- `chapter_writer.py` (both `execute` and `execute_streaming`): **never ask the model to output
+  the title**; drop the `IMPORTANT: Begin the scene with the title` line. Always prepend a
+  delimiter in code. Delimiter becomes `### Scene N` (no summary fragment — the truncated-title
+  hack dies). Frontend does not parse scene markers (checked), so format is free to change.
+- `SCENE_PROMPT` / `ENRICHED_SCENE_PROMPT`: add — "Never restate, paraphrase, or reference the
+  scene summary text itself; open in-scene with action, dialogue, or sensory detail."
+- Belt-and-braces echo strip: after generation, if the scene's first non-empty line fuzzy-matches
+  the scene summary (or starts with `Scene \d+:`), drop it.
+- `agents/editor.py`: remove the two `**Scene X: Title**` enforcement instructions; preserve
+  `### Scene N` delimiters instead.
+- `export_story_text` (`project_service.py`): heading lines are **dropped entirely** (not
+  de-marked); scene boundaries render as a blank line (or `* * *` — default blank line); the
+  chapter header comes only from the KB title, killing the duplicate. Apply the same cleanup to
+  the B37 DOCX exporter.
+
+### Slice B — deterministic prose sanitizer (effort: S)
+New `utils/prose_sanitizer.py`, applied to every generated **and revised** scene before it is
+stored (chapter writer, B34 revision loop, editor/style passes):
+- Mojibake repair: use `ftfy` if installed; else a built-in map of the common UTF-8-as-cp1252
+  double-encodings (`â€"`→em dash, `â€™`→', `â€œ/â€`→"/", `Ã©`→é, lone `â`+space cases).
+- Punctuation normalization: `--`/`—` unified (config: em dash default), collapse spaced hyphens
+  used as dashes, strip stray paragraph-leading hyphens (`^-(?=[A-Z])`), straighten/curl quotes
+  consistently, collapse >1 blank line.
+- Word-level tics: fix `WORD'S`-style mid-word caps (`CEE'S` → `CEE's`).
+- Pure functions + unit tests using the exact artifacts from this draft as fixtures.
+
+### Slice C — scene-beat progression in outlining (effort: M)
+- Scene outlining prompt: include the already-outlined sibling scenes and require each scene to
+  advance a **distinct** beat (explicit "do not re-do a prior scene's beat; escalate or move").
+- Parse-time validation: reject and regenerate (one retry) any scene whose summary ends
+  truncated (mid-word / trailing `...`) or fuzzy-duplicates a sibling summary.
+- Raise scene-outline `max_tokens` (2000 → 4000) so 5-scene chapters don't clip the tail.
+
+### Slice D — verification bake-off (effort: S)
+Regenerate this same chapter on the current build (post `d27f8e2`/`c44a8d3`) before and after
+Slices A–C; keep `test_novel-2.txt` as the regression fixture. Success = no scaffold text, no
+mojibake, no doubled headings, 0 near-duplicate scene beats, no truncated summaries.
+
+**Order:** A + B first (cheap, directly visible to the reader), then C, D throughout.
+**Dependencies:** none on other epics; touches B37 export and B34 revision paths only to reuse
+the sanitizer/cleanup.

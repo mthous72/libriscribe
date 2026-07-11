@@ -32,6 +32,20 @@ class CharacterGeneratorAgent(Agent):
                 num_characters=project_knowledge_base.num_characters
             )
 
+            # B42: ground in the author's lore (Phase-0 pattern, extended to this stage).
+            # Existing characters are established canon — the model must build AROUND them.
+            existing_names = [n for n in project_knowledge_base.characters.keys() if n.strip()]
+            if existing_names:
+                prompt = (
+                    "=== EXISTING CHARACTERS (established by the author — do NOT recreate, rename, "
+                    "or redefine them; create only NEW characters that complete the cast around "
+                    f"them) ===\n{', '.join(existing_names)}\n\n{prompt}"
+                )
+            from libriscribe.services.lore_digest import grounding_block
+            lore = grounding_block(project_knowledge_base)
+            if lore:
+                prompt = f"{lore}\n\n{prompt}"
+
             character_json_str = self.llm_client.generate_content_with_json_repair(prompt, max_tokens=4000, temperature=0.5)
 
             if not character_json_str:
@@ -44,6 +58,7 @@ class CharacterGeneratorAgent(Agent):
                     return
 
                 processed_characters = []
+                staged_updates = []
                 for char_data in characters:
                     try:
                         char_data = {k.lower(): v for k, v in char_data.items()}
@@ -114,11 +129,17 @@ class CharacterGeneratorAgent(Agent):
 
                         existing_character = project_knowledge_base.get_character(character.name)
                         if existing_character:
-                            for key, value in character.model_dump().items():
-                                if hasattr(existing_character, key):
-                                    setattr(existing_character, key, value)
-                        else:
-                            project_knowledge_base.add_character(character)
+                            # B42: NEVER overwrite an author-established character. The
+                            # generated variant becomes a pending sandbox suggestion the
+                            # author can review and accept — or ignore.
+                            staged_updates.append(character)
+                            self.emit("log", {"level": "info", "message": (
+                                f"'{character.name}' already exists in the lorebook — staged the "
+                                "generated profile as a suggestion (not applied)."
+                            )})
+                            continue
+
+                        project_knowledge_base.add_character(character)
 
                         # Generate voice profile for this character
                         self._generate_voice_profile(character, project_knowledge_base)
@@ -135,6 +156,9 @@ class CharacterGeneratorAgent(Agent):
             except Exception as e:
                 self.emit("log", {"level": "error", "message": f"Error processing characters: {e}"})
                 return
+            if staged_updates:
+                self._stage_character_suggestions(project_knowledge_base, staged_updates)
+
             if output_path is None:
                 output_path = str(Path(project_knowledge_base.project_dir) / "characters.json")
             write_json_file(output_path, processed_characters)
@@ -144,10 +168,50 @@ class CharacterGeneratorAgent(Agent):
             self.logger.exception(f"Error generating character profiles: {e}")
             self.emit("log", {"level": "error", "message": f"Failed to generate character profiles: {e}"})
 
-    def _generate_voice_profile(self, character: Character, pkb: ProjectKnowledgeBase) -> None:
-        """Generates a voice profile for a character using an LLM call."""
+    def _stage_character_suggestions(self, pkb: ProjectKnowledgeBase, characters: list[Character]) -> None:
+        """B42: name collisions land in the B27 sandbox as pending update-candidates —
+        applied only when the author explicitly accepts them (never auto)."""
         try:
-            prompt = f"""Create a dialogue voice profile for the character "{character.name}" from the {pkb.genre} book "{pkb.title}".
+            from libriscribe.services import sandbox
+
+            candidates = []
+            for ch in characters:
+                fields = {
+                    k: v for k, v in ch.model_dump().items()
+                    if k not in ("name", "voice_profile", "relationships")
+                    and isinstance(v, str) and v.strip()
+                }
+                candidates.append(sandbox.new_candidate(
+                    "characters", ch.name, fields, op="update",
+                    source="character_generator",
+                    rationale="Generation produced a profile for an existing lorebook character.",
+                ))
+            if candidates:
+                run = sandbox.create_run(
+                    pkb.project_name, {"kind": "generation_characters"}, candidates)
+                self.emit("log", {"level": "info", "message": (
+                    f"{len(candidates)} character suggestion(s) staged for review "
+                    f"(sandbox run {run['id']})."
+                )})
+        except Exception as e:
+            logger.warning(f"Failed to stage character suggestions: {e}")
+
+    def _generate_voice_profile(self, character: Character, pkb: ProjectKnowledgeBase) -> None:
+        """Generates and ATTACHES a voice profile (batch path). The reusable single-character
+        primitive lives at module level (B45: also exposed as a per-character lore action)."""
+        try:
+            vp = generate_voice_profile(self.llm_client, character, pkb)
+            if vp is None:
+                return
+            character.voice_profile = vp
+            self.emit("log", {"level": "info", "message": f"Generated voice profile for {character.name}"})
+        except Exception as e:
+            logger.warning(f"Failed to generate voice profile for {character.name}: {e}")
+
+
+def generate_voice_profile(llm_client, character: Character, pkb: ProjectKnowledgeBase) -> VoiceProfile | None:
+    """One LLM call → a VoiceProfile for one character. Returns None on failure; never saves."""
+    prompt = f"""Create a dialogue voice profile for the character "{character.name}" from the {pkb.genre} book "{pkb.title}".
 
 Character details:
 - Role: {character.role}
@@ -166,21 +230,16 @@ Return a JSON object with these fields:
 
 Return ONLY valid JSON, no markdown wrapper."""
 
-            response = self.llm_client.generate_content_with_json_repair(prompt, max_tokens=1000, temperature=0.6)
-            if not response:
-                return
-
-            voice_data = extract_json_from_markdown(response)
-            if not voice_data or not isinstance(voice_data, dict):
-                return
-
-            character.voice_profile = VoiceProfile(
-                speech_patterns=voice_data.get("speech_patterns", ""),
-                vocabulary_level=voice_data.get("vocabulary_level", ""),
-                verbal_tics=voice_data.get("verbal_tics", ""),
-                avoids=voice_data.get("avoids", ""),
-                example_dialogue=voice_data.get("example_dialogue", []),
-            )
-            self.emit("log", {"level": "info", "message": f"Generated voice profile for {character.name}"})
-        except Exception as e:
-            logger.warning(f"Failed to generate voice profile for {character.name}: {e}")
+    response = llm_client.generate_content_with_json_repair(prompt, max_tokens=1000, temperature=0.6)
+    if not response:
+        return None
+    voice_data = extract_json_from_markdown(response)
+    if not voice_data or not isinstance(voice_data, dict):
+        return None
+    return VoiceProfile(
+        speech_patterns=voice_data.get("speech_patterns", ""),
+        vocabulary_level=voice_data.get("vocabulary_level", ""),
+        verbal_tics=voice_data.get("verbal_tics", ""),
+        avoids=voice_data.get("avoids", ""),
+        example_dialogue=voice_data.get("example_dialogue", []),
+    )
