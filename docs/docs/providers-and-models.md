@@ -37,7 +37,7 @@ add cloud providers to this provider's fallback chain.
 ## Per-project provider & model
 
 The provider/model is chosen **per book** when you create a project, and can be changed later
-from the **project dashboard → AI configuration**. This lets different books use different
+from the **Automation page → AI configuration**. This lets different books use different
 models — for example a local model for private drafts and a frontier cloud model for polish.
 
 ## Fallback chain

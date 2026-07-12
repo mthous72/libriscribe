@@ -65,7 +65,9 @@ Vite runs at `http://localhost:5173` and proxies API/WebSocket calls to the back
    stay disabled until a real key is added.
 2. From the home page, create a **New Project** — pick a title, genre, and the AI provider/model
    for the book. The wizard autosaves your draft as you go.
-3. Generate a concept and outline, then write chapters — or jump straight into the
-   [Lorebook](./lorebook) and [Brainstorm co-writer](./brainstorm).
+3. You'll land in the **[Story Workbench](./workbench)** — the project view. Select the
+   Concept node and start shaping it (edit directly, brainstorm in the docked chat, or run
+   the concept stage), then work down the tree: outline → chapters → scenes. Seed your
+   [Lorebook](./lorebook) whenever you like — it feeds every chapter the AI writes.
 
 Next: **[Using LibriScribe](./usage)**.

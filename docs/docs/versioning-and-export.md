@@ -9,7 +9,7 @@ Your work is portable and recoverable. Everything lives as plain files under
 
 ## Export & import a project
 
-From the project dashboard:
+From the **Automation** page (top-right in the workbench):
 
 - **Export Project** — saves the entire project (knowledge base + all prose) as a single
   self-contained `.libriscribe.json` **bundle**.

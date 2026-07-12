@@ -88,7 +88,7 @@ choose a model (e.g. `text-embedding-3-small` for a great cost/quality balance, 
 
 Semantic search is chosen **per project**, so different books can use different modes.
 
-1. Open a project's **Dashboard**.
+1. Open a project's **Automation** page (top-right in the workbench).
 2. In **Search (lore retrieval)**, set the mode to **Semantic** or **Hybrid**.
 3. Click **Apply & rebuild index** — this embeds the project's lore and prose. Larger projects
    take a little longer the first time.
@@ -99,7 +99,7 @@ index is **ready**, and how many chunks are indexed.
 ## Gotchas
 
 - **The model id must be exact.** If it's wrong or the model isn't loaded, the embeddings call
-  fails and search falls back to keyword. The dashboard will show *"Embeddings configured, but
+  fails and search falls back to keyword. The Automation page will show *"Embeddings configured, but
   the semantic index isn't built"* — re-check the id / that the model is loaded, then **Apply &
   rebuild**.
 - **Don't swap embedding models without rebuilding.** Different models produce different vector

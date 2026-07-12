@@ -8,7 +8,7 @@ Two tools for understanding your book and what the AI sees — both run locally 
 
 ## Manuscript statistics
 
-The **Manuscript stats** card on the project dashboard computes readability and length metrics
+The **Manuscript stats** card on the **Automation** page computes readability and length metrics
 across your chapters (click **Load stats**):
 
 - **Counts** — total words, chapters, average sentence length.

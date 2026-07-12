@@ -4,9 +4,10 @@ sidebar_position: 6
 
 # Brainstorm Co-writer
 
-A lore-aware chat panel available on every project page (the **Brainstorm** button, bottom-right).
-It sees your project's lore, helps you plan and explore before anything is finalized, and can
-turn ideas into structured lore.
+A lore-aware chat that sees your project's lore, helps you plan and explore before anything is
+finalized, and turns ideas into structured, reviewed changes. In the
+[Story Workbench](./workbench) it's **docked as the right-hand pane**; on the utility pages
+(Lore tools, Wizard, Automation) it's available as a drawer via the **Brainstorm** button.
 
 ## Lore-aware chat
 
@@ -14,12 +15,21 @@ The co-writer retrieves relevant lore for each message and stays consistent with
 established. Replies are deliberately **concise** — a few focused ideas, not essays. When it
 proposes something new (not already in your lore), it says so.
 
-## Focus mode
+## Focus mode — and focus-follow
 
-Pick a **Focus** — a specific character, location, lore entry, or arc — to develop *just that
-entity*. The co-writer draws on the surrounding world (connected characters, involved arcs, world
-lore) as **read-only context** to keep ideas grounded and consistent, but keeps every suggestion
-about the focused entity and won't wander off to rewrite the others.
+Pick a **Focus** to develop *just that thing*. Focus can be a character, location, codex
+entry, arc, the world — or, in the workbench, the **concept, a chapter, or a single scene**.
+Chapter and scene focus include the item's brief, an excerpt of its actual prose, and the
+characters appearing in it, so the chat is grounded in what's really on the page.
+
+In the workbench the focus **follows your tree selection** automatically — select Scene 3.2
+and the chat develops Scene 3.2. Click the link icon in the pane header to **lock** the
+current focus while you browse elsewhere. A **Property** picker narrows further, to one field
+(a character's motivations, a scene's goal, the world's magic system…).
+
+The co-writer draws on the surrounding world (connected characters, involved arcs, world
+lore) as **read-only context** to keep ideas grounded and consistent, but keeps every
+suggestion about the focused item and won't wander off to rewrite the others.
 
 ## Multiple parallel sessions
 
@@ -40,6 +50,13 @@ Click **Apply to lore** on any reply to turn it into lore. The co-writer parses 
 then shows a **review panel** — New/Update badges, editable fields, per-record checkboxes. On
 apply, records are **smart-merged** into the lorebook (fill empty, update revised, preserve
 untouched). See [The Lorebook](./lorebook) for the merge details.
+
+## Apply ideas to a scene, chapter, or the concept
+
+When the focus is a story-spine item (concept, chapter, or scene), replies get an
+**Apply to this item** button instead: pick which field the idea belongs in (a scene's
+summary or goal, a chapter's summary, the concept's logline…), edit the text if you like,
+and save. Nothing is written until you do.
 
 ## Preview the prompt
 

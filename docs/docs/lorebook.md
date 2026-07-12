@@ -5,22 +5,34 @@ sidebar_position: 5
 # The Lorebook
 
 The lorebook is your project's living knowledge base. It feeds context into every chapter the
-AI writes and into the brainstorm co-writer. Open it from any project.
+AI writes and into the brainstorm co-writer. **All character and world work happens here** —
+it's authored lore, not a generation stage: the AI can propose, but every change to your canon
+goes through your review.
+
+Day to day you edit lore entities **in the [Story Workbench](./workbench) tree** (Characters,
+Locations, Codex, World, Arcs, Threads sections). The **Lore tools** page (top-right in the
+workbench) hosts the whole-lorebook utilities described below — import, the review sandbox,
+gap scans, reference material, and the cross-reference graph — alongside the same entity tabs.
 
 ## Entities
 
-Tabs for each kind of lore:
-
-- **Characters** — role, appearance, personality, background, motivations, arcs, relationships,
-  and a **voice profile** (speech patterns, vocabulary, verbal tics) that shapes their dialogue.
+- **Characters** — role, appearance, personality, background, motivations, arcs,
+  relationships, and a **voice profile** (speech patterns, vocabulary, verbal tics, sample
+  lines) that shapes their dialogue. **Generate voice profile** drafts one with AI — reviewed
+  in the editor before you save.
 - **Locations** — description, significance, associated characters.
 - **Codex** — factions, organizations, items, technology, concepts, events, rules (the named
   world entities that aren't people, places, or plots).
-- **Arcs** — story arcs with milestones tracked during generation.
-- **Worldbuilding**, **Threads** (auto-detected plot promises), and a cross-reference **Graph**.
+- **Arcs** — story arcs with **milestones**: planned beats targeted at chapters, whose
+  completion is AI-verified against the actual prose and approved by you (see
+  [the Workbench](./workbench#honest-milestones)).
+- **Worldbuilding** — a per-field world bible, with per-field AI generation.
+- **Threads** (auto-detected plot promises) and a cross-reference **Graph**.
 
 Each entity can be edited directly, analyzed by AI for consistency, or sent to the brainstorm
-co-writer with **Brainstorm this**.
+co-writer with **Brainstorm this**. Batch cast/world generation for seeding a brand-new
+project lives on the **Automation** page; anything it produces that collides with existing
+lore is staged in the sandbox for review, never merged automatically.
 
 ## Importing lore (including from other tools)
 
