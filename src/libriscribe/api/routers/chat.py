@@ -98,7 +98,9 @@ _VERBOSITY = {
         ),
     },
     "medium": {
-        "max_tokens": 1200,
+        # 1200 visibly truncated mid-thought on scene-development replies (B45 follow-up);
+        # the per-session "Response length" override still wins when set.
+        "max_tokens": 2400,
         "directive": (
             "BE CONCISE and conversational: a short paragraph or two, in prose, that develops the "
             "idea directly. Lead with substance — no long preamble, no restating, no closing "
@@ -107,7 +109,7 @@ _VERBOSITY = {
         ),
     },
     "high": {
-        "max_tokens": 4000,
+        "max_tokens": 8000,
         "directive": (
             "Be thorough and exploratory: develop the idea in depth — reasoning, tradeoffs, and a "
             "concrete example or two — written mostly as flowing prose. Use short headers or bullets "

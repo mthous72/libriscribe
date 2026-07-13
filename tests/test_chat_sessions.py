@@ -144,9 +144,9 @@ class BrainstormPrefsTests(unittest.TestCase):
 
     def test_verbosity_levels_map_to_token_caps(self):
         self.assertEqual(chat._verbosity({"verbosity": "low"})["max_tokens"], 512)
-        self.assertEqual(chat._verbosity({"verbosity": "high"})["max_tokens"], 4000)
-        self.assertEqual(chat._verbosity(None)["max_tokens"], 1200)            # default medium
-        self.assertEqual(chat._verbosity({"verbosity": "bogus"})["max_tokens"], 1200)  # unknown -> medium
+        self.assertEqual(chat._verbosity({"verbosity": "high"})["max_tokens"], 8000)
+        self.assertEqual(chat._verbosity(None)["max_tokens"], 2400)            # default medium
+        self.assertEqual(chat._verbosity({"verbosity": "bogus"})["max_tokens"], 2400)  # unknown -> medium
 
     def test_max_tokens_override_supersedes_tier_cap(self):
         # An explicit numeric override wins over the verbosity tier's cap...
@@ -157,9 +157,9 @@ class BrainstormPrefsTests(unittest.TestCase):
             chat._VERBOSITY["low"]["directive"],
         )
         # Blank / zero / garbage overrides fall back to the tier cap.
-        self.assertEqual(chat._verbosity({"verbosity": "high", "max_tokens": 0})["max_tokens"], 4000)
-        self.assertEqual(chat._verbosity({"verbosity": "high", "max_tokens": None})["max_tokens"], 4000)
-        self.assertEqual(chat._verbosity({"verbosity": "high", "max_tokens": "x"})["max_tokens"], 4000)
+        self.assertEqual(chat._verbosity({"verbosity": "high", "max_tokens": 0})["max_tokens"], 8000)
+        self.assertEqual(chat._verbosity({"verbosity": "high", "max_tokens": None})["max_tokens"], 8000)
+        self.assertEqual(chat._verbosity({"verbosity": "high", "max_tokens": "x"})["max_tokens"], 8000)
         # Overrides are clamped to a sane ceiling.
         self.assertEqual(chat._verbosity({"max_tokens": 999999})["max_tokens"], 32000)
 

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Save, Wand2, Loader2, Play, Eye, X, Flag } from 'lucide-react'
 // (developScenes is imported lazily inside the action to keep the initial chunk lean)
 import {
@@ -35,9 +35,22 @@ export default function ChapterEditor({ projectName, chapterNumber, tree }: {
   const jobStatus = useGenerationStore(s => s.jobStatus)
 
   const treeCh = tree.chapters.find(c => c.chapter_number === chapterNumber)
+  const treeVersion = useWorkbenchStore(s => s.treeVersion)
+  const dirtyRef = useRef(false)
+  const selKey = `${projectName}:${chapterNumber}`
+  const prevSelKey = useRef('')
 
+  // Loads on selection change AND on treeVersion bumps (brainstorm apply, develop-scenes…)
+  // — a background bump never clobbers in-progress edits.
   useEffect(() => {
-    setMetaDirty(false); setProseDirty(false); setRevision(null); setRevErr(''); setGuidance('')
+    const selectionChanged = prevSelKey.current !== selKey
+    prevSelKey.current = selKey
+    if (!selectionChanged && dirtyRef.current) return
+    if (selectionChanged) {
+      setRevision(null); setRevErr(''); setGuidance(''); setCheckResults(null)
+      dirtyRef.current = false
+      setMetaDirty(false); setProseDirty(false)
+    }
     getOutline(projectName).then(data => {
       const ch = (data.chapters || []).find((c: any) => c.chapter_number === chapterNumber)
       setTitle(ch?.title || '')
@@ -46,13 +59,14 @@ export default function ChapterEditor({ projectName, chapterNumber, tree }: {
     getChapter(projectName, chapterNumber)
       .then(ch => setContent(ch.content))
       .catch(() => setContent(null))
-  }, [projectName, chapterNumber])
+  }, [selKey, treeVersion])  // eslint-disable-line react-hooks/exhaustive-deps
 
   const saveMeta = async () => {
     setSaving(true)
     try {
       await updateChapterMeta(projectName, chapterNumber, { title, summary })
       setMetaDirty(false)
+      dirtyRef.current = proseDirty  // meta saved; prose edits (if any) still pending
       useUiStore.getState().markClean()
       bumpTree()
     } catch { alert('Save failed') }
@@ -65,6 +79,7 @@ export default function ChapterEditor({ projectName, chapterNumber, tree }: {
     })
     setContent(text)
     setProseDirty(false)
+    dirtyRef.current = metaDirty  // prose saved; meta edits (if any) still pending
     useUiStore.getState().markClean()
     bumpTree()
   }
@@ -153,12 +168,12 @@ export default function ChapterEditor({ projectName, chapterNumber, tree }: {
         <label className="block">
           <span className="text-xs text-gray-400">Title</span>
           <input className="w-full mt-1 px-2 py-1.5 bg-gray-800 border border-gray-700 rounded text-sm"
-            value={title} onChange={e => { setTitle(e.target.value); setMetaDirty(true); useUiStore.getState().markDirty() }} />
+            value={title} onChange={e => { setTitle(e.target.value); setMetaDirty(true); dirtyRef.current = true; useUiStore.getState().markDirty() }} />
         </label>
         <label className="block">
           <span className="text-xs text-gray-400">Summary</span>
           <textarea className="w-full mt-1 px-2 py-1.5 bg-gray-800 border border-gray-700 rounded text-sm h-24"
-            value={summary} onChange={e => { setSummary(e.target.value); setMetaDirty(true); useUiStore.getState().markDirty() }} />
+            value={summary} onChange={e => { setSummary(e.target.value); setMetaDirty(true); dirtyRef.current = true; useUiStore.getState().markDirty() }} />
         </label>
         {metaDirty && (
           <button onClick={saveMeta} disabled={saving}
@@ -243,7 +258,7 @@ export default function ChapterEditor({ projectName, chapterNumber, tree }: {
               </div>
             )}
             <textarea value={content}
-              onChange={e => { setContent(e.target.value); setProseDirty(true); useUiStore.getState().markDirty() }}
+              onChange={e => { setContent(e.target.value); setProseDirty(true); dirtyRef.current = true; useUiStore.getState().markDirty() }}
               className="w-full h-[45vh] bg-gray-900 border border-gray-800 rounded-xl p-3 font-mono text-sm text-gray-200 resize-none focus:outline-none focus:border-indigo-600"
               spellCheck={false} />
           </>

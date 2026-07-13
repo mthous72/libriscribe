@@ -533,12 +533,14 @@ function ApplyToItem({ projectName, text, focus, onDone }: {
           {aspects.map(a => <option key={a.value} value={a.value}>{focusLabel(focus)} — {a.label}</option>)}
         </select>
       </label>
+      {/* Full reply, editable, resizable — a cramped fixed-height box read as "truncated". */}
       <textarea value={value} onChange={e => setValue(e.target.value)}
-        className="w-full h-28 px-2 py-1.5 bg-gray-800 border border-gray-700 rounded text-xs" />
+        className="w-full h-48 min-h-[6rem] max-h-[60vh] px-2 py-1.5 bg-gray-800 border border-gray-700 rounded text-xs resize-y" />
+      <p className="text-[10px] text-gray-600">{value.trim().split(/\s+/).filter(Boolean).length} words — edit freely; this exact text replaces the field on save.</p>
       {err && <p className="text-[11px] text-red-400">{err}</p>}
       <div className="flex gap-2">
         <button onClick={save} disabled={busy} className="flex items-center gap-1 px-2.5 py-1 bg-green-700 hover:bg-green-600 rounded text-xs disabled:opacity-50">
-          {busy ? <Loader2 size={12} className="animate-spin" /> : <Save size={12} />} Save to {focus.type}
+          {busy ? <Loader2 size={12} className="animate-spin" /> : <Save size={12} />} Save to {focusLabel(focus)} — {aspects.find(a => a.value === field)?.label || field}
         </button>
         <button onClick={onDone} className="px-2.5 py-1 bg-gray-800 hover:bg-gray-700 rounded text-xs">Cancel</button>
       </div>

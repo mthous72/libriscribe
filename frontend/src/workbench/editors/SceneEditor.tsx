@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Save, Trash2, Wand2, Loader2, Play } from 'lucide-react'
 import { listScenes, updateScene, deleteScene, getSceneProse, writeScene, saveSceneProse, type WorkbenchTree } from '../../api/client'
 import DiffView from '../../components/DiffView'
@@ -24,26 +24,42 @@ export default function SceneEditor({ projectName, chapterNumber, sceneNumber, t
   const [writeErr, setWriteErr] = useState('')
   const setSelection = useWorkbenchStore(s => s.setSelection)
   const bumpTree = useWorkbenchStore(s => s.bumpTree)
+  const treeVersion = useWorkbenchStore(s => s.treeVersion)
   const jobStatus = useGenerationStore(s => s.jobStatus)
+  // Unsaved-edit guard for background refreshes (kept in a ref so the effect below sees the
+  // live value, not a stale closure).
+  const dirtyRef = useRef(false)
+  const selKey = `${projectName}:${chapterNumber}.${sceneNumber}`
+  const prevSelKey = useRef('')
 
+  // Loads on selection change AND on treeVersion bumps (e.g. brainstorm "Apply to this item"
+  // writing this scene's summary) — but a background bump never clobbers in-progress edits.
   useEffect(() => {
-    setScene(null); setMissing(false); setProse(null); setProseNote(''); setProseDirty(false)
-    setUnstructured(false); setDraft(null); setWriteErr(''); setGuidance('')
+    const selectionChanged = prevSelKey.current !== selKey
+    prevSelKey.current = selKey
+    if (!selectionChanged && dirtyRef.current) return
+    if (selectionChanged) {
+      setScene(null); setProse(null); setDraft(null); setGuidance('')
+      dirtyRef.current = false
+      setProseDirty(false)
+    }
+    setMissing(false); setProseNote(''); setUnstructured(false); setWriteErr('')
     listScenes(projectName, chapterNumber).then(scenes => {
       const found = scenes.find((s: any) => s.scene_number === sceneNumber)
       if (found) setScene({ ...found })
-      else setMissing(true)
+      else { setScene(null); setMissing(true) }
     }).catch(() => setMissing(true))
     getSceneProse(projectName, chapterNumber, sceneNumber)
       .then(p => setProse({ text: p.text, word_count: p.word_count }))
       .catch((e: any) => {
+        setProse(null)
         const status = e?.response?.status
         if (status === 409) {
           setUnstructured(true)
           setProseNote('This chapter’s prose has no scene markers — edit it at the chapter level.')
         } else setProseNote('')
       })
-  }, [projectName, chapterNumber, sceneNumber])
+  }, [selKey, treeVersion])  // eslint-disable-line react-hooks/exhaustive-deps
 
   const runWrite = async () => {
     setWriting(true); setWriteErr(''); setDraft(null)
@@ -59,6 +75,7 @@ export default function SceneEditor({ projectName, chapterNumber, sceneNumber, t
       setProse({ text: draft.revised, word_count: draft.revised.split(/\s+/).filter(Boolean).length })
       setDraft(null)
       setProseDirty(false)
+      dirtyRef.current = false
       bumpTree()
     } catch (e: any) { alert(e?.response?.data?.detail || 'Save failed') }
   }
@@ -68,6 +85,7 @@ export default function SceneEditor({ projectName, chapterNumber, sceneNumber, t
     try {
       await saveSceneProse(projectName, chapterNumber, sceneNumber, prose.text)
       setProseDirty(false)
+      dirtyRef.current = false
       useUiStore.getState().markClean()
       bumpTree()
     } catch (e: any) { alert(e?.response?.data?.detail || 'Save failed') }
@@ -76,10 +94,11 @@ export default function SceneEditor({ projectName, chapterNumber, sceneNumber, t
   if (missing) return <div className="text-sm text-gray-500">Scene {chapterNumber}.{sceneNumber} is not in the outline (it may have been deleted or renumbered).</div>
   if (!scene) return <div className="text-sm text-gray-500">Loading…</div>
 
-  const set = (k: string, v: any) => { setScene({ ...scene, [k]: v }); useUiStore.getState().markDirty() }
+  const set = (k: string, v: any) => { setScene({ ...scene, [k]: v }); dirtyRef.current = true; useUiStore.getState().markDirty() }
   const save = async () => {
     await updateScene(projectName, chapterNumber, sceneNumber, scene)
     useUiStore.getState().markClean()
+    dirtyRef.current = proseDirty  // fields saved; prose edits (if any) still pending
     bumpTree()
   }
   const remove = async () => {
@@ -192,7 +211,7 @@ export default function SceneEditor({ projectName, chapterNumber, sceneNumber, t
         {prose ? (
           <textarea
             value={prose.text}
-            onChange={e => { setProse({ ...prose, text: e.target.value }); setProseDirty(true); useUiStore.getState().markDirty() }}
+            onChange={e => { setProse({ ...prose, text: e.target.value }); setProseDirty(true); dirtyRef.current = true; useUiStore.getState().markDirty() }}
             className="w-full h-[38vh] bg-gray-900 border border-gray-800 rounded-lg p-3 font-mono text-sm text-gray-200 resize-none focus:outline-none focus:border-indigo-600"
             spellCheck={false} />
         ) : (
