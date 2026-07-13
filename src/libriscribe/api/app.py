@@ -17,15 +17,29 @@ class SPAStaticFiles(StaticFiles):
     Client routes like /settings or /projects/x have no file on disk; a hard
     navigation or refresh would 404. Fall back to index.html so React Router can
     render them. API misses (path starting with "api") are left as real 404s.
+
+    Cache policy: Vite content-hashes every asset filename, so /assets/* may be
+    cached forever — but index.html (which names those hashes) must NEVER be
+    cached, or the browser keeps loading a stale bundle after an upgrade and the
+    user has to know about hard refreshes. no-cache still allows conditional
+    revalidation (ETag/304), so it costs one small request per load.
     """
 
     async def get_response(self, path: str, scope):
         try:
-            return await super().get_response(path, scope)
+            response = await super().get_response(path, scope)
         except StarletteHTTPException as exc:
             if exc.status_code == 404 and not path.startswith("api"):
-                return await super().get_response("index.html", scope)
-            raise
+                response = await super().get_response("index.html", scope)
+            else:
+                raise
+        # StaticFiles normalizes the path with os.path (backslashes on Windows).
+        if path.replace("\\", "/").startswith("assets/"):
+            response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
+        else:
+            # index.html and any non-hashed file (favicon, SPA fallbacks)
+            response.headers["Cache-Control"] = "no-cache"
+        return response
 
 
 def create_app() -> FastAPI:

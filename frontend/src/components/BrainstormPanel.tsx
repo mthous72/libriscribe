@@ -512,7 +512,11 @@ function ApplyToItem({ projectName, text, focus, onDone }: {
         const scenes = await listScenes(projectName, c)
         const scene = scenes.find((x: any) => x.scene_number === s)
         if (!scene) throw new Error(`Scene ${focus.name} not found`)
-        await updateScene(projectName, c, s, { ...scene, [field]: value })
+        // `characters` is a list field — split, don't write a prose string into it.
+        const val = field === 'characters'
+          ? value.split(/[,;\n]/).map(x => x.trim()).filter(Boolean)
+          : value
+        await updateScene(projectName, c, s, { ...scene, [field]: val })
       }
       bumpTree(); bumpLore()
       onDone()

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Save, Trash2, Wand2, Loader2, Play } from 'lucide-react'
 import { listScenes, updateScene, deleteScene, getSceneProse, writeScene, saveSceneProse, type WorkbenchTree } from '../../api/client'
 import DiffView from '../../components/DiffView'
+import { ListInput } from '../../components/lore/fields'
 import { useUiStore } from '../../store/uiSlice'
 import { useWorkbenchStore } from '../../store/workbenchSlice'
 import { useGenerationStore } from '../../store/generationSlice'
@@ -111,9 +112,9 @@ export default function SceneEditor({ projectName, chapterNumber, sceneNumber, t
         </label>
         <label className="block">
           <span className="text-xs text-gray-400">Characters (comma-separated)</span>
-          <input className="w-full mt-1 px-2 py-1.5 bg-gray-800 border border-gray-700 rounded text-sm"
-            value={(scene.characters || []).join(', ')}
-            onChange={e => set('characters', e.target.value.split(',').map((s: string) => s.trim()).filter(Boolean))} />
+          {/* ListInput commits on blur/Enter — parsing per keystroke ate the comma the
+              user just typed (same fix as the lorebook list fields). */}
+          <ListInput value={scene.characters || []} onCommit={v => set('characters', v)} />
         </label>
         <label className="block">
           <span className="text-xs text-gray-400">Goal</span>
